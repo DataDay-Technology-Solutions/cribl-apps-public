@@ -1,0 +1,11 @@
+{
+  "name": "cribl-datatap",
+  "version": "3.0.0",
+  "description": "Production-realistic streaming data on demand. 110+ sourcetypes in 14 category sources. Install pack → data flows instantly. Cross-event correlation, semantic accuracy, high-cardinality metrics.",
+  "author": "DataDay Technology Solutions",
+  "type": "collection",
+  "tags": ["datagen", "testing", "demo", "security", "observability", "sample-data", "pack-development"],
+  "minCriblVersion": "4.0.0",
+  "displayName": "DataTap — On-Demand Streaming Data",
+  "allowCustomFunctions": true
+}

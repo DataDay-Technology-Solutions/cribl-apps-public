@@ -1,0 +1,1 @@
+[{"_raw": "{\"_datatap\": true, \"sourcetype\": \"gcp:audit\"}", "_time": 1}, {"_raw": "{\"_datatap\": true, \"sourcetype\": \"gcp:firewall\"}", "_time": 2}, {"_raw": "{\"_datatap\": true, \"sourcetype\": \"gcp:logging\"}", "_time": 3}]

@@ -1,0 +1,810 @@
+datatap_pan_traffic:
+  sampleName: datatap_pan_traffic.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_syslog:
+  sampleName: datatap_syslog.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_WinEventLog_Security:
+  sampleName: datatap_WinEventLog_Security.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_crowdstrike_falcon_event:
+  sampleName: datatap_crowdstrike_falcon_event.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_okta_system:
+  sampleName: datatap_okta_system.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_cisco_asa:
+  sampleName: datatap_cisco_asa.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_aws_cloudtrail:
+  sampleName: datatap_aws_cloudtrail.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_fortigate_traffic:
+  sampleName: datatap_fortigate_traffic.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_aws_cloudwatchlogs_vpcflow:
+  sampleName: datatap_aws_cloudwatchlogs_vpcflow.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_zscalernss-web:
+  sampleName: datatap_zscalernss-web.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_checkpoint_firewall:
+  sampleName: datatap_checkpoint_firewall.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_juniper_srx:
+  sampleName: datatap_juniper_srx.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_sophos_utm:
+  sampleName: datatap_sophos_utm.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_sonicwall_fw:
+  sampleName: datatap_sonicwall_fw.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_pfsense_filterlog:
+  sampleName: datatap_pfsense_filterlog.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_sentinelone_threat:
+  sampleName: datatap_sentinelone_threat.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_carbon_black_defense:
+  sampleName: datatap_carbon_black_defense.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_ms_defender_endpoint:
+  sampleName: datatap_ms_defender_endpoint.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_cortex_xdr:
+  sampleName: datatap_cortex_xdr.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_wazuh_alert:
+  sampleName: datatap_wazuh_alert.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_elastic_security:
+  sampleName: datatap_elastic_security.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_duo_authentication:
+  sampleName: datatap_duo_authentication.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_azure_aad_signin:
+  sampleName: datatap_azure_aad_signin.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_auth0_log:
+  sampleName: datatap_auth0_log.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_cyberark_vault:
+  sampleName: datatap_cyberark_vault.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_beyondtrust_pam:
+  sampleName: datatap_beyondtrust_pam.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_aws_guardduty:
+  sampleName: datatap_aws_guardduty.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_aws_securityhub:
+  sampleName: datatap_aws_securityhub.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_aws_waf:
+  sampleName: datatap_aws_waf.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_aws_lambda:
+  sampleName: datatap_aws_lambda.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_aws_config:
+  sampleName: datatap_aws_config.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_aws_inspector:
+  sampleName: datatap_aws_inspector.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_aws_route53:
+  sampleName: datatap_aws_route53.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_gcp_audit:
+  sampleName: datatap_gcp_audit.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_gcp_firewall:
+  sampleName: datatap_gcp_firewall.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_azure_activity:
+  sampleName: datatap_azure_activity.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_azure_nsg_flow:
+  sampleName: datatap_azure_nsg_flow.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_azure_firewall:
+  sampleName: datatap_azure_firewall.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_azure_keyvault:
+  sampleName: datatap_azure_keyvault.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_o365_management_activity:
+  sampleName: datatap_o365_management_activity.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_proofpoint_tap:
+  sampleName: datatap_proofpoint_tap.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_squid_access:
+  sampleName: datatap_squid_access.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_dns_query:
+  sampleName: datatap_dns_query.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_mimecast_email:
+  sampleName: datatap_mimecast_email.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_tenable_vuln:
+  sampleName: datatap_tenable_vuln.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_snyk_vuln:
+  sampleName: datatap_snyk_vuln.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_prometheus_metrics:
+  sampleName: datatap_prometheus_metrics.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_statsd_metric:
+  sampleName: datatap_statsd_metric.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_graphite_metric:
+  sampleName: datatap_graphite_metric.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_influxdb_metric:
+  sampleName: datatap_influxdb_metric.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_cloudwatch_metric:
+  sampleName: datatap_cloudwatch_metric.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_otel_metrics:
+  sampleName: datatap_otel_metrics.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_otel_traces:
+  sampleName: datatap_otel_traces.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_jaeger_span:
+  sampleName: datatap_jaeger_span.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_zipkin_span:
+  sampleName: datatap_zipkin_span.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_aws_xray_segment:
+  sampleName: datatap_aws_xray_segment.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_datadog_apm_span:
+  sampleName: datatap_datadog_apm_span.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_app_java_log4j:
+  sampleName: datatap_app_java_log4j.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_app_python_log:
+  sampleName: datatap_app_python_log.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_app_node_pino:
+  sampleName: datatap_app_node_pino.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_app_go_slog:
+  sampleName: datatap_app_go_slog.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_app_dotnet_log:
+  sampleName: datatap_app_dotnet_log.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_k8s_container_log:
+  sampleName: datatap_k8s_container_log.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_docker_container_stats:
+  sampleName: datatap_docker_container_stats.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_otel_logs:
+  sampleName: datatap_otel_logs.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_cloudwatch_logs:
+  sampleName: datatap_cloudwatch_logs.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_gcp_logging:
+  sampleName: datatap_gcp_logging.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_sentry_event:
+  sampleName: datatap_sentry_event.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_healthcheck_result:
+  sampleName: datatap_healthcheck_result.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_ssl_certificate:
+  sampleName: datatap_ssl_certificate.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_datadog_event:
+  sampleName: datatap_datadog_event.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_nagios_event:
+  sampleName: datatap_nagios_event.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_icinga_event:
+  sampleName: datatap_icinga_event.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_splunk_audit:
+  sampleName: datatap_splunk_audit.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_splunk_internal:
+  sampleName: datatap_splunk_internal.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_linux_auditd:
+  sampleName: datatap_linux_auditd.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_apache_access:
+  sampleName: datatap_apache_access.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_nginx_access:
+  sampleName: datatap_nginx_access.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_netflow_v9:
+  sampleName: datatap_netflow_v9.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_zeek_conn:
+  sampleName: datatap_zeek_conn.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_zeek_dns:
+  sampleName: datatap_zeek_dns.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_zeek_http:
+  sampleName: datatap_zeek_http.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_suricata_eve:
+  sampleName: datatap_suricata_eve.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_snort_alert:
+  sampleName: datatap_snort_alert.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_darktrace_alert:
+  sampleName: datatap_darktrace_alert.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_vectra_detection:
+  sampleName: datatap_vectra_detection.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_mysql_general:
+  sampleName: datatap_mysql_general.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_postgresql_query:
+  sampleName: datatap_postgresql_query.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_mongodb_query:
+  sampleName: datatap_mongodb_query.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_redis_command:
+  sampleName: datatap_redis_command.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_mssql_audit:
+  sampleName: datatap_mssql_audit.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_kubernetes_audit:
+  sampleName: datatap_kubernetes_audit.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_kubernetes_events:
+  sampleName: datatap_kubernetes_events.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_jenkins_build:
+  sampleName: datatap_jenkins_build.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_gitlab_pipeline:
+  sampleName: datatap_gitlab_pipeline.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_argocd_event:
+  sampleName: datatap_argocd_event.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_terraform_audit:
+  sampleName: datatap_terraform_audit.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_ansible_log:
+  sampleName: datatap_ansible_log.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_vmware_vsphere:
+  sampleName: datatap_vmware_vsphere.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_docker_events:
+  sampleName: datatap_docker_events.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_cef_generic:
+  sampleName: datatap_cef_generic.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_leef_generic:
+  sampleName: datatap_leef_generic.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_hec_event:
+  sampleName: datatap_hec_event.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_ndjson_event:
+  sampleName: datatap_ndjson_event.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_salesforce_event:
+  sampleName: datatap_salesforce_event.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_servicenow_audit:
+  sampleName: datatap_servicenow_audit.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_jira_audit:
+  sampleName: datatap_jira_audit.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_slack_audit:
+  sampleName: datatap_slack_audit.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_github_audit:
+  sampleName: datatap_github_audit.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_top10:
+  sampleName: datatap_top10.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_security:
+  sampleName: datatap_security.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_o11y:
+  sampleName: datatap_o11y.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_scenario_bruteforce:
+  sampleName: datatap_scenario_bruteforce.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_scenario_normalday:
+  sampleName: datatap_scenario_normalday.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_all:
+  sampleName: datatap_all.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_metrics:
+  sampleName: datatap_metrics.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 6
+datatap_cloud_aws:
+  sampleName: datatap_cloud_aws.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 8
+datatap_cloud_azure:
+  sampleName: datatap_cloud_azure.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 6
+datatap_cloud_gcp:
+  sampleName: datatap_cloud_gcp.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 3
+datatap_network:
+  sampleName: datatap_network.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 8
+datatap_identity:
+  sampleName: datatap_identity.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 6
+datatap_endpoint:
+  sampleName: datatap_endpoint.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 7
+datatap_devops:
+  sampleName: datatap_devops.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 7
+datatap_applog:
+  sampleName: datatap_applog.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 7
+datatap_scenario_exfiltration:
+  sampleName: datatap_scenario_exfiltration.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_scenario_lateral:
+  sampleName: datatap_scenario_lateral.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_scenario_ransomware:
+  sampleName: datatap_scenario_ransomware.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_scenario_insider:
+  sampleName: datatap_scenario_insider.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 6
+datatap_scenario_cloud:
+  sampleName: datatap_scenario_cloud.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_scenario_phishing:
+  sampleName: datatap_scenario_phishing.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 6
+datatap_scenario_cryptomining:
+  sampleName: datatap_scenario_cryptomining.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_scenario_mfa_fatigue:
+  sampleName: datatap_scenario_mfa_fatigue.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_scenario_supply_chain:
+  sampleName: datatap_scenario_supply_chain.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 5
+datatap_scenario_outage:
+  sampleName: datatap_scenario_outage.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 6
+datatap_scenario_deploy_fail:
+  sampleName: datatap_scenario_deploy_fail.json
+  isTemplate: true
+  created: 1775000000000
+  size: 500
+  numEvents: 6

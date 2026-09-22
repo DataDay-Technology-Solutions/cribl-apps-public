@@ -1,0 +1,5 @@
+{"_datatap":true,"sourcetype":"pan:traffic","_time":__TIMESTAMP__}
+{"_datatap":true,"sourcetype":"syslog","_time":__TIMESTAMP__}
+{"_datatap":true,"sourcetype":"WinEventLog:Security","_time":__TIMESTAMP__}
+{"_datatap":true,"sourcetype":"crowdstrike:falcon:event","_time":__TIMESTAMP__}
+{"_datatap":true,"sourcetype":"okta:system","_time":__TIMESTAMP__}

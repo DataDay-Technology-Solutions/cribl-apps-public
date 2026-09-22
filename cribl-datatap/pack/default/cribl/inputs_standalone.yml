@@ -1,0 +1,209 @@
+inputs:
+  datatap-top10:
+    type: datagen
+    disabled: false
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_top10
+        eventsPerSec: 10
+    description: "DataTap — Top 10 Enterprise: pan:traffic, syslog, WinEventLog, crowdstrike, okta, cisco:asa, cloudtrail, fortigate, dns, k8s:audit"
+  datatap-security:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_security
+        eventsPerSec: 10
+    description: "DataTap — Security (12 sources): PAN, WinEventLog, CrowdStrike, Okta, Cisco ASA, CloudTrail, FortiGate, Zscaler, GuardDuty, Darktrace, SentinelOne, Duo"
+  datatap-o11y:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_o11y
+        eventsPerSec: 10
+    description: "DataTap — Observability (10 sources): Prometheus, OTel traces/metrics, Jaeger, Log4j, Pino, K8s logs, Docker stats, Sentry, healthcheck"
+  datatap-prometheus:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_prometheus_metrics
+        eventsPerSec: 100
+    description: "DataTap — Prometheus Only. High-cardinality metrics with unique pod/instance labels per event. Scrape-like output (same metric name per 15s window). Ideal for cardinality reduction testing."
+  datatap-metrics:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_metrics
+        eventsPerSec: 100
+    description: "DataTap — All Metrics (6 formats): Prometheus, StatsD, Graphite, InfluxDB, CloudWatch, OTel. Mixed format cycling."
+  datatap-network:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_network
+        eventsPerSec: 10
+    description: "DataTap — Network (8 sources): PAN traffic, Cisco ASA, FortiGate, Check Point, pfSense, NetFlow, Zeek conn, Suricata"
+  datatap-endpoint:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_endpoint
+        eventsPerSec: 10
+    description: "DataTap — Endpoint/EDR (7 sources): CrowdStrike Falcon, SentinelOne, Carbon Black, MS Defender, Cortex XDR, Wazuh, Elastic Security"
+  datatap-identity:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_identity
+        eventsPerSec: 10
+    description: "DataTap — Identity/Auth (6 sources): Okta, Duo, Azure AD, Auth0, CyberArk, BeyondTrust"
+  datatap-cloud-aws:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_cloud_aws
+        eventsPerSec: 10
+    description: "DataTap — AWS (8 sources): CloudTrail, GuardDuty, VPC Flow, Lambda, WAF, Config, SecurityHub, Route53"
+  datatap-cloud-azure:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_cloud_azure
+        eventsPerSec: 10
+    description: "DataTap — Azure (6 sources): AAD Sign-in, Activity, NSG Flow, Firewall, Key Vault, O365"
+  datatap-cloud-gcp:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_cloud_gcp
+        eventsPerSec: 10
+    description: "DataTap — GCP (3 sources): Audit, Firewall, Logging"
+  datatap-devops:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_devops
+        eventsPerSec: 10
+    description: "DataTap — DevOps/K8s (7 sources): K8s audit/events, Jenkins, GitLab, ArgoCD, Terraform, Docker events"
+  datatap-applog:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_applog
+        eventsPerSec: 10
+    description: "DataTap — App Logs (7 sources): Java Log4j, Python, Node Pino, Go slog, .NET, Apache, Nginx"
+  datatap-scenario-bruteforce:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_scenario_bruteforce
+        eventsPerSec: 10
+    description: "DataTap — SCENARIO: Brute Force Attack. Correlated multi-sourcetype attack chain with consistent attacker IP."
+  datatap-scenario-normalday:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_scenario_normalday
+        eventsPerSec: 10
+    description: "DataTap — SCENARIO: Normal Business Day. Mixed enterprise traffic for baseline testing."
+  datatap-scenario-exfiltration:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_scenario_exfiltration
+        eventsPerSec: 10
+    description: "DataTap — SCENARIO: Data Exfiltration. DNS tunneling, large S3 downloads, suspicious uploads. Phases: normal → recon → bulk transfer → detection."
+  datatap-scenario-lateral:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_scenario_lateral
+        eventsPerSec: 10
+    description: "DataTap — SCENARIO: Lateral Movement. Initial compromise → internal scanning → RDP/PsExec to servers → DC access. Consistent attacker IP."
+  datatap-scenario-ransomware:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_scenario_ransomware
+        eventsPerSec: 10
+    description: "DataTap — SCENARIO: Ransomware. Phish → malware exec → privilege escalation → shadow delete → file encryption. CrowdStrike detections."
+  datatap-scenario-insider:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_scenario_insider
+        eventsPerSec: 10
+    description: "DataTap — SCENARIO: Insider Threat. After-hours access → bulk file download → cloud upload → unusual app access. Okta + CloudTrail + O365."
+  datatap-scenario-cloud:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_scenario_cloud
+        eventsPerSec: 10
+    description: "DataTap — SCENARIO: Cloud Compromise. Stolen creds → unusual region login → IAM key creation → S3 exfil → CloudTrail disabled."
+  datatap-scenario-phishing:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_scenario_phishing
+        eventsPerSec: 10
+    description: "DataTap — SCENARIO: Phishing → Account Takeover. Email delivered → cred harvested → login → mailbox rules → OAuth app consent → lateral access."
+  datatap-scenario-cryptomining:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_scenario_cryptomining
+        eventsPerSec: 10
+    description: "DataTap — SCENARIO: Cryptomining. Compromised host → DNS to mining pools → high CPU → EC2 instance launches → pool connections."
+  datatap-scenario-mfa-fatigue:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_scenario_mfa_fatigue
+        eventsPerSec: 10
+    description: "DataTap — SCENARIO: MFA Push Bombing. Rapid MFA push rejections → user accepts → attacker gains access → new device login."
+  datatap-scenario-supply-chain:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_scenario_supply_chain
+        eventsPerSec: 10
+    description: "DataTap — SCENARIO: Supply Chain Attack. Compromised package → unusual child process → C2 beacon → credential access."
+  datatap-scenario-outage:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_scenario_outage
+        eventsPerSec: 50
+    description: "DataTap — SCENARIO: Service Outage Cascade. Health checks fail → K8s pod restarts → connection drops → error logs spike → recovery."
+  datatap-scenario-deploy-fail:
+    type: datagen
+    disabled: true
+    pipeline: datatap_generate
+    samples:
+      - sample: datatap_scenario_deploy_fail
+        eventsPerSec: 10
+    description: "DataTap — SCENARIO: Deployment Failure. Jenkins build → K8s rolling update → health check fail → pod crash loop → rollback."

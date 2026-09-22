@@ -37,7 +37,15 @@ All numbers come from running the pack's real pipeline code (v4.0.0) against syn
 
 Safe mode never rewrites IP addresses. Because this generator gives every sample its own `instance`, unique series only drop once `MODE=aggressive` collapses it. On real scrape targets `instance` is stable, and pod churn is the main driver. Method, per-label results, and caveats: [`cc-cardinality-reduction/benchmarks`](cc-cardinality-reduction/benchmarks). Reproduce with `node cc-cardinality-reduction/benchmarks/measure.js`.
 
-## Installation
+### DataTap — On-Demand Streaming Data (`cribl-datatap`)
+
+Production-realistic streaming sample data for Cribl Stream: 110+ sourcetypes across 15 category sources — security, network, endpoint, identity, metrics and more. Install the pack and data flows instantly, for demos, pipeline development, and load testing. Synthetic data only.
+
+**Status:** early access. **Latest release:** [cribl-datatap-v3.0.0](../../releases/tag/cribl-datatap-v3.0.0)
+
+Install and the full source list are in [`cribl-datatap/README.md`](cribl-datatap/README.md): import the `.crbl` from the release in Cribl (**Processing → Packs → Add Pack → Import from file**), or use the copy-paste / `install.sh` flow.
+
+## Installing the Cardinality Reduction Pack
 
 ### Cribl Stream UI (recommended)
 
