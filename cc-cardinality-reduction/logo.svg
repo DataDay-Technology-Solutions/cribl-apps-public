@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="tapGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#16213e;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="waterGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#00d2ff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0f9b8e;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="dropGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff6b6b;stop-opacity:0.9" />
+      <stop offset="40%" style="stop-color:#ffa502;stop-opacity:0.7" />
+      <stop offset="100%" style="stop-color:#ff6b6b;stop-opacity:0.3" />
+    </linearGradient>
+    <linearGradient id="funnelGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#a29bfe;stop-opacity:0.9" />
+      <stop offset="100%" style="stop-color:#6c5ce7;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="128" cy="128" r="124" fill="url(#tapGrad)" stroke="#2d3561" stroke-width="3"/>
+
+  <!-- Faucet/tap body -->
+  <rect x="98" y="38" width="60" height="24" rx="6" fill="#c0c0c0" stroke="#888" stroke-width="2"/>
+  <rect x="108" y="28" width="40" height="16" rx="4" fill="#d0d0d0" stroke="#888" stroke-width="1.5"/>
+  <!-- Tap handle -->
+  <rect x="120" y="14" width="16" height="20" rx="3" fill="#e0e0e0" stroke="#999" stroke-width="1.5"/>
+  <circle cx="128" cy="18" r="5" fill="#aaa" stroke="#888" stroke-width="1"/>
+
+  <!-- Tap spout -->
+  <path d="M 118 62 L 118 78 Q 118 88 128 88 Q 138 88 138 78 L 138 62" fill="none" stroke="#aaa" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- Chaotic data drops falling from tap (high cardinality - many colors, many paths) -->
+  <!-- Red drops = UUIDs -->
+  <circle cx="121" cy="98" r="3.5" fill="#ff6b6b" opacity="0.9"/>
+  <circle cx="135" cy="103" r="3" fill="#ff6b6b" opacity="0.8"/>
+  <circle cx="128" cy="95" r="4" fill="#ff6b6b" opacity="0.85"/>
+  <!-- Orange drops = session IDs -->
+  <circle cx="116" cy="106" r="2.5" fill="#ffa502" opacity="0.8"/>
+  <circle cx="140" cy="99" r="3" fill="#ffa502" opacity="0.7"/>
+  <circle cx="125" cy="110" r="2" fill="#ffa502" opacity="0.9"/>
+  <!-- Yellow drops = hex strings -->
+  <circle cx="132" cy="107" r="2.5" fill="#ffd43b" opacity="0.7"/>
+  <circle cx="119" cy="113" r="2" fill="#ffd43b" opacity="0.8"/>
+  <!-- Purple drops = container hashes -->
+  <circle cx="137" cy="112" r="2.5" fill="#a29bfe" opacity="0.8"/>
+  <circle cx="123" cy="116" r="3" fill="#a29bfe" opacity="0.7"/>
+
+  <!-- Funnel (the cardinality reducer) -->
+  <path d="M 90 122 L 166 122 L 142 168 L 114 168 Z" fill="url(#funnelGrad)" stroke="#5f27cd" stroke-width="2.5" opacity="0.9"/>
+  <!-- Funnel inner lines (filter effect) -->
+  <line x1="100" y1="132" x2="156" y2="132" stroke="#7c6cf0" stroke-width="1" opacity="0.6"/>
+  <line x1="106" y1="142" x2="150" y2="142" stroke="#7c6cf0" stroke-width="1" opacity="0.5"/>
+  <line x1="110" y1="152" x2="146" y2="152" stroke="#7c6cf0" stroke-width="1" opacity="0.4"/>
+  <line x1="113" y1="162" x2="143" y2="162" stroke="#7c6cf0" stroke-width="1" opacity="0.3"/>
+
+  <!-- CRP text on funnel -->
+  <text x="128" y="149" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="bold" fill="white" opacity="0.9">CRP</text>
+
+  <!-- Clean output stream (single color, uniform = low cardinality) -->
+  <path d="M 125 168 Q 128 180 128 195 Q 128 210 128 220" stroke="url(#waterGrad)" stroke-width="6" fill="none" stroke-linecap="round" opacity="0.9"/>
+  <!-- Single clean drop at bottom -->
+  <path d="M 128 224 Q 122 234 128 240 Q 134 234 128 224 Z" fill="url(#waterGrad)" opacity="0.9"/>
+
+  <!-- Reduction indicator arrows on sides -->
+  <!-- Left: many in -->
+  <text x="68" y="110" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="bold" fill="#ff6b6b" opacity="0.8">10K</text>
+  <path d="M 68 114 L 68 126 L 84 120 Z" fill="#ff6b6b" opacity="0.6"/>
+
+  <!-- Right: few out -->
+  <text x="188" y="190" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="bold" fill="#0f9b8e" opacity="0.9">10</text>
+  <path d="M 172 184 L 172 196 L 182 190 Z" fill="#0f9b8e" opacity="0.7"/>
+</svg>

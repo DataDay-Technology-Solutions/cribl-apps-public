@@ -1,0 +1,92 @@
+DRY_RUN:
+  type: boolean
+  lib: custom
+  value: "true"
+  description: Audit mode — detect and tag (cr_risk, cr_would_modify) without changing
+    any event. Flip to false to activate live normalization. Keep true until you
+    have reviewed audit output at your destination.
+  tags: cardinality
+DESTINATION_TYPE:
+  type: string
+  lib: custom
+  value: "'splunk'"
+  description: "Output destination: splunk / prometheus / datadog / chronicle /
+    elastic / loki / object_storage / custom. Aliases (mimir, cortex, dd, secops,
+    elasticsearch, gcs, azure_blob) auto-mapped. Controls replace-vs-enrich
+    normalization behavior."
+  tags: cardinality
+MODE:
+  type: string
+  lib: custom
+  value: "'safe'"
+  description: Detection aggressiveness. safe = high-confidence patterns only.
+    aggressive = also catches 8-15 char hex, bare IPv4/IPv6, and IP:port instances.
+  tags: cardinality
+FIELD_WHITELIST:
+  type: string
+  lib: custom
+  value: "''"
+  description: Comma-separated field names the pack must NEVER touch. Matches leaf
+    names and full dotted paths, case-insensitive. Put every field you actively
+    query/group by here (e.g. customer_id,endpoint).
+  tags: cardinality
+FIELDS_TO_DROP:
+  type: string
+  lib: custom
+  value: "''"
+  description: "Comma-separated field names to drop entirely in live mode (not
+    normalize). Example: user_agent,referer,punct."
+  tags: cardinality
+VERBOSE_AUDIT_METADATA:
+  type: boolean
+  lib: custom
+  value: "false"
+  description: Add verbose cr_* metadata (cr_categories, cr_match_count,
+    cr_fields_modified, cr_pack_version) to every event. Useful while evaluating;
+    keep off in production. cr_risk and cr_route_tier are always emitted.
+  tags: cardinality
+ENABLE_RAW_MODIFICATION:
+  type: boolean
+  lib: custom
+  value: "true"
+  description: Replace high-cardinality values inside _raw too (live mode only).
+    Without this, Splunk still indexes the original values from _raw.
+  tags: cardinality
+ENABLE_HISTOGRAM_OPTIMIZATION:
+  type: boolean
+  lib: custom
+  value: "true"
+  description: Drop non-SLO Prometheus histogram buckets in live mode. Keeps 11
+    SLO-aligned buckets (5/10/50/100/250/500ms, 1/2.5/5/10s, +Inf); le values
+    matched numerically so OpenMetrics float forms (1.0, 5.0) are kept.
+  tags: cardinality
+ENABLE_PII_DETECTION:
+  type: boolean
+  lib: custom
+  value: "false"
+  description: Detect SSN, credit card, phone, IBAN, UK NI, DE national ID and
+    replace with __SSN__/__CC__/etc. Off by default — patterns can hit non-PII
+    numerics.
+  tags: cardinality
+DROP_SPLUNK_NOISE_FIELDS:
+  type: boolean
+  lib: custom
+  value: "false"
+  description: Drop punct, linecount, eventtype in live mode — Splunk-emitted
+    metadata with high cardinality and negligible query value.
+  tags: cardinality
+ENABLE_AGGREGATION:
+  type: boolean
+  lib: custom
+  value: "false"
+  description: EXPERIMENTAL — aggregate high/critical-risk counters and gauges
+    over AGGREGATION_WINDOW. Assumes Prometheus naming conventions. Test on a
+    lower environment before enabling.
+  tags: cardinality
+AGGREGATION_WINDOW:
+  type: string
+  lib: custom
+  value: "'60s'"
+  description: Tumbling window for experimental metric aggregation. Suffix s or m
+    (e.g. 30s, 60s, 5m).
+  tags: cardinality

@@ -1,0 +1,29 @@
+bucket,keep,description
+0.001,false,Sub-millisecond - rarely needed
+0.005,true,5ms - fast internal calls
+0.01,true,10ms - sub-10ms tracking
+0.025,false,25ms - too granular for most use cases
+0.05,true,50ms - fast API threshold
+0.075,false,75ms - too granular
+0.1,true,100ms - good user experience threshold
+0.15,false,150ms - too granular
+0.2,false,200ms - too granular
+0.25,true,250ms - acceptable latency threshold
+0.3,false,300ms - too granular
+0.4,false,400ms - too granular
+0.5,true,500ms - common SLO threshold
+0.75,false,750ms - too granular
+1,true,1s - standard timeout boundary
+1.5,false,1.5s - too granular
+2,false,2s - too granular
+2.5,true,2.5s - degraded performance threshold
+3,false,3s - too granular
+4,false,4s - too granular
+5,true,5s - timeout territory
+7.5,false,7.5s - too granular
+10,true,10s - critical latency threshold
+15,false,15s - too granular
+20,false,20s - too granular
+30,false,30s - too granular
+60,false,60s - minute timeout
++Inf,true,Infinity - always keep for histogram accuracy

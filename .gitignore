@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+._*
+
+# Secrets / environment
+.env
+.env.*
+
+# Dependencies
+node_modules/
+
+# Build artifacts — release .crbl files are attached to GitHub Releases, not committed
+*.crbl
+*.tgz
+
+# Editor
+.vscode/
+.idea/
+*.swp

@@ -1,0 +1,1710 @@
+id: cardinality_reduction
+groups: {}
+asyncFuncTimeout: 10000
+output: default
+description: >-
+  Cardinality Reduction Pipeline v4.0.0 — Complete Cardinality Management
+
+  Detects 25+ high-cardinality patterns in logs and metrics, audits in
+  DRY_RUN, then normalizes / drops / aggregates when activated. Audit
+  results are emitted as destination-visible cr_* fields (cr_risk,
+  cr_route_tier, cr_would_modify) so the evaluate-then-activate loop can
+  run from your destination's search UI.
+
+  PIPELINE STAGES:
+  1. Auto-Parser — JSON / Prometheus exposition extraction from _raw
+  2. Code Engine — Two-pass detection, dry-run support, field whitelisting,
+     risk classification, routing tags
+  3. Histogram Optimization — Drop non-SLO Prometheus histogram buckets
+  4. Counter Aggregation — Aggregate high-cardinality counters (sum + count)
+  5. Gauge Aggregation — Aggregate high-cardinality gauges (avg + min + max)
+  6. Internal-Field Strip — Remove inter-stage plumbing fields
+
+functions:
+  # ============================================================
+  # STAGE 0: Auto-Parser (JSON + Prometheus exposition format)
+  # ============================================================
+  # Extracts structured fields from _raw when data arrives unparsed.
+  # Handles: JSON objects in _raw → top-level fields
+  #          Prometheus lines → _metric, labels{}, _value
+  # Skip if _metric already exists (data is already structured).
+  # ============================================================
+  # Parses raw Prometheus metric lines into structured fields:
+  #   metric_name{label="value",...} 12345 1678900000
+  #   → _metric, labels{}, _value, _time
+  # Fires on _raw lines that look like Prometheus exposition format
+  # (starts with a word char, contains {, is not JSON).
+  # Useful for any source that delivers Prometheus exposition lines as `_raw`.
+  - id: code
+    filter: "_raw && !_metric"
+    disabled: false
+    conf:
+      maxNumOfIterations: 5000
+      code: |-
+        // Auto-parser: detects format and extracts structured fields from _raw.
+        // After successful parsing, _raw is deleted because it's now redundant
+        // — keeping both the raw line and the parsed structured fields would
+        // double byte volume on the destination side. If your destination
+        // requires _raw, disable this Code function or run it through a
+        // post-pipeline that reconstructs _raw from the structured form.
+        //
+        // v4.0.0: STRICT Prometheus line-shape gate. The old fallback accepted
+        // any "word number ..." line, so RFC3164 syslog ("Jan 15 10:33:01 host
+        // sshd[123]: ...") parsed as _metric="Jan", _value=15, _time=10 — and
+        // rewrote event timestamps to 1970 EVEN IN AUDIT MODE. Now: metric name
+        // must be a valid Prometheus identifier, the value token must be fully
+        // numeric (or +Inf/-Inf/NaN, preserved instead of coerced to 0), the
+        // line must have exactly 2-3 tokens, and an existing _time is NEVER
+        // overwritten — the parsed exposition timestamp only fills a missing one.
+        const raw = __e._raw;
+        if (raw && typeof raw === 'string') {
+
+        const firstChar = raw.charAt(0);
+        let parsedOk = false;
+
+        // Prometheus identifier + sample-value shapes (anchored, full-token)
+        const RE_PROM_NAME = /^[a-zA-Z_:][a-zA-Z0-9_:]*$/;
+        const RE_PROM_VALUE = /^[+-]?(\d+(\.\d+)?([eE][+-]?\d+)?|\.\d+([eE][+-]?\d+)?|Inf|NaN)$/;
+        const RE_PROM_TS = /^-?\d{10,13}(\.\d+)?$/;
+        function promValue(tok) {
+          if (tok === '+Inf' || tok === 'Inf') return Infinity;
+          if (tok === '-Inf') return -Infinity;
+          if (tok === 'NaN') return NaN;
+          return parseFloat(tok);
+        }
+        function setPromTime(tok) {
+          // Fill _time only when the event doesn't already have one — the
+          // receiving source's timestamp wins over a parsed exposition ts.
+          if (__e._time == null && tok && RE_PROM_TS.test(tok)) {
+            __e._time = parseFloat(tok) / (tok.indexOf('.') < 0 && tok.length > 12 ? 1000 : 1);
+          }
+        }
+
+        if (firstChar === '{') {
+          // JSON: extract all keys as top-level event fields.
+          // v4.0.0: never promote keys that could spoof engine/Cribl internals
+          // (__-prefixed, cr_-prefixed) or pollute prototypes.
+          try {
+            const parsed = JSON.parse(raw);
+            if (typeof parsed === 'object' && parsed !== null) {
+              for (const [k, v] of Object.entries(parsed)) {
+                if (k === '_raw' || k === '_time') continue;
+                if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+                if (k.startsWith('__') || k.startsWith('cr_')) continue;
+                __e[k] = v;
+              }
+              parsedOk = true;
+            }
+          } catch (e) {
+            // Cat-4.1: not valid JSON. Bump a counter so operators can spot
+            // a pattern of malformed input from a specific source.
+            if (typeof C.Metric === 'function') {
+              try { C.Metric('cr_autoparse_skipped', 1, {reason: 'invalid_json'}); } catch (ignored) { /* */ }
+            }
+          }
+        } else if (/^[a-zA-Z_:]/.test(raw)) {
+          // Prometheus exposition format: metric_name{labels} value timestamp
+          const braceStart = raw.indexOf('{');
+          const braceEnd = raw.indexOf('}');
+
+          if (braceStart > 0 && braceEnd > braceStart) {
+            const name = raw.substring(0, braceStart);
+            const labelStr = raw.substring(braceStart + 1, braceEnd);
+            const afterBrace = raw.substring(braceEnd + 1).trim();
+            const parts = afterBrace.split(/\s+/);
+            if (RE_PROM_NAME.test(name) && parts.length >= 1 && parts.length <= 2 && RE_PROM_VALUE.test(parts[0])) {
+              __e._metric = name;
+              __e._value = promValue(parts[0]);
+              setPromTime(parts[1]);
+              __e.labels = {};
+              const labelRe = /([a-zA-Z_][a-zA-Z0-9_]*)="([^"]*)"/g;
+              let m;
+              while ((m = labelRe.exec(labelStr)) !== null) {
+                __e.labels[m[1]] = m[2];
+              }
+              parsedOk = true;
+            }
+          } else {
+            // Bare form: exactly `name value [timestamp]` — 2 or 3 tokens, all
+            // strictly shaped. Multi-token lines (syslog headers, free text)
+            // fall through untouched.
+            const parts = raw.trim().split(/\s+/);
+            if ((parts.length === 2 || parts.length === 3) &&
+                RE_PROM_NAME.test(parts[0]) && RE_PROM_VALUE.test(parts[1]) &&
+                (parts.length === 2 || RE_PROM_TS.test(parts[2]))) {
+              __e._metric = parts[0];
+              __e._value = promValue(parts[1]);
+              setPromTime(parts[2]);
+              __e.labels = {};
+              parsedOk = true;
+            }
+          }
+        }
+
+        // Drop _raw after successful parse — structured fields are the
+        // canonical representation now and keeping _raw doubles bytes.
+        // In DRY_RUN we leave _raw alone so the audit doesn't violate
+        // the "see everything, change nothing" promise.
+        // v3.20.0: delete _raw ONLY when DRY_RUN is an EXPLICIT live value, matching
+        // stage-1's toBool() semantics. The old check treated only true/'true'/undefined
+        // as audit, so DRY_RUN='1'/'yes'/'TRUE' (all audit-truthy in stage 1) would delete
+        // _raw here — a live mutation during what the operator intended as audit.
+        const _dr = C.vars.DRY_RUN;
+        const _drStr = (typeof _dr === 'string') ? _dr.trim().toLowerCase() : _dr;
+        const _isLive = (_dr === false || _dr === 0 ||
+          _drStr === 'false' || _drStr === '0' || _drStr === 'no' || _drStr === 'off');
+        if (parsedOk && _isLive) delete __e._raw;
+        }
+    description: "Auto-parse _raw: JSON → top-level fields, Prometheus exposition → _metric/labels/_value. Useful for sources that deliver raw lines without pre-parsing."
+
+  # ============================================================
+  # STAGE 1: Core Cardinality Reduction Engine
+  # ============================================================
+  - id: code
+    filter: "true"
+    disabled: false
+    conf:
+      maxNumOfIterations: 5000
+      code: |-
+        // ============================================================
+        // CARDINALITY REDUCTION ENGINE v4.0.0
+        // DataDay Technology Solutions
+        // ============================================================
+        //
+        // v4.0.0 BREAKING: operator-facing audit fields renamed __cr_* → cr_*.
+        // Cribl strips double-underscore internal fields before they reach
+        // destinations, so the old names never appeared in Splunk/Elastic/etc.
+        // Internal inter-stage plumbing (__cr_requires_aggregation,
+        // __cr_metric_type, __keep_bucket) intentionally KEEPS the __ prefix —
+        // those must never ship to a destination.
+        //
+        // PIPELINE STAGES AFTER THIS CODE FUNCTION:
+        //   - Histogram bucket optimization (Lookup + Drop)
+        //   - Metric aggregation (Aggregation functions)
+        //
+        // ============================================================
+
+        // Cat-2.3 (corrected v3.17.1): Cribl's `code` function forbids `return`
+        // at top level — earlier `return __e;` here caused "Line: Illegal return
+        // statement" and prevented stage-1 from loading entirely. The downstream
+        // code is already null-safe via per-block guards (`if (__e._raw && ...)`,
+        // `Object.entries(...)`), and Cribl never actually delivers null events.
+
+        // --- Fallback JSON parse if Parser function didn't extract fields ---
+        // Stage 0 Parser handles this in the Cribl UI, but cribl pipe CLI
+        // may not load Parser functions. This fallback ensures sample data works.
+        if (__e._raw && !__e._metric && !__e.source && typeof __e._raw === 'string' && __e._raw.startsWith('{')) {
+          try {
+            const parsed = JSON.parse(__e._raw);
+            for (const [k, v] of Object.entries(parsed)) {
+              if (k === '_time' || k === '_raw' || k.startsWith('cribl_')) continue;
+              if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+              if (k.startsWith('__') || k.startsWith('cr_')) continue;
+              __e[k] = v;
+            }
+          } catch(e) {}
+        }
+
+        // --- Configuration ---
+        function toBool(v, def) {
+          // Cat-2.4: accept the broader set of falsy/truthy strings users actually type.
+          // v3.20.0: trim + lowercase strings first so 'false ' (trailing space, a real
+          // copy-paste footgun) is recognized, and fall back to `def` for ANY unrecognized
+          // value instead of `!!v`. The old `!!v` coerced 'maybe'/'disabled'/' false ' to
+          // true, which could silently ENABLE a default-false destructive flag on a typo.
+          if (v === true || v === 1) return true;
+          if (v === false || v === 0) return false;
+          if (typeof v === 'string') {
+            const s = v.trim().toLowerCase();
+            if (s === 'true' || s === '1' || s === 'yes' || s === 'on') return true;
+            if (s === 'false' || s === '0' || s === 'no' || s === 'off') return false;
+            return def; // unrecognized string -> documented default, never a silent enable
+          }
+          return def;
+        }
+        const modeRaw = (C.vars.MODE || 'safe').toLowerCase();
+        // Cat-2.1: validate MODE — silent fallback to 'safe' is a footgun if user types
+        // 'agressive' (typo) or 'aggressiv' — they'd think aggressive patterns are firing.
+        const mode = (modeRaw === 'safe' || modeRaw === 'aggressive') ? modeRaw : 'safe';
+        const modeUnknown = mode !== modeRaw;
+        const destTypeRaw = (C.vars.DESTINATION_TYPE || 'splunk').toLowerCase();
+        // v3.6.3: validate destination — silently treating an unknown value
+        // as 'replace' was a footgun for users who typed 'elasticsearch' or
+        // 'mimir'. Now we map known aliases and tag the event with
+        // cr_dest_type_unknown=true if the value is unrecognized.
+        const DEST_ALIASES = {
+          splunk:'splunk', splunk_hec:'splunk', splunk_indexer:'splunk',
+          prometheus:'prometheus', mimir:'prometheus', cortex:'prometheus', thanos:'prometheus',
+          datadog:'datadog', dd:'datadog',
+          chronicle:'chronicle', google_chronicle:'chronicle', secops:'chronicle',
+          elastic:'elastic', elasticsearch:'elastic', opensearch:'elastic',
+          loki:'loki', grafana_loki:'loki',
+          s3:'object_storage', gcs:'object_storage', azure_blob:'object_storage', object_storage:'object_storage',
+          custom:'custom',
+        };
+        const destType = DEST_ALIASES[destTypeRaw] || 'custom';
+        const destTypeUnknown = !DEST_ALIASES[destTypeRaw];
+
+        const normDefaultRaw = (C.vars.NORMALIZATION_DEFAULT || 'replace').toLowerCase();
+        // Cat-2.7: validate NORMALIZATION_DEFAULT — silent fallback to 'replace' on typo
+        const normDefault = (normDefaultRaw === 'replace' || normDefaultRaw === 'enrich') ? normDefaultRaw : 'replace';
+        // DRY_RUN defaults to TRUE — pack ships in audit mode. If C.vars.DRY_RUN
+        // is undefined (e.g. /preview API doesn't pass pack vars), the engine
+        // still defaults to audit so users see cr_would_modify tags. Flip
+        // DRY_RUN=false in pack settings to activate live normalization.
+        const dryRun = toBool(C.vars.DRY_RUN, true);
+        const enablePii = toBool(C.vars.ENABLE_PII_DETECTION, false);
+        // Theme-1 (v3.18.0): per-event metric sampling. At 100k ev/s × 12 workers
+        // the always-on metric path emits >1M C.Metric() calls/sec. Sample at 0.1
+        // by default to keep aggregate metrics directionally accurate while
+        // protecting the metrics destination from a hot-loop write storm.
+        // Set 1 to disable sampling. Set 0 to disable metrics entirely.
+        let metricsSampleRate = Number(C.vars.METRICS_SAMPLE_RATE);
+        if (!Number.isFinite(metricsSampleRate) || metricsSampleRate < 0 || metricsSampleRate > 1) metricsSampleRate = 0.1;
+        const _emitMetric = metricsSampleRate >= 1
+          ? function () { return true; }
+          : (metricsSampleRate <= 0 ? function () { return false; } : function () { return Math.random() < metricsSampleRate; });
+        const enableUuid = toBool(C.vars.ENABLE_UUID_DETECTION, true);
+        const enableOtel = toBool(C.vars.ENABLE_OTEL_NORMALIZATION, true);
+        // v3.17.1: removed globalThis-based init-log (sandbox forbids globalThis).
+        // Per-worker init tracking would need a different mechanism (e.g. C.attach()).
+        // The pack's other observability signals (cr_events_processed{dest}, the
+        // worker pipelineMgr "creating new pipeline" log, post_install_check.sh)
+        // already let operators verify engagement.
+        const enableContainer = toBool(C.vars.ENABLE_CONTAINER_HASH_REDUCTION, true);
+        const enableSession = toBool(C.vars.ENABLE_SESSION_ID_DETECTION, true);
+        const enableHex = toBool(C.vars.ENABLE_HEX_DETECTION, true);
+        const enableCustom = toBool(C.vars.ENABLE_CUSTOM_RULES, false);
+        const enableAggregation = toBool(C.vars.ENABLE_AGGREGATION, false);
+        let highThreshold = Number(C.vars.HIGH_CARDINALITY_THRESHOLD) || 10000;
+        let critThreshold = Number(C.vars.CRITICAL_CARDINALITY_THRESHOLD) || 100000;
+        // Cat-2.10: defend against negative/NaN/extreme values
+        if (!Number.isFinite(highThreshold) || highThreshold < 1) highThreshold = 10000;
+        if (!Number.isFinite(critThreshold) || critThreshold < 1) critThreshold = 100000;
+        // Cat-2.2 + Loop-2 (v3.18.3): if operator inverts thresholds (CRITICAL <= HIGH),
+        // risk classification collapses. Earlier behavior SILENTLY rewrote critThreshold.
+        // Better behavior: keep operator values, but surface the misconfig on EVERY event
+        // via cr_config_invalid AND don't try to "correct" — let dashboards see the
+        // collapse so the operator notices in monitoring instead of in production debugging.
+        // The auto-correction was a footgun: operators see X in pack settings but Y is effective.
+        const thresholdsInverted = (critThreshold <= highThreshold);
+        // (No mutation of critThreshold; the engine will produce the broken risk distribution
+        // exactly as configured, but every event carries cr_thresholds_inverted='true' and
+        // a new cr_config_invalid='thresholds_inverted' field.)
+        const uuidRepl = C.vars.UUID_REPLACEMENT != null ? C.vars.UUID_REPLACEMENT : '__UUID__';
+        const sessRepl = C.vars.SESSION_ID_REPLACEMENT != null ? C.vars.SESSION_ID_REPLACEMENT : '__SESSION_ID__';
+        const hexRepl = C.vars.HEX_REPLACEMENT != null ? C.vars.HEX_REPLACEMENT : '__HEX__';
+        const contRepl = C.vars.CONTAINER_HASH_REPLACEMENT != null ? C.vars.CONTAINER_HASH_REPLACEMENT : '__CONTAINER_HASH__';
+
+        // --- Field Whitelist ---
+        // Stores two forms per entry: full lowercased path (preserving dots,
+        // for nested-path matches) AND leaf-normalized form (alphanumeric +
+        // underscore only, for simple field-name matches). Gets checked in
+        // isWhitelisted against both the field's full path and its leaf key.
+        const whitelistStr = C.vars.FIELD_WHITELIST || '';
+        const WHITELIST = {};
+        if (whitelistStr) {
+          whitelistStr.split(',').forEach(f => {
+            const t = f.trim();
+            if (!t) return;
+            const lower = t.toLowerCase();
+            WHITELIST[lower] = 1;                                        // full form: matches paths
+            WHITELIST[lower.replace(/[^a-z0-9_]/g, '')] = 1;             // leaf form: matches plain names
+          });
+        }
+
+        // --- Sensitive Fields ---
+        // Field names whose VALUES should be redacted regardless of their
+        // pattern (passwords don't fit any cardinality category but absolutely
+        // must not be promoted to indexed top-level fields by the JSON parser).
+        const SENSITIVE_FIELDS = {
+          password:1, passwd:1, passw:1, pwd:1, secret:1,
+          'private_key':1, privatekey:1, ssh_key:1, sshkey:1,
+          'client_secret':1, clientsecret:1, 'consumer_secret':1,
+          authorization:1, authorisation:1,
+          // api_key / auth_token / access_token / refresh_token are also
+          // covered by KNOWN_IDS → __SESSION_ID__, so the redaction here
+          // is belt-and-suspenders for cases where they're missed.
+          'api_key':1, apikey:1, 'auth_token':1, authtoken:1,
+          'access_token':1, accesstoken:1, 'refresh_token':1, refreshtoken:1,
+          // v3.6.4 additions
+          bearer:1, 'bearer_token':1, bearertoken:1,
+          'basic_auth':1, basicauth:1, 'auth_header':1, authheader:1,
+          credentials:1, credential:1,
+          'aws_secret_access_key':1, awssecretaccesskey:1, 'aws_session_token':1,
+          'cookie':1, 'set_cookie':1, setcookie:1,  // session cookies leak auth
+          totp:1, 'totp_secret':1, otp_secret:1, otpsecret:1,
+          'webhook_secret':1, webhooksecret:1, 'signing_secret':1, signingsecret:1,
+        };
+        // v4.0.0: legitimate *_key field names that are NOT secrets. Without
+        // this, sort_key / partition_key / routing_key (ubiquitous in
+        // DynamoDB / RabbitMQ / SQL logs) were redacted to __REDACTED__ and
+        // routed to the cold tier — a severe false positive. idempotency_key
+        // is exempted from REDACTION specifically; its value still flows to
+        // Pass-2 where UUID/hex patterns normalize it by shape.
+        const KEY_SUFFIX_OK = {
+          'sort_key':1, 'partition_key':1, 'routing_key':1, 'cache_key':1,
+          'foreign_key':1, 'primary_key':1, 'hash_key':1, 'range_key':1,
+          'shard_key':1, 'row_key':1, 'composite_key':1, 'idempotency_key':1,
+        };
+        // Theme-6 (v3.18.0): allow operators to extend SENSITIVE_FIELDS at deploy
+        // time without forking the pack. Comma-separated names; same lowercase +
+        // alphanumeric normalization as built-ins.
+        const extraSensStr = C.vars.EXTRA_SENSITIVE_FIELDS || '';
+        if (extraSensStr) {
+          extraSensStr.split(',').forEach(function(name) {
+            const t = String(name).trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+            if (t) SENSITIVE_FIELDS[t] = 1;
+          });
+        }
+
+        // --- Field Group Mapping ---
+        // Maps field names (case-insensitive) to semantic replacement values.
+        // Hardcoded inline — Cribl's code function sandbox forbids fs/require,
+        // so external CSV loading isn't possible. To customize, edit this
+        // object directly here in the pipeline YAML.
+        const FIELD_GROUPS = {
+          customer_id: 'customer_entity',
+          user_id: 'user_entity',
+          account_id: 'account_entity',
+          tenant_id: 'tenant_entity',
+          org_id: 'org_entity',
+          order_id: 'order_ref',
+          trace_id: 'request_trace',
+          span_id: 'trace_span',
+          request_id: 'api_request',
+          session_id: 'user_session',
+          correlation_id: 'correlation_ref',
+          transaction_id: 'txn_ref',
+          message_id: 'message_ref',
+          container_id: 'container_instance',
+          image_id: 'image_ref'
+        };
+
+        // Category fallback replacements (used when no field-specific group mapping exists)
+        const CATEGORY_DEFAULTS = {
+          uuid: uuidRepl, session_id: sessRepl, hex_string: hexRepl,
+          container_hash: contRepl, k8s_ephemeral: '', ephemeral_id: '__INSTANCE__',
+          custom: '__CUSTOM__', metric_name: '__METRIC__',
+          email: '__EMAIL__', jwt: '__JWT__', mac: '__MAC__',
+          ipv4: '__IP__', ipv6: '__IP__', mongo_oid: '__OID__',
+          stripe_id: '__STRIPE_ID__', aws_arn: '__ARN__',
+          iso_ts: '__TS__', unix_ts: '__TS__',
+          url_path: '__URL__', generic_id: '__ID__',
+          vendor_token: '__TOKEN__'
+        };
+
+        // Get the replacement value for a field: field-specific group > category default
+        function getRepl(fieldName, category) {
+          const kl = fieldName.toLowerCase().replace(/^labels\./, '').replace(/[^a-z0-9_]/g, '');
+          if (FIELD_GROUPS[kl]) return FIELD_GROUPS[kl];
+          return CATEGORY_DEFAULTS[category] || '__NORMALIZED__';
+        }
+
+        // --- Enable Metric Name Normalization ---
+        const enableMetricNameNorm = toBool(C.vars.ENABLE_METRIC_NAME_NORMALIZATION, true);
+        // --- Splunk Optimization Features ---
+        const enableRawMod = toBool(C.vars.ENABLE_RAW_MODIFICATION, true);
+        const enableJsonCompact = toBool(C.vars.ENABLE_JSON_COMPACTION, false);
+        const enableNullRemoval = toBool(C.vars.ENABLE_NULL_FIELD_REMOVAL, true);
+        const enableStackTruncate = toBool(C.vars.ENABLE_STACK_TRACE_TRUNCATION, false);
+        // 0 is a valid value (drop ALL frames). Use an explicit-undefined check
+        // so the falsy-OR doesn't coerce 0 to the default.
+        let stackKeepFrames = (C.vars.STACK_TRACE_KEEP_FRAMES === undefined || C.vars.STACK_TRACE_KEEP_FRAMES === null || C.vars.STACK_TRACE_KEEP_FRAMES === '') ? 5 : +C.vars.STACK_TRACE_KEEP_FRAMES;
+        // Cat-2.9: clamp to sensible range — negative or NaN would break truncation logic
+        if (!Number.isFinite(stackKeepFrames) || stackKeepFrames < 0) stackKeepFrames = 5;
+        if (stackKeepFrames > 100) stackKeepFrames = 100;  // bound on the high side too
+        const enableBase64 = toBool(C.vars.ENABLE_BASE64_DETECTION, false);
+        const enableFilePathTemplate = toBool(C.vars.ENABLE_FILE_PATH_TEMPLATING, false);
+        // (Removed STRIP_CR_METADATA in v3.5.1 — variable was unused since v3.0.0
+        // when VERBOSE_AUDIT_METADATA was introduced as the inverted-polarity replacement.)
+        const fieldsToDropStr = C.vars.FIELDS_TO_DROP || '';
+        const FIELDS_TO_DROP = {};
+        if (fieldsToDropStr) {
+          fieldsToDropStr.split(',').forEach(f => { const t = f.trim().toLowerCase(); if (t) FIELDS_TO_DROP[t] = 1; });
+        }
+
+        // --- Event Type ---
+        const isMetric = !!__e._metric;
+
+        // --- Tracking ---
+        let matchCount = 0;
+        const categories = new Set();
+        const modifiedFields = [];
+        const droppedFields = [];
+        const whitelistedFields = [];
+        let estimatedSeriesBefore = 1;
+        let sensitiveRedacted = 0;
+
+        // --- Cardinality Multipliers (indicative, not exact) ---
+        const MULTIPLIERS = {
+          uuid: 50000, session_id: 100000, container_hash: 5000,
+          k8s_ephemeral: 500, hex_string: 10000, ephemeral_id: 500,
+          custom: 5000, metric_name: 10000,
+          email: 100000, jwt: 100000, mac: 50000, mongo_oid: 50000,
+          ipv4: 100000, ipv6: 100000, stripe_id: 50000, aws_arn: 5000,
+          iso_ts: 86400, unix_ts: 86400, url_path: 5000, generic_id: 10000,
+          vendor_token: 100000
+        };
+
+        // --- Metric Name Normalization Patterns ---
+        // Catches per-entity metric names common in StatsD/Datadog:
+        //   api.customer_abc123def.requests → api.requests (entity=customer_abc123def)
+        //   app.org_dataday123.memory → app.memory (entity=org_dataday123)
+        // Only matches segments that look like entity IDs (contain digits mixed with alpha)
+        // and are preceded by a known prefix (customer, tenant, user, org, acct, account)
+        const RE_METRIC_ENTITY = /^(.+?)[._]((?:cust|customer|user|acct|account|org|tenant|client)[_-][a-zA-Z0-9_-]{4,})[._](.+)$/i;
+        // IP addresses embedded in metric names: server.10_0_1_45.cpu
+        const RE_METRIC_IP = /^(.+?)[._](\d{1,3}[_-]\d{1,3}[_-]\d{1,3}[_-]\d{1,3})[._](.+)$/;
+
+        // ============================================================
+        // REGEX PATTERNS
+        // ============================================================
+        const RE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const RE_UUID_BARE = /^[0-9a-f]{32}$/i;
+        const RE_UUID_EMBED = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+        const RE_ID_PREFIX = /^(sess|session|req|request|trace|span|txn|transaction|corr|correlation|sid|rid|tid)[_\-:][0-9a-zA-Z_\-]{8,}$/i;
+        const RE_DOCKER_64 = /^[0-9a-f]{64}$/i;
+        const RE_DOCKER_PFX = /^docker:\/\/[0-9a-f]{64}$/i;
+        const RE_SHA256 = /^sha256:[0-9a-f]{64}$/i;
+        // K8s cgroup paths — covers v1 (/kubepods/...), v2 (kubepods.slice),
+        // and embedded cri-containerd / cri-o IDs (64-hex container hashes).
+        const RE_K8S_CGROUP = /(^\/kubepods\/|kubepods\.slice|kubepods-burstable|cri-containerd-[a-f0-9]{16,}|cri-o-[a-f0-9]{16,})/i;
+        const RE_K8S_POD = /^(.+)-[a-z0-9]{5,10}-[a-z0-9]{5}$/;
+        const RE_K8S_RS = /^(.+)-[a-z0-9]{5,10}$/;
+        const RE_IP_PORT = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+$/;
+        const RE_IPV4 = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+        // IPv6 — covers full, compressed (with ::), and loopback (::1) forms
+        const RE_IPV6 = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))$/;
+        const RE_HEX_16PLUS = /^[0-9a-f]{16,}$/i;
+        const RE_HEX_8TO15 = /^[0-9a-f]{8,15}$/i;
+        const RE_OTEL_SUFFIX = /(_total|_bucket|_info|_created|_sum|_count)$/;
+        // Base64-encoded blob (opt-in via ENABLE_BASE64_DETECTION).
+        // Length ≥ 64 chars + balanced base64 charset + ends with 0/1/2 padding.
+        // Plus an entropy heuristic: must have all four char classes (upper,
+        // lower, digit, +/_-) to avoid collapsing legitimate ID-like values.
+        const RE_BASE64 = /^[A-Za-z0-9+/_-]{64,}={0,2}$/;
+        // File path date templating (opt-in via ENABLE_FILE_PATH_TEMPLATING).
+        // Matches paths containing /YYYY/MM/DD/ or /YYYY-MM-DD/ segments
+        // and the Windows backslash equivalent.
+        const RE_FILE_PATH_DATE = /[\/\\]+(\d{4})[\/\\-]+(\d{2})[\/\\-]+(\d{2})[\/\\]+/g;
+        // Stack trace frames. Python frames span TWO lines: the `File "..."`
+        // line + the indented source line; the regex captures both.
+        const RE_STACK_FRAME_JAVA = /\n\s*at\s+[^\n]+/g;
+        const RE_STACK_FRAME_PY = /\n\s*File\s+"[^"]+",\s*line\s+\d+[^\n]*(?:\n[ \t]+[^\n]+)?/g;
+        const RE_STACK_FRAME_NODE = /\n\s*at\s+[^\n]+\([^)]+\)/g;
+        const RE_GO_RUNTIME = /^go_(memstats|gc|goroutines|threads|info)/;
+        // PII / common identifier patterns
+        const RE_EMAIL = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        const RE_JWT = /^eyJ[a-zA-Z0-9_-]+\.eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+$/;
+        const RE_MAC = /^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/;
+        // v3.6.4 PII detection (opt-in via ENABLE_PII_DETECTION).
+        // SSN: nnn-nn-nnnn or nnnnnnnnn (9 digits) — anchored, US-only.
+        // Credit card: 13-19 digit Luhn-pattern (we don't validate Luhn for speed,
+        //   but we require the lead-digit shape and exact length per major issuer).
+        // Phone: international E.164 (+1234567890123) plus US (xxx) xxx-xxxx.
+        // These fire ONLY when ENABLE_PII_DETECTION=true; off by default because
+        // the patterns are aggressive and can hit non-PII numbers.
+        const RE_SSN = /^\d{3}-\d{2}-\d{4}$/;
+        const RE_CC = /^(?:4\d{12}(?:\d{3})?|5[1-5]\d{14}|3[47]\d{13}|6(?:011|5\d{2})\d{12}|3(?:0[0-5]|[68]\d)\d{11})$/;
+        const RE_PHONE_E164 = /^\+[1-9]\d{7,14}$/;
+        const RE_PHONE_US = /^\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}$/;
+        // v3.18.0 — EU PII additions (still ENABLE_PII_DETECTION=true gated):
+        //   IBAN: 2-letter country code + 2-digit checksum + up to 30 alphanumeric (length-by-country, 15-34 total).
+        //   UK NI number: AA######A (one suffix letter A-D), or " " separators.
+        //   DE Personalausweis (national ID): 9-10 alphanumeric including 0-9 + L (excludes I/O/Q).
+        //   Generic European-format phone (00- prefix or country code).
+        const RE_IBAN     = /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/;
+        const RE_UK_NI    = /^[A-CEGHJ-PR-TW-Z][A-CEGHJ-NPR-TW-Z]\d{6}[A-D]?$/;
+        const RE_DE_NID   = /^[0-9LCFGHJKMNPRTVWXYZ]{9,10}$/;
+        const RE_PHONE_EU = /^00[1-9]\d{6,14}$/;
+        const RE_MONGO_OID = /^[a-f0-9]{24}$/i;
+        // Stripe-style typed IDs (and similar opaque vendor IDs):
+        // ch_3OXyz..., pi_3OAbc..., cus_PtKxy..., in_1Pzab...
+        const RE_STRIPE = /^(ch|pi|cus|in|sub|prod|price|inv|re|tok|card|src|trans|acct|file|seti|setupintent|payout|tr)_[a-zA-Z0-9]{14,}$/;
+        // AWS ARN — collapses to "arn"
+        const RE_AWS_ARN = /^arn:(aws|aws-cn|aws-us-gov):[a-z0-9-]+:[a-z0-9-]*:\d{12}:.+$/;
+        // Vendor credentials/tokens — high-value cardinality drivers and
+        // security risks. Catch by prefix + length (anchored, case-aware).
+        // GitHub: ghp_/gho_/ghu_/ghs_/ghr_ + 36 chars classic; github_pat_
+        // for fine-grain (~82 chars total).
+        const RE_GITHUB_TOKEN = /^(gh[pours]_[A-Za-z0-9]{36,255}|github_pat_[A-Za-z0-9_]{40,255})$/;
+        // GitLab Personal Access Token
+        const RE_GITLAB_TOKEN = /^glpat-[A-Za-z0-9_-]{20,40}$/;
+        // Slack tokens (bot/user/app/refresh)
+        const RE_SLACK_TOKEN = /^xox[baprs]-[A-Za-z0-9-]{10,}$/;
+        // AWS access keys (AKIA = long-term, ASIA = temp via STS)
+        const RE_AWS_ACCESS_KEY = /^(AKIA|ASIA)[A-Z0-9]{16}$/;
+        // npm publish token
+        const RE_NPM_TOKEN = /^npm_[A-Za-z0-9]{36,40}$/;
+        // Google API key
+        const RE_GCP_API_KEY = /^AIza[A-Za-z0-9_-]{35,40}$/;
+        // Twilio: AC = Account SID, SK = API Key SID
+        const RE_TWILIO_SID = /^(AC|SK)[a-f0-9]{32}$/;
+        // HTTP Authorization header values: "Bearer xxx", "Basic xxx", "Token xxx"
+        const RE_AUTH_HEADER = /^(Bearer|Basic|Token|Digest)\s+\S{6,}$/;
+        // URL with embedded credentials: scheme://user:pass@host/...
+        const RE_URL_AUTH = /^https?:\/\/[^\/\s:]+:[^\/\s@]+@/;
+        // Additional vendor tokens (round-6 expansion):
+        // Heroku API keys (UUID-like with HRKU- prefix, or bare UUID; we already catch UUIDs)
+        const RE_HEROKU_KEY = /^HRKU-[A-Za-z0-9_-]{30,80}$/;
+        // SendGrid API keys: SG.xxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+        const RE_SENDGRID_KEY = /^SG\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{30,}$/;
+        // Mailgun API keys: key-xxx (32 hex)
+        const RE_MAILGUN_KEY = /^key-[a-f0-9]{32}$/;
+        // Mailchimp API: 32-char base + datacenter suffix
+        const RE_MAILCHIMP_KEY = /^[a-f0-9]{32}-us\d{1,3}$/;
+        // Atlassian API tokens: ATATT3xFfGF0... (very long base64ish)
+        const RE_ATLASSIAN_TOKEN = /^ATATT3xFfGF0[A-Za-z0-9_-]{60,}$/;
+        // Square OAuth tokens
+        const RE_SQUARE_TOKEN = /^sq0(atp|csp|idp)-[A-Za-z0-9_-]{20,40}$/;
+        // Postman API keys
+        const RE_POSTMAN_KEY = /^PMAK-[a-f0-9]{24}-[a-f0-9]{34}$/;
+        // OpenAI: sk-… (legacy), sk-proj-… (project-scoped)
+        const RE_OPENAI_KEY = /^sk-(proj-)?[A-Za-z0-9_-]{40,}$/;
+        // Anthropic: sk-ant-…
+        const RE_ANTHROPIC_KEY = /^sk-ant-(api|admin)\d{2,}-[A-Za-z0-9_-]{40,}$/;
+        // DigitalOcean: dop_v1_…
+        const RE_DO_TOKEN = /^do[opt]_v[12]_[a-f0-9]{60,80}$/;
+        // Discord bot token: 3 base64 segments separated by dots
+        const RE_DISCORD_BOT = /^[MN][A-Za-z0-9_-]{23,28}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,40}$/;
+        // Telegram bot: <numeric_id>:AAAA…
+        const RE_TELEGRAM_BOT = /^\d{8,12}:[A-Za-z0-9_-]{34,46}$/;
+        // PyPI: pypi-…
+        const RE_PYPI_TOKEN = /^pypi-[A-Za-z0-9_-]{50,}$/;
+        // Okta: 00<token> (40+ chars, base64-ish)
+        const RE_OKTA_TOKEN = /^00[A-Za-z0-9_-]{35,80}$/;
+        // Datadog API/APP keys are 32 or 40 hex — already caught by hex regex.
+        // ISO-8601 timestamps — collapse to date prefix to drop second/ms cardinality
+        const RE_ISO_TS = /^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/;
+        // Unix epoch seconds (2020-2030 range) and milliseconds (2020-2030)
+        const RE_UNIX_EPOCH_S = /^1[6-9]\d{8}(\.\d+)?$/;
+        const RE_UNIX_EPOCH_MS = /^1[6-9]\d{11}$/;
+        // URL path: digits / UUIDs / 16+ hex segments → templated placeholder
+        const RE_URL_NUM_SEG = /\/\d+(?=\/|$|\?)/g;
+        const RE_URL_UUID_SEG = /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=\/|$|\?)/gi;
+        const RE_URL_HEX_SEG = /\/[0-9a-f]{16,}(?=\/|$|\?)/gi;
+
+        // ============================================================
+        // KNOWN FIELD NAME TABLES
+        // ============================================================
+        const K8S_DROP = {'pod_template_hash':1,'podtemplatehash':1,'controller_revision_hash':1,'controllerrevisionhash':1,'pod_ip':1,'podip':1,'host_ip':1,'hostip':1,'metrics_path':1,'metricspath':1,'uid':1,'pod_uid':1,'poduid':1};
+        const K8S_NORM = {'pod':1,'pod_name':1,'podname':1,'replicaset':1,'replica_set':1,'created_by_name':1,'createdbyname':1};
+        const CONT_ID = {'container_id':1,'containerid':1,'image_id':1,'imageid':1,'image_digest':1,'imagedigest':1};
+        // KNOWN_IDS: field names that are ALWAYS treated as high-cardinality
+        // identifiers regardless of value pattern. Replaced via FIELD_GROUPS
+        // lookup or fall back to category default.
+        const KNOWN_IDS = {
+          // Tracing / correlation
+          'request_id':1,'requestid':1,'req_id':1,'reqid':1,
+          'trace_id':1,'traceid':1,'x_trace_id':1,'xtraceid':1,
+          'span_id':1,'spanid':1,'session_id':1,'sessionid':1,
+          'correlation_id':1,'correlationid':1,'corr_id':1,'corrid':1,
+          'transaction_id':1,'transactionid':1,'txn_id':1,'txnid':1,
+          'message_id':1,'messageid':1,'msg_id':1,'msgid':1,
+          'x_request_id':1,'xrequestid':1,'event_id':1,'eventid':1,
+          // User / customer / account
+          'user_id':1,'userid':1,'customer_id':1,'customerid':1,
+          'account_id':1,'accountid':1,'tenant_id':1,'tenantid':1,
+          'org_id':1,'orgid':1,'organization_id':1,'organizationid':1,
+          'member_id':1,'memberid':1,'subscriber_id':1,'subscriberid':1,
+          // Order / payment / billing
+          'order_id':1,'orderid':1,'order_number':1,'ordernumber':1,
+          'payment_id':1,'paymentid':1,'charge_id':1,'chargeid':1,
+          'invoice_id':1,'invoiceid':1,'subscription_id':1,'subscriptionid':1,
+          'cart_id':1,'cartid':1,'checkout_id':1,'checkoutid':1,
+          // Device / auth / token
+          'device_id':1,'deviceid':1,'auth_token':1,'authtoken':1,
+          'access_token':1,'accesstoken':1,'refresh_token':1,'refreshtoken':1,
+          'api_key':1,'apikey':1,'csrf_token':1,'csrftoken':1,
+          'nonce':1,'jti':1,'guid':1,
+          // Document / messaging
+          'document_id':1,'documentid':1,'doc_id':1,'docid':1,
+          'thread_id':1,'threadid':1,'channel_id':1,'channelid':1,
+          'job_id':1,'jobid':1,'task_id':1,'taskid':1,'run_id':1,'runid':1,
+        };
+        // URL-like field names: path templated to {id}/{uuid}/{hex} segments
+        const URL_FIELDS = {
+          'url':1,'path':1,'uri':1,'request_uri':1,'requesturi':1,
+          'http_path':1,'httppath':1,'endpoint':1,'route':1,'request_path':1
+        };
+        const SYSTEM_FIELDS = {'source':1,'sourcetype':1,'host':1,'index':1,'cribl_pipe':1,'cribl_host':1,'cribl_wp':1,'cribl_breaker':1};
+
+        // ============================================================
+        // CUSTOM RULES
+        // ============================================================
+        // Add stack-specific patterns here. Each entry: {name, re, repl,
+        // cat, conf}. `conf: 'low'` rules only fire in MODE=aggressive.
+        // Activate via ENABLE_CUSTOM_RULES=true.
+        //
+        // Cribl's `code` function runs in a sandbox that forbids
+        // process/require/fs/__dirname references — even guarded by
+        // `typeof`, the parser rejects the source. So custom rules
+        // must be hardcoded here. Edit the array below to add patterns.
+        const CUSTOM = [];
+        if (enableCustom) {
+          // Example — uncomment and customize for your environment:
+          // CUSTOM.push({ name:'my_pattern', re:/your-regex-here/i, repl:'__MY__', cat:'custom', conf:'high' });
+        }
+
+        // --- Metric naming style (v3.5.0) ---
+        // Tells the aggregation classifier which metric naming convention
+        // is in use, so counter detection isn't restricted to the
+        // Prometheus _total suffix.
+        //   prometheus  → suffix-based: _total → counter, _info → info, etc.
+        //   statsd      → counter detection by suffix: .count, .counter, .c
+        //   datadog     → suffix-based: .count, .rate, .gauge
+        //   otel        → OpenTelemetry: same as prometheus
+        //   auto        → try all heuristics in order
+        //   none        → don't classify; aggregation must be explicitly enabled
+        const metricNamingStyleRaw = (C.vars.METRIC_NAMING_STYLE || 'auto').toLowerCase();
+        // Cat-2.8: validate the convention name
+        const VALID_STYLES = {prometheus:1, statsd:1, datadog:1, otel:1, auto:1, none:1};
+        const metricNamingStyle = VALID_STYLES[metricNamingStyleRaw] ? metricNamingStyleRaw : 'auto';
+
+        // ============================================================
+        // HELPERS
+        // ============================================================
+        function getNormMode(cat) {
+          // Time-series stores: always replace (label cardinality is the cost driver).
+          if (destType === 'prometheus' || destType === 'datadog') return 'replace';
+          // Search-tier destinations: enrich UUIDs/sessions so analysts can still pivot.
+          if (destType === 'chronicle' || destType === 'elastic' || destType === 'loki') {
+            if (cat === 'uuid' || cat === 'session_id') return 'enrich';
+            return normDefault;
+          }
+          // Object storage / archival: replace aggressively (no need to preserve original).
+          if (destType === 'object_storage') return 'replace';
+          if (destType === 'custom') return 'enrich';
+          return normDefault;
+        }
+
+        // Set/delete a value at a dot-notated path on __e. Handles arrays
+        // (numeric segments treated as array indices) and nested objects.
+        function setByPath(root, path, value) {
+          const parts = path.split('.');
+          let cur = root;
+          for (let i = 0; i < parts.length - 1; i++) {
+            const k = parts[i];
+            if (cur == null) return;
+            cur = cur[k];
+          }
+          if (cur != null) cur[parts[parts.length - 1]] = value;
+        }
+        function deleteByPath(root, path) {
+          const parts = path.split('.');
+          let cur = root;
+          for (let i = 0; i < parts.length - 1; i++) {
+            const k = parts[i];
+            if (cur == null) return;
+            cur = cur[k];
+          }
+          if (cur != null) {
+            const last = parts[parts.length - 1];
+            if (Array.isArray(cur)) {
+              const idx = parseInt(last, 10);
+              if (!isNaN(idx)) cur[idx] = null;  // null out array slot — splicing shifts indices for other matches in flight
+            } else {
+              delete cur[last];
+            }
+          }
+        }
+
+        function applyNorm(path, orig, repl, category, isLabel, labelKey) {
+          matchCount++;
+          categories.add(category);
+          // Use max multiplier across categories (not additive) for realistic estimation
+          const catMult = MULTIPLIERS[category] || 1000;
+          if (catMult > estimatedSeriesBefore) estimatedSeriesBefore = catMult;
+
+          if (dryRun) {
+            modifiedFields.push(path);
+            return;
+          }
+
+          modifiedFields.push(path);
+          const nm = getNormMode(category);
+          if (isLabel && path.startsWith('labels.') && path.indexOf('.', 7) < 0) {
+            // Flat metric label (no further dots after `labels.`)
+            // v4.0.0: enrich copy renamed __cr_orig_* → cr_orig_* so it
+            // actually reaches the destination (the whole point of enrich).
+            // Guard: Pass-1 matches labels by NAME, so an event traversing the
+            // pipeline twice re-matches the already-replaced value. Never stash
+            // a value that already equals the replacement, and never overwrite
+            // an existing stash — that would destroy the preserved original.
+            if (nm === 'enrich' && orig !== repl && __e['cr_orig_' + labelKey] === undefined) {
+              __e['cr_orig_' + labelKey] = orig;
+            }
+            __e.labels[labelKey] = repl;
+          } else {
+            // Top-level or nested path (logs, arrays, deep objects)
+            if (nm === 'enrich') { setByPath(__e, path + '_cr_group', repl); }
+            else { setByPath(__e, path, repl); }
+          }
+        }
+
+        function dropField(path, isLabel, labelKey) {
+          matchCount++;
+          categories.add('k8s_ephemeral');
+          const dropMult = MULTIPLIERS['k8s_ephemeral'] || 500;
+          if (dropMult > estimatedSeriesBefore) estimatedSeriesBefore = dropMult;
+
+          if (dryRun) {
+            droppedFields.push(path);
+            return;
+          }
+
+          droppedFields.push(path);
+          modifiedFields.push(path);
+          if (isLabel && path.startsWith('labels.') && path.indexOf('.', 7) < 0) {
+            delete __e.labels[labelKey];
+          } else {
+            deleteByPath(__e, path);
+          }
+        }
+
+        function hasMixed(s) { return /[a-z]/.test(s) && /[0-9]/.test(s); }
+
+        function isWhitelisted(fullPath, leafKey) {
+          const fp = String(fullPath || '').toLowerCase();
+          const lk = String(leafKey || fullPath || '').toLowerCase().replace(/[^a-z0-9_]/g, '');
+          if (WHITELIST[fp] || WHITELIST[lk]) {
+            whitelistedFields.push(fullPath);
+            return true;
+          }
+          return false;
+        }
+
+        // ============================================================
+        // MAIN PROCESSING
+        // ============================================================
+        try {
+          // --- OTel Metric Name Classification ---
+          // v4.0.0: only computed under VERBOSE_AUDIT_METADATA and emitted as
+          // destination-visible cr_otel_* fields. Previous versions computed
+          // these on every metric event and then unconditionally stripped them
+          // in stage 5 — pure dead work that no consumer ever saw.
+          if (isMetric && enableOtel && __e._metric && toBool(C.vars.VERBOSE_AUDIT_METADATA, false)) {
+            const mn = __e._metric;
+            if (RE_OTEL_SUFFIX.test(mn)) {
+              __e.cr_otel_family = mn.replace(RE_OTEL_SUFFIX, '');
+              __e.cr_otel_type = mn.match(RE_OTEL_SUFFIX)[1].substring(1);
+            }
+            if (RE_GO_RUNTIME.test(mn)) { __e.cr_metric_group = 'go_runtime'; }
+          }
+
+          // --- Metric Name Normalization ---
+          // Catches per-entity metric names common in StatsD/Datadog:
+          //   api.customer_abc123.requests → api.customer.requests
+          //   server.10_0_1_45.cpu.usage  → server.cpu.usage
+          if (isMetric && enableMetricNameNorm && __e._metric) {
+            const mn = __e._metric;
+            const entityMatch = mn.match(RE_METRIC_ENTITY);
+            const ipMatch = !entityMatch ? mn.match(RE_METRIC_IP) : null;
+
+            if (entityMatch && !dryRun) {
+              // cr_orig_metric_name / cr_metric_entity are destination-visible
+              // (v4.0.0) — they are the ONLY recovery path for the original
+              // metric name once live normalization rewrites _metric.
+              __e.cr_orig_metric_name = mn;
+              __e._metric = entityMatch[1] + '.' + entityMatch[3];
+              __e.cr_metric_entity = entityMatch[2];
+              matchCount++;
+              categories.add('metric_name');
+              modifiedFields.push('_metric');
+              const m = MULTIPLIERS['metric_name'] || 10000;
+              if (m > estimatedSeriesBefore) estimatedSeriesBefore = m;
+            } else if (entityMatch && dryRun) {
+              __e.cr_would_normalize_metric = mn + ' → ' + entityMatch[1] + '.' + entityMatch[3];
+              matchCount++;
+              categories.add('metric_name');
+              modifiedFields.push('_metric');
+              const m = MULTIPLIERS['metric_name'] || 10000;
+              if (m > estimatedSeriesBefore) estimatedSeriesBefore = m;
+            }
+
+            if (ipMatch && !dryRun) {
+              __e.cr_orig_metric_name = mn;
+              __e._metric = ipMatch[1] + '.' + ipMatch[3];
+              if (isMetric && __e.labels) __e.labels.cr_server = ipMatch[2].replace(/_/g, '.');
+              matchCount++;
+              categories.add('metric_name');
+              modifiedFields.push('_metric');
+            } else if (ipMatch && dryRun) {
+              __e.cr_would_normalize_metric = mn + ' → ' + ipMatch[1] + '.' + ipMatch[3];
+              matchCount++;
+              categories.add('metric_name');
+              modifiedFields.push('_metric');
+            }
+          }
+
+          // --- Classify metric type for aggregation (v3.5.0) ---
+          // Style-aware: Prometheus uses _total/_count/_sum/_bucket/_info
+          // suffixes; StatsD uses .count/.counter/.c; Datadog uses .count/
+          // .rate/.gauge. Auto mode tries all heuristics. If a label
+          // explicitly says `cribl_metric_type` we honor that first.
+          if (isMetric) {
+            const explicitType = __e.labels && __e.labels.cribl_metric_type;
+            const mn = __e._metric || '';
+            const styleMatches = function(style) {
+              if (style === 'prometheus' || style === 'otel' || style === 'auto') {
+                if (mn.endsWith('_bucket')) return 'histogram_bucket';
+                if (mn.endsWith('_count') && (style === 'auto' || style === 'prometheus' || style === 'otel')) {
+                  // Prometheus _count is histogram counter; StatsD/DD .count is a counter.
+                  // Use suffix _count (with underscore) → histogram_count.
+                  return 'histogram_count';
+                }
+                if (mn.endsWith('_sum')) return 'histogram_sum';
+                if (mn.endsWith('_total')) return 'counter';
+                if (mn.endsWith('_info')) return 'info';
+                if (mn.endsWith('_created')) return 'created';
+              }
+              if (style === 'statsd' || style === 'auto') {
+                if (mn.endsWith('.count') || mn.endsWith('.counter') || mn.endsWith('.c')) return 'counter';
+                if (mn.endsWith('.timer') || mn.endsWith('.ms') || mn.endsWith('.h')) return 'histogram_sum';
+                if (mn.endsWith('.gauge') || mn.endsWith('.g')) return 'gauge';
+                if (mn.endsWith('.set') || mn.endsWith('.s')) return 'gauge';
+              }
+              if (style === 'datadog' || style === 'auto') {
+                if (mn.endsWith('.count') || mn.endsWith('.rate')) return 'counter';
+                if (mn.endsWith('.gauge')) return 'gauge';
+                if (mn.endsWith('.distribution') || mn.endsWith('.histogram')) return 'histogram_sum';
+              }
+              return null;
+            };
+            __e.__cr_metric_type = explicitType ||
+              styleMatches(metricNamingStyle) ||
+              (metricNamingStyle === 'none' ? 'unknown' : 'gauge');
+          }
+
+          // --- Build Field List ---
+          // Recursively walks event/labels object to find string leaf fields.
+          // - For metrics: only walks `labels` (Cribl metric semantics).
+          // - For logs: walks all top-level fields, including nested objects
+          //   and arrays. Nested paths use dot notation: `request.user.id`,
+          //   `tags.0`, `metadata.list.2`. Pass 1 / Pass 2 then operate on
+          //   each leaf as if it were a flat field.
+          const fields = [];
+          const MAX_DEPTH = 6;     // Safety bound on recursion
+          const MAX_FIELDS = 1000; // Safety bound on total fields per event
+          let walkTruncated = false;  // Cat-2.5
+
+          function walk(obj, pathPrefix, depth, isLabel) {
+            if (depth > MAX_DEPTH || fields.length >= MAX_FIELDS) {
+              walkTruncated = true;  // Cat-2.5: surface that we hit the cap
+              return;
+            }
+            if (Array.isArray(obj)) {
+              for (let i = 0; i < obj.length; i++) {
+                const v = obj[i];
+                if (typeof v === 'string') {
+                  if (v.length === 0 || v.length > 8192) continue;  // Cat-7.3: same cap as labels
+                  // Arrays don't have field names; treat each element as
+                  // a fresh value with the parent path's key for FIELD_GROUPS
+                  // purposes. Use a synthetic key from the path tail.
+                  const synthKey = pathPrefix.replace(/^.*\./, '').replace(/[^a-z0-9_]/gi, '').toLowerCase() || '_array';
+                  fields.push({ p: pathPrefix + '.' + i, v: v, lbl: isLabel, lk: synthKey, done: false });
+                } else if (v && typeof v === 'object') {
+                  walk(v, pathPrefix + '.' + i, depth + 1, isLabel);
+                }
+              }
+              return;
+            }
+            if (!obj || typeof obj !== 'object') return;
+            for (const [k, v] of Object.entries(obj)) {
+              // Skip Cribl internals (__*) and this pack's own audit fields
+              // (cr_*) — re-processing cr_orig_* enrich copies on a second
+              // pipeline pass would destroy the preserved originals.
+              if (k.startsWith('__') || k.startsWith('cr_')) continue;
+              if (depth === 0 && !isLabel) {
+                // Top-level skip rules (only at root). _raw is handled by the
+                // dedicated _raw-modification block, never walked per-field.
+                if (k === '_raw') continue;
+                if (k === '_time' || k === '_metric' || k === '_value' || k === 'labels') continue;
+                if (SYSTEM_FIELDS[k]) continue;
+              }
+              const fullPath = pathPrefix ? pathPrefix + '.' + k : k;
+              if (typeof v === 'string') {
+                if (v.length === 0) continue;
+                const klCheck = k.toLowerCase().replace(/[^a-z0-9_]/g, '');
+                // Cat-7.7: Sensitive name match: exact OR by suffix.
+                // Examples covered: db_password, my_secret, ssh_key, aws_secret_access_key,
+                // app_credentials, jwt_token, refresh_token, basic_auth, bearer_token,
+                // signing_secret, webhook_secret, totp_secret.
+                const sensitiveBySuffix = klCheck.length >= 6 && (
+                  klCheck.endsWith('password') || klCheck.endsWith('passwd') ||
+                  klCheck.endsWith('secret') ||
+                  (klCheck.endsWith('_key') && !KEY_SUFFIX_OK[klCheck]) ||
+                  klCheck.endsWith('credential') || klCheck.endsWith('credentials') ||
+                  klCheck.endsWith('_token') || klCheck.endsWith('_auth') ||
+                  klCheck.endsWith('apikey') || klCheck.endsWith('authtoken')
+                );
+                const isKnownName = KNOWN_IDS[klCheck] || K8S_DROP[klCheck] || K8S_NORM[klCheck] || CONT_ID[klCheck] || WHITELIST[klCheck] || FIELD_GROUPS[klCheck] || SENSITIVE_FIELDS[klCheck] || sensitiveBySuffix;
+                const couldBeIPv6 = mode === 'aggressive' && v.indexOf(':') >= 0;
+                if (v.length < 6 && !isKnownName && !couldBeIPv6) continue;
+                if (v.length > 8192) continue;  // Cat-7.4: cap walked object values
+                fields.push({ p: fullPath, v: v, lbl: isLabel, lk: k, done: false });
+              } else if (v && typeof v === 'object') {
+                walk(v, fullPath, depth + 1, isLabel);
+              }
+            }
+          }
+
+          if (isMetric && __e.labels && typeof __e.labels === 'object' && !Array.isArray(__e.labels)) {
+            // For metric labels we keep the simpler flat-iterate pattern
+            // because Cribl's metric semantics make nested labels rare.
+            for (const [k, v] of Object.entries(__e.labels)) {
+              // Cat-7.2: cap value length at 8KB to prevent regex DoS via huge strings.
+              // Anything bigger is most likely a body/payload and not a high-cardinality
+              // identifier we need to walk. The /preview API and Cribl workers protect
+              // against true outliers but defense-in-depth is cheap here.
+              if (k.startsWith('__') || k.startsWith('cr_')) continue;  // pack/Cribl internals
+              if (typeof v === 'string' && v.length > 0 && v.length <= 8192) {
+                fields.push({ p: 'labels.' + k, v: v, lbl: true, lk: k, done: false });
+              }
+            }
+          }
+          if (!isMetric) {
+            walk(__e, '', 0, false);
+          }
+
+          // ========================================================
+          // PASS 1: Known Field Names — HOT PATH
+          // ========================================================
+          // Cat-5.10: This loop runs once per leaf field (typically 5-20 fields
+          // per event). Per-iteration cost dominates pack throughput. Keep the
+          // body cheap: O(1) hash lookups, length-prefix gates before regex,
+          // anchored patterns. Profiling matters here — see tools/perf_bench.js
+          // for representative event shapes.
+          for (let i = 0; i < fields.length; i++) {
+            const f = fields[i];
+            const kl = (f.lk || f.p).toLowerCase().replace(/[^a-z0-9_]/g, '');
+
+            // Whitelist check — skip protected fields entirely.
+            // Pass both full path (for nested whitelist entries) and leaf key.
+            if (isWhitelisted(f.p, f.lk)) { f.done = true; continue; }
+
+            // Sensitive field redaction — passwords, secrets, etc. don't
+            // fit any cardinality category but must not pass through to the
+            // destination as their original value. Replaced with __REDACTED__
+            // regardless of mode. Matches by exact name OR by suffix
+            // (e.g. db_password, mysql_password, my_secret all redacted).
+            const looksSensitive = SENSITIVE_FIELDS[kl] ||
+              (kl.length >= 6 && (
+                kl.endsWith('password') || kl.endsWith('passwd') ||
+                kl.endsWith('secret') ||
+                (kl.endsWith('_key') && !KEY_SUFFIX_OK[kl]) || kl === 'pwd' ||
+                kl.endsWith('credential') || kl.endsWith('credentials')
+              ));
+            if (looksSensitive && !dryRun) {
+              sensitiveRedacted++;
+              applyNorm(f.p, f.v, '__REDACTED__', 'session_id', f.lbl, f.lk);
+              f.done = true;
+              continue;
+            }
+
+            // K8s ephemeral → drop
+            if (enableContainer && K8S_DROP[kl]) {
+              if (kl === 'uid' && !isMetric) {} // skip uid in logs
+              else { dropField(f.p, f.lbl, f.lk); f.done = true; continue; }
+            }
+
+            // K8s container name with k8s_ prefix → drop (metrics only)
+            if (enableContainer && isMetric && kl === 'name' && f.v.startsWith('k8s_')) {
+              dropField(f.p, f.lbl, f.lk); f.done = true; continue;
+            }
+
+            // K8s pod/RS → normalize
+            if (enableContainer && K8S_NORM[kl]) {
+              let n = f.v;
+              const pm = f.v.match(RE_K8S_POD);
+              if (pm) {
+                const s2 = f.v.substring(pm[1].length + 1);
+                const sg = s2.split('-');
+                if (sg.length === 2 && hasMixed(sg[0]) && hasMixed(sg[1])) n = pm[1];
+              }
+              if (n === f.v) {
+                const rm = f.v.match(RE_K8S_RS);
+                if (rm) { const sf = f.v.substring(rm[1].length + 1); if (hasMixed(sf)) n = rm[1]; }
+              }
+              if (n !== f.v) applyNorm(f.p, f.v, n, 'container_hash', f.lbl, f.lk);
+              f.done = true; continue;
+            }
+
+            // Container/image ID → replace with field-specific group
+            if (enableContainer && CONT_ID[kl]) {
+              applyNorm(f.p, f.v, getRepl(f.p, 'container_hash'), 'container_hash', f.lbl, f.lk); f.done = true; continue;
+            }
+
+            // Known session/trace/request ID → replace with field-specific group
+            if (enableSession && KNOWN_IDS[kl]) {
+              applyNorm(f.p, f.v, getRepl(f.p, 'session_id'), 'session_id', f.lbl, f.lk); f.done = true; continue;
+            }
+
+            // FIELD_GROUPS-driven detection: any field name listed in the
+            // FIELD_GROUPS object above is treated as a known identifier
+            // even if it's not in KNOWN_IDS. Edit FIELD_GROUPS to wire up
+            // custom identifier fields.
+            if (enableSession && FIELD_GROUPS[kl]) {
+              applyNorm(f.p, f.v, FIELD_GROUPS[kl], 'session_id', f.lbl, f.lk); f.done = true; continue;
+            }
+
+            // URL-like fields → template path segments (numeric, UUID, hex)
+            if (URL_FIELDS[kl]) {
+              let path = f.v;
+              const qIdx = path.indexOf('?');
+              const tail = qIdx >= 0 ? path.substring(qIdx) : '';
+              const head = qIdx >= 0 ? path.substring(0, qIdx) : path;
+              let templated = head
+                .replace(RE_URL_UUID_SEG, '/{uuid}')
+                .replace(RE_URL_HEX_SEG, '/{hex}')
+                .replace(RE_URL_NUM_SEG, '/{id}');
+              // Drop query string entirely — typically high-cardinality and rarely useful
+              if (templated !== head || tail) {
+                applyNorm(f.p, f.v, templated, 'url_path', f.lbl, f.lk);
+                f.done = true;
+                continue;
+              }
+            }
+
+            // File path templating (opt-in, v3.5.0). Date directories
+            // /YYYY/MM/DD/ → /{date}/. Numeric and UUID segments → {id}/{uuid}.
+            // Field names matching *_path, *_file, logfile, log_path are
+            // candidates. Skip URL-like fields (already handled above).
+            if (enableFilePathTemplate && !URL_FIELDS[kl]) {
+              const isPathField = kl === 'logfile' || kl === 'logpath' ||
+                kl === 'filepath' || kl === 'pathfile' || kl === 'filename' ||
+                kl.endsWith('_path') || kl.endsWith('_file') || kl.endsWith('path');
+              if (isPathField && (f.v.indexOf('/') >= 0 || f.v.indexOf('\\') >= 0)) {
+                // Use a placeholder for the leading separator that matched,
+                // preserving the original (forward or backward slash style).
+                let templated = f.v
+                  .replace(RE_FILE_PATH_DATE, function(matched, y, m, d) {
+                    // Detect separator from the original match start
+                    const sep = arguments[0].charAt(0);
+                    return sep + '{date}' + sep;
+                  })
+                  .replace(/[\/\\][0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=[\/\\]|$|\.)/gi, function(m) { return m.charAt(0) + '{uuid}'; })
+                  .replace(/[\/\\][0-9a-f]{16,}(?=[\/\\]|$|\.)/gi, function(m) { return m.charAt(0) + '{hex}'; })
+                  .replace(/[\/\\]\d+(?=[\/\\]|$|\.)/g, function(m) { return m.charAt(0) + '{id}'; });
+                if (templated !== f.v) {
+                  applyNorm(f.p, f.v, templated, 'url_path', f.lbl, f.lk);
+                  f.done = true;
+                  continue;
+                }
+              }
+            }
+
+            // Instance IP:port → replace (aggressive only)
+            if (enableContainer && mode === 'aggressive' && kl === 'instance' && RE_IP_PORT.test(f.v)) {
+              applyNorm(f.p, f.v, getRepl(f.p, 'ephemeral_id'), 'ephemeral_id', f.lbl, f.lk); f.done = true; continue;
+            }
+          }
+
+          // ========================================================
+          // PASS 2: Regex Pattern Matching
+          // ========================================================
+          // Patterns are ordered cheapest-first (length checks → anchored
+          // regex), and most specific before generic. Once a match wins,
+          // 'continue' skips remaining checks for that field.
+          for (let i = 0; i < fields.length; i++) {
+            const f = fields[i];
+            if (f.done) continue;
+            const v = f.v;
+            const vLen = v.length;
+
+            // UUIDs (canonical and bare 32-hex)
+            if (enableUuid && vLen === 36 && RE_UUID.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'uuid'), 'uuid', f.lbl, f.lk); continue; }
+            if (enableUuid && vLen === 32 && RE_UUID_BARE.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'uuid'), 'uuid', f.lbl, f.lk); continue; }
+
+            // Container/image hashes
+            if (enableContainer && vLen === 64 && RE_DOCKER_64.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'container_hash'), 'container_hash', f.lbl, f.lk); continue; }
+            if (enableContainer && vLen === 73 && RE_DOCKER_PFX.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'container_hash'), 'container_hash', f.lbl, f.lk); continue; }
+            if (enableContainer && vLen === 71 && RE_SHA256.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'container_hash'), 'container_hash', f.lbl, f.lk); continue; }
+            if (enableContainer && RE_K8S_CGROUP.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'container_hash'), 'container_hash', f.lbl, f.lk); continue; }
+
+            // PII / common opaque IDs (always-on; cheap anchored regex)
+            if (enableSession && vLen <= 254 && vLen >= 5 && v.indexOf('@') > 0 && RE_EMAIL.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'email'), 'email', f.lbl, f.lk); continue; }
+            if (enableSession && vLen >= 40 && v.startsWith('eyJ') && RE_JWT.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'jwt'), 'jwt', f.lbl, f.lk); continue; }
+            if (enableSession && vLen === 17 && RE_MAC.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'mac'), 'mac', f.lbl, f.lk); continue; }
+            // v3.6.4 PII detection (opt-in)
+            if (enablePii) {
+              if (vLen === 11 && v.charAt(3) === '-' && RE_SSN.test(v)) { applyNorm(f.p, v, '__SSN__', 'ssn', f.lbl, f.lk); continue; }
+              if (vLen >= 13 && vLen <= 19 && /^\d/.test(v) && RE_CC.test(v)) { applyNorm(f.p, v, '__CC__', 'credit_card', f.lbl, f.lk); continue; }
+              if (vLen >= 9 && vLen <= 16 && v.charAt(0) === '+' && RE_PHONE_E164.test(v)) { applyNorm(f.p, v, '__PHONE__', 'phone', f.lbl, f.lk); continue; }
+              // v3.18.0 EU PII (gated)
+              if (vLen >= 15 && vLen <= 34 && /^[A-Z]{2}\d/.test(v) && RE_IBAN.test(v)) { applyNorm(f.p, v, '__IBAN__', 'iban', f.lbl, f.lk); continue; }
+              if (vLen >= 8 && vLen <= 13 && /^[A-Z]{2}/.test(v) && RE_UK_NI.test(v)) { applyNorm(f.p, v, '__UK_NIN__', 'national_id', f.lbl, f.lk); continue; }
+              // DE national ID (new format, 2010+): 9-10 chars, character set [0-9LCFGHJKMNPRTVWXYZ].
+              // Requires at least one letter from the NID alphabet so pure-numeric 9-10 char strings
+              // (account numbers, order IDs) do NOT false-positive.
+              if (vLen >= 9 && vLen <= 10 && /[LCFGHJKMNPRTVWXYZ]/.test(v) && RE_DE_NID.test(v)) { applyNorm(f.p, v, '__DE_NID__', 'national_id', f.lbl, f.lk); continue; }
+              if (vLen >= 10 && vLen <= 17 && v.charAt(0) === '0' && v.charAt(1) === '0' && RE_PHONE_EU.test(v)) { applyNorm(f.p, v, '__PHONE__', 'phone', f.lbl, f.lk); continue; }
+              if (vLen >= 10 && vLen <= 14 && RE_PHONE_US.test(v)) { applyNorm(f.p, v, '__PHONE__', 'phone', f.lbl, f.lk); continue; }
+            }
+            if (enableSession && vLen === 24 && RE_MONGO_OID.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'mongo_oid'), 'mongo_oid', f.lbl, f.lk); continue; }
+            if (enableSession && vLen >= 17 && (v.charAt(2) === '_' || v.charAt(3) === '_' || v.charAt(4) === '_') && RE_STRIPE.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'stripe_id'), 'stripe_id', f.lbl, f.lk); continue; }
+            if (vLen >= 20 && v.startsWith('arn:') && RE_AWS_ARN.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'aws_arn'), 'aws_arn', f.lbl, f.lk); continue; }
+            // Vendor credentials/tokens — high cardinality + security risk.
+            // Cheap prefix check before regex; one branch per vendor.
+            if (enableSession && vLen >= 20) {
+              // GitHub classic tokens: gh[pours]_ prefix → underscore at position 3
+              if (v.charAt(0) === 'g' && v.charAt(1) === 'h' && v.charAt(3) === '_' && 'pours'.indexOf(v.charAt(2)) >= 0 && RE_GITHUB_TOKEN.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'vendor_token'), 'vendor_token', f.lbl, f.lk); continue; }
+              if (v.startsWith('github_pat_') && RE_GITHUB_TOKEN.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'vendor_token'), 'vendor_token', f.lbl, f.lk); continue; }
+              if (v.startsWith('glpat-') && RE_GITLAB_TOKEN.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'vendor_token'), 'vendor_token', f.lbl, f.lk); continue; }
+              if (v.startsWith('xox') && v.charAt(4) === '-' && RE_SLACK_TOKEN.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'vendor_token'), 'vendor_token', f.lbl, f.lk); continue; }
+              if ((v.startsWith('AKIA') || v.startsWith('ASIA')) && RE_AWS_ACCESS_KEY.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'vendor_token'), 'vendor_token', f.lbl, f.lk); continue; }
+              if (v.startsWith('npm_') && RE_NPM_TOKEN.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'vendor_token'), 'vendor_token', f.lbl, f.lk); continue; }
+              if (v.startsWith('AIza') && RE_GCP_API_KEY.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'vendor_token'), 'vendor_token', f.lbl, f.lk); continue; }
+              if ((v.startsWith('AC') || v.startsWith('SK')) && vLen === 34 && RE_TWILIO_SID.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'vendor_token'), 'vendor_token', f.lbl, f.lk); continue; }
+              // HTTP Authorization headers (Bearer <jwt>, Basic <base64>, Token <opaque>)
+              if ((v.charAt(0) === 'B' || v.charAt(0) === 'T' || v.charAt(0) === 'D') && (v.indexOf(' ') === 5 || v.indexOf(' ') === 6) && RE_AUTH_HEADER.test(v)) {
+                applyNorm(f.p, v, '__AUTH_HEADER__', 'vendor_token', f.lbl, f.lk);
+                continue;
+              }
+              // Heroku, SendGrid, Mailgun, Mailchimp, Atlassian, Square, Postman
+              if (v.startsWith('HRKU-') && RE_HEROKU_KEY.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'vendor_token'), 'vendor_token', f.lbl, f.lk); continue; }
+              if (v.startsWith('SG.') && RE_SENDGRID_KEY.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'vendor_token'), 'vendor_token', f.lbl, f.lk); continue; }
+              if (v.startsWith('key-') && RE_MAILGUN_KEY.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'vendor_token'), 'vendor_token', f.lbl, f.lk); continue; }
+              if (vLen >= 35 && vLen <= 38 && RE_MAILCHIMP_KEY.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'vendor_token'), 'vendor_token', f.lbl, f.lk); continue; }
+              if (v.startsWith('ATATT3xFfGF0') && RE_ATLASSIAN_TOKEN.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'vendor_token'), 'vendor_token', f.lbl, f.lk); continue; }
+              if (v.startsWith('sq0') && RE_SQUARE_TOKEN.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'vendor_token'), 'vendor_token', f.lbl, f.lk); continue; }
+              if (v.startsWith('PMAK-') && RE_POSTMAN_KEY.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'vendor_token'), 'vendor_token', f.lbl, f.lk); continue; }
+              // Modern API tokens (round-8 expansion):
+              if (v.startsWith('sk-ant-') && RE_ANTHROPIC_KEY.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'vendor_token'), 'vendor_token', f.lbl, f.lk); continue; }
+              if (v.startsWith('sk-') && vLen >= 43 && RE_OPENAI_KEY.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'vendor_token'), 'vendor_token', f.lbl, f.lk); continue; }
+              if ((v.startsWith('dop_v') || v.startsWith('dot_v') || v.startsWith('dor_v')) && RE_DO_TOKEN.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'vendor_token'), 'vendor_token', f.lbl, f.lk); continue; }
+              if (v.startsWith('pypi-') && RE_PYPI_TOKEN.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'vendor_token'), 'vendor_token', f.lbl, f.lk); continue; }
+              if ((v.charAt(0) === 'M' || v.charAt(0) === 'N') && v.indexOf('.') > 0 && RE_DISCORD_BOT.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'vendor_token'), 'vendor_token', f.lbl, f.lk); continue; }
+              if (v.indexOf(':') > 7 && /^\d/.test(v) && RE_TELEGRAM_BOT.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'vendor_token'), 'vendor_token', f.lbl, f.lk); continue; }
+              if (v.startsWith('00') && vLen >= 37 && RE_OKTA_TOKEN.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'vendor_token'), 'vendor_token', f.lbl, f.lk); continue; }
+              // URL with embedded credentials — strip the user:pass part
+              if ((v.startsWith('http://') || v.startsWith('https://')) && RE_URL_AUTH.test(v)) {
+                const stripped = v.replace(/^(https?:\/\/)[^\/\s:]+:[^\/\s@]+@/, '$1__AUTH__@');
+                applyNorm(f.p, v, stripped, 'vendor_token', f.lbl, f.lk);
+                continue;
+              }
+            }
+
+            // Timestamps — collapse to date prefix to drop second/ms cardinality
+            if (vLen >= 19 && vLen <= 30 && v.charAt(4) === '-' && v.indexOf('T') === 10) {
+              const tsMatch = v.match(RE_ISO_TS);
+              if (tsMatch) { applyNorm(f.p, v, tsMatch[1], 'iso_ts', f.lbl, f.lk); continue; }
+            }
+            // Unix epoch in fields named *_time, *_at, *_ts, *_timestamp
+            if ((vLen === 10 || vLen === 13) && /^\d+$/.test(v)) {
+              const klow = (f.lk || f.p).toLowerCase();
+              if (klow.endsWith('_time') || klow.endsWith('_at') || klow.endsWith('_ts') || klow.endsWith('_timestamp') || klow.endsWith('time') || klow === 'timestamp') {
+                if ((vLen === 10 && RE_UNIX_EPOCH_S.test(v)) || (vLen === 13 && RE_UNIX_EPOCH_MS.test(v))) {
+                  applyNorm(f.p, v, '__TS__', 'unix_ts', f.lbl, f.lk); continue;
+                }
+              }
+            }
+
+            // Session/request/trace ID prefixes
+            if (enableSession && vLen >= 10 && RE_ID_PREFIX.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'session_id'), 'session_id', f.lbl, f.lk); continue; }
+
+            // High-entropy hex (16+; 8-15 in aggressive mode)
+            if (enableHex && vLen >= 16 && RE_HEX_16PLUS.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'hex_string'), 'hex_string', f.lbl, f.lk); continue; }
+            if (enableHex && mode === 'aggressive' && vLen >= 8 && vLen <= 15 && RE_HEX_8TO15.test(v)) { applyNorm(f.p, v, getRepl(f.p, 'hex_string'), 'hex_string', f.lbl, f.lk); continue; }
+
+            // Base64 blob detection (opt-in via ENABLE_BASE64_DETECTION).
+            // Length ≥ 64 + base64 charset + entropy heuristic (must have
+            // mix of upper, lower, digit). Catches encoded payloads in
+            // webhook bodies, request signatures, etc. False-positive
+            // guard: skip values that are pure hex (already caught) or
+            // pure lowercase (likely identifiers, not encoded data).
+            if (enableBase64 && vLen >= 64 && vLen <= 4096 && RE_BASE64.test(v)) {
+              const hasUpper = /[A-Z]/.test(v);
+              const hasLower = /[a-z]/.test(v);
+              const hasDigit = /[0-9]/.test(v);
+              if (hasUpper && hasLower && hasDigit) {
+                applyNorm(f.p, v, '__BASE64__', 'hex_string', f.lbl, f.lk);
+                continue;
+              }
+            }
+
+            // IPv4/IPv6 in non-instance fields (aggressive only — many valid uses of IPs)
+            if (mode === 'aggressive' && vLen >= 7 && vLen <= 15 && RE_IPV4.test(v)) {
+              const klow2 = (f.lk || f.p).toLowerCase();
+              if (klow2 !== 'instance' && klow2 !== 'host' && klow2 !== 'src' && klow2 !== 'dst') {
+                applyNorm(f.p, v, getRepl(f.p, 'ipv4'), 'ipv4', f.lbl, f.lk); continue;
+              }
+            }
+            if (mode === 'aggressive' && vLen >= 2 && v.indexOf(':') >= 0 && RE_IPV6.test(v)) {
+              applyNorm(f.p, v, getRepl(f.p, 'ipv6'), 'ipv6', f.lbl, f.lk); continue;
+            }
+
+            // Embedded UUIDs in long string fields (logs, _raw-like values)
+            if (enableUuid && !f.lbl && vLen > 36) {
+              RE_UUID_EMBED.lastIndex = 0;
+              if (RE_UUID_EMBED.test(v)) { RE_UUID_EMBED.lastIndex = 0; applyNorm(f.p, v, v.replace(RE_UUID_EMBED, getRepl(f.p, 'uuid')), 'uuid', f.lbl, f.lk); continue; }
+            }
+
+            // User-defined custom rules from the inline CUSTOM array
+            if (enableCustom && CUSTOM.length > 0) {
+              let cm = false;
+              for (let j = 0; j < CUSTOM.length; j++) {
+                const cr = CUSTOM[j]; if (mode === 'safe' && cr.conf === 'low') continue;
+                cr.re.lastIndex = 0; if (cr.re.test(v)) { applyNorm(f.p, v, cr.repl, cr.cat || 'custom', f.lbl, f.lk); cm = true; break; }
+              }
+              if (cm) continue;
+            }
+          }
+
+          // ========================================================
+          // SPLUNK OPTIMIZATION: _raw Modification
+          // ========================================================
+          // Replace high-cardinality values directly in _raw.
+          // Without this, Splunk still indexes the original values.
+          let bytesBefore = 0;
+          let bytesAfter = 0;
+
+          if (!dryRun && enableRawMod && !isMetric && __e._raw && typeof __e._raw === 'string') {
+            bytesBefore = __e._raw.length;
+            let raw = __e._raw;
+
+            // UUIDs (canonical format with hyphens)
+            if (enableUuid) {
+              RE_UUID_EMBED.lastIndex = 0;
+              raw = raw.replace(RE_UUID_EMBED, uuidRepl);
+            }
+            // Session/request/trace ID prefixes — quoted/colon/space-anchored
+            if (enableSession) {
+              raw = raw.replace(/(?<=["':\s,=]|^)(sess|req|trace|span|txn|corr|sid|rid|tid)[_\-:][0-9a-zA-Z_\-]{8,}/gim, sessRepl);
+              // Email addresses
+              raw = raw.replace(/(?<=["':\s,=]|^)[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?=["':\s,=]|$)/g, '__EMAIL__');
+              // JWTs (3 base64 segments, starting with eyJ)
+              raw = raw.replace(/(?<=["':\s,=]|^)eyJ[a-zA-Z0-9_-]+\.eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/g, '__JWT__');
+              // Stripe-style typed IDs
+              raw = raw.replace(/(?<=["':\s,=]|^)(ch|pi|cus|in|sub|prod|price|inv|re|tok|card|src|trans|acct|seti|payout|tr)_[a-zA-Z0-9]{14,}(?=["':\s,=]|$)/g, '__STRIPE_ID__');
+              // ISO-8601 timestamps — keep date prefix only
+              raw = raw.replace(/\b(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?\b/g, '$1');
+            }
+            // Bare 32-hex UUIDs (no separators) — aggressive only
+            if (enableUuid && mode === 'aggressive') {
+              raw = raw.replace(/\b[0-9a-f]{32}\b/gi, uuidRepl);
+            }
+            // 64-hex Docker/SHA256 hashes (always-on; very high cardinality)
+            if (enableContainer) {
+              raw = raw.replace(/\bsha256:[0-9a-f]{64}\b/gi, contRepl);
+              raw = raw.replace(/\bdocker:\/\/[0-9a-f]{64}\b/gi, contRepl);
+            }
+            // Vendor credentials embedded in _raw (logs that quote API responses,
+            // syslog snippets that include exception messages, etc.). Same
+            // anchored prefixes as the field-level Pass 2.
+            if (enableSession) {
+              raw = raw.replace(/\b(gh[pours]_[A-Za-z0-9]{36,255}|github_pat_[A-Za-z0-9_]{40,255})\b/g, '__TOKEN__');
+              raw = raw.replace(/\bglpat-[A-Za-z0-9_-]{20,40}\b/g, '__TOKEN__');
+              raw = raw.replace(/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, '__TOKEN__');
+              raw = raw.replace(/\b(AKIA|ASIA)[A-Z0-9]{16}\b/g, '__TOKEN__');
+              raw = raw.replace(/\bnpm_[A-Za-z0-9]{36,40}\b/g, '__TOKEN__');
+              raw = raw.replace(/\bAIza[A-Za-z0-9_-]{35,40}\b/g, '__TOKEN__');
+              // Twilio: AC/SK + 32 hex
+              raw = raw.replace(/\b(AC|SK)[a-f0-9]{32}\b/g, '__TOKEN__');
+              // Bearer/Basic/Token auth headers in _raw
+              raw = raw.replace(/(?<=["':\s,=]|^)(Bearer|Basic|Token|Digest)\s+[A-Za-z0-9+/=._-]{6,}/g, '__AUTH_HEADER__');
+            }
+            // Hex strings of 16+ chars (catches container/object hashes in logs)
+            if (enableHex) {
+              raw = raw.replace(/\b[0-9a-f]{16,}\b/gi, hexRepl);
+            }
+            // URL path templating inside _raw (Apache/Nginx/CEF logs).
+            // Matches "VERB /path/<id>/...", quoted "/path/<id>/", and
+            // bare /api/..." patterns. Templates numeric and UUID segments.
+            // Works against string segments inside `_raw` lines that look
+            // like URL paths.
+            raw = raw.replace(/(?<=["'\s])(\/[a-zA-Z0-9_\-]+(?:\/[^"'\s?]+)*)(?=[\s"'?]|$)/g, function(p) {
+              return p
+                .replace(/\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=\/|$)/gi, '/{uuid}')
+                .replace(/\/[0-9a-f]{16,}(?=\/|$)/gi, '/{hex}')
+                .replace(/\/\d+(?=\/|$)/g, '/{id}');
+            });
+
+            __e._raw = raw;
+            bytesAfter = __e._raw.length;
+          }
+
+          // ========================================================
+          // Stack trace truncation (opt-in, v3.5.0)
+          // ========================================================
+          // Verbose stack traces produce big bytes in error logs but
+          // semantically all frames after the first few are noise to most
+          // dashboards. Keep top N frames; collapse the rest to a marker.
+          if (!dryRun && enableStackTruncate && !isMetric && __e._raw && typeof __e._raw === 'string') {
+            const stackPatterns = [RE_STACK_FRAME_JAVA, RE_STACK_FRAME_NODE, RE_STACK_FRAME_PY];
+            for (const re of stackPatterns) {
+              re.lastIndex = 0;
+              const matches = [];
+              let m;
+              while ((m = re.exec(__e._raw)) !== null) matches.push({ idx: m.index, len: m[0].length });
+              if (matches.length > stackKeepFrames) {
+                // Keep first N, collapse rest. Iterate in reverse so indices stay valid.
+                const dropped = matches.length - stackKeepFrames;
+                let raw = __e._raw;
+                for (let i = matches.length - 1; i >= stackKeepFrames; i--) {
+                  const mch = matches[i];
+                  raw = raw.substring(0, mch.idx) + raw.substring(mch.idx + mch.len);
+                }
+                raw = raw + '\n\t... ' + dropped + ' more frames truncated';
+                __e._raw = raw;
+                droppedFields.push('_raw.stack_frames');
+                matchCount++;
+                categories.add('stack_trace');
+                break; // only one stack pattern per event
+              }
+            }
+          }
+
+          // ========================================================
+          // Splunk noise-field drop (opt-in)
+          // ========================================================
+          // Splunk Universal Forwarder emits 'punct' on every event —
+          // a per-line punctuation fingerprint that's nearly always
+          // unique. Same for 'linecount' and 'eventtype'. These are
+          // legacy fields with negligible query value and high
+          // cardinality cost. Default off so users opt in explicitly.
+          if (!dryRun && toBool(C.vars.DROP_SPLUNK_NOISE_FIELDS, false) && !isMetric) {
+            for (const k of ['punct', 'linecount', 'eventtype']) {
+              if (k in __e) { delete __e[k]; droppedFields.push(k); }
+            }
+          }
+
+          // ========================================================
+          // SPLUNK OPTIMIZATION: JSON Compaction
+          // ========================================================
+          if (!dryRun && enableJsonCompact && !isMetric && __e._raw && typeof __e._raw === 'string' && __e._raw.startsWith('{')) {
+            try {
+              const parsed = JSON.parse(__e._raw);
+              const compact = JSON.stringify(parsed);
+              if (compact.length < __e._raw.length) {
+                if (!bytesBefore) bytesBefore = __e._raw.length;
+                __e._raw = compact;
+                bytesAfter = compact.length;
+              }
+            } catch(e) { /* not valid JSON, skip compaction */ }
+          }
+
+          // ========================================================
+          // SPLUNK OPTIMIZATION: Null/Empty Field Removal
+          // ========================================================
+          if (!dryRun && enableNullRemoval && !isMetric) {
+            const nullValues = {'': 1, 'null': 1, 'N/A': 1, 'n/a': 1, 'none': 1, 'None': 1, '-': 1, 'undefined': 1};
+            for (const [k, v] of Object.entries(__e)) {
+              if (k.startsWith('_') || k.startsWith('__')) continue;
+              if (SYSTEM_FIELDS[k]) continue;
+              // Remove actual null/undefined values and sentinel strings like '', 'null', 'N/A'.
+              if (v === null || v === undefined || (typeof v === 'string' && nullValues[v])) {
+                delete __e[k];
+              }
+            }
+          }
+
+          // ========================================================
+          // SPLUNK OPTIMIZATION: Configurable Field Removal
+          // ========================================================
+          if (!dryRun && Object.keys(FIELDS_TO_DROP).length > 0 && !isMetric) {
+            for (const [k] of Object.entries(__e)) {
+              if (FIELDS_TO_DROP[k.toLowerCase()]) {
+                delete __e[k];
+              }
+            }
+          }
+
+          // ========================================================
+          // RISK SCORING
+          // ========================================================
+          // Heuristic, not a measurement: estimatedSeriesBefore is the
+          // largest hardcoded multiplier across categories matched on
+          // this event. Used for routing / tier classification only.
+          let risk;
+          if (matchCount === 0) risk = 'none';
+          else if (estimatedSeriesBefore >= critThreshold) risk = 'critical';
+          else if (estimatedSeriesBefore >= highThreshold) risk = 'high';
+          else risk = 'medium';
+
+          const verboseAudit = toBool(C.vars.VERBOSE_AUDIT_METADATA, false);
+
+          // ========================================================
+          // ROUTING TAGS — emitted on EVERY event (since v3.5.9)
+          // ========================================================
+          // Earlier versions skipped the tags for 'none' and 'medium' events
+          // (which route to 'hot' — the default tier) to save bytes. That
+          // broke any dashboard / alert that expected the field to always
+          // exist. The cost is ~5-15 bytes per event ('cr_risk':'none',
+          // 'cr_route_tier':'hot'); the win is reliable downstream
+          // querying. If your destination's per-event-byte budget is
+          // critical, set OMIT_NONE_TAGS=true to restore the old behavior.
+          const omitNoneTags = toBool(C.vars.OMIT_NONE_TAGS, false);
+          if (risk === 'critical') {
+            __e.cr_risk = risk;
+            __e.cr_route_tier = 'cold';
+          } else if (risk === 'high') {
+            __e.cr_risk = risk;
+            __e.cr_route_tier = 'warm';
+          } else if (!omitNoneTags) {
+            __e.cr_risk = risk;          // 'none' or 'medium'
+            __e.cr_route_tier = 'hot';
+          }
+          // v3.6.3: surface unknown destination type so operators notice typos
+          if (destTypeUnknown) {
+            __e.cr_dest_type_unknown = destTypeRaw;
+            // Cat-6.9: emit a counter so dashboards alert on misconfiguration without
+            // having to search the destination's events.
+            if (typeof C.Metric === 'function') {
+              try { C.Metric('cr_config_warnings', 1, {warning: 'unknown_destination'}); } catch (ignored) {}
+            }
+          }
+          if (modeUnknown) {
+            __e.cr_mode_unknown = modeRaw;  // Cat-2.1
+            if (typeof C.Metric === 'function') try { C.Metric('cr_config_warnings', 1, {warning: 'unknown_mode'}); } catch (ignored) {}
+          }
+          if (thresholdsInverted) {
+            __e.cr_thresholds_inverted = 'true';  // Cat-2.2
+            // Loop-2: explicit cr_config_invalid surfaces ALL config problems
+            // in a single field operators can alert on.
+            __e.cr_config_invalid = 'thresholds_inverted';
+            if (typeof C.Metric === 'function') try { C.Metric('cr_config_warnings', 1, {warning: 'thresholds_inverted'}); } catch (ignored) {}
+          }
+          if (walkTruncated) {
+            __e.cr_walk_truncated = 'true';  // Cat-2.5
+            if (typeof C.Metric === 'function') try { C.Metric('cr_walk_truncated', 1); } catch (ignored) {}
+          }
+
+          // v3.6.5: stamp pack version on every event under VERBOSE_AUDIT_METADATA
+          // so dashboards can correlate behavior changes with deployments.
+          // Keeping it gated on verbose to avoid +20 bytes/event in production.
+          if (verboseAudit) {
+            __e.cr_pack_version = '4.0.0';
+            __e.cr_dest_type = destType;  // Cat-6.8: tag for downstream slicing
+            // v4.0.0: surface _raw byte savings when raw modification ran —
+            // computed since v3.x but never emitted anywhere.
+            if (bytesBefore > bytesAfter) __e.cr_raw_bytes_saved = bytesBefore - bytesAfter;
+          }
+
+          // ========================================================
+          // AGGREGATION FLAG (consumed by downstream aggregation stages)
+          // ========================================================
+          if (enableAggregation && isMetric && (risk === 'high' || risk === 'critical')) {
+            __e.__cr_requires_aggregation = 'true';
+          }
+
+          // ========================================================
+          // AUDIT METADATA — DRY_RUN or VERBOSE_AUDIT_METADATA only
+          // ========================================================
+          // These fields support the audit-then-activate workflow but
+          // shouldn't ride with every event in production. Default OFF
+          // outside DRY_RUN. When VERBOSE_AUDIT_METADATA=true they ship
+          // alongside; flip it after activation to keep ingest small.
+          // Theme-2 + Theme-6 (v3.18.0): cap joined strings at 1KB; sanitize
+          // control chars at the end in a single pass. Field names are clean
+          // by construction so per-segment sanitization (slow) is unnecessary.
+          // HOT PATH — runs on every DRY_RUN event.
+          const _CTL_RE = /[\x00-\x1F]/g;
+          function _capJoin(arr, sep) {
+            let out = '', i = 0, n = arr.length;
+            for (; i < n; i++) {
+              const seg = arr[i];
+              const next = (out ? out + sep : '') + seg;
+              if (next.length > 1000) break;
+              out = next;
+            }
+            const result = i < n ? out + sep + '…+' + (n - i) : out;
+            // Single-pass sanitize only if needed (test is O(string length))
+            return _CTL_RE.test(result) ? result.replace(_CTL_RE, '?') : result;
+          }
+          if (dryRun || verboseAudit) {
+            __e.cr_match_count = matchCount;
+            if (categories.size > 0) __e.cr_categories = _capJoin(Array.from(categories), ',');
+            if (modifiedFields.length > 0) __e.cr_fields_modified = _capJoin(modifiedFields, ',');
+            if (whitelistedFields.length > 0) __e.cr_whitelisted = _capJoin(whitelistedFields, ',');
+          }
+
+          if (dryRun) {
+            __e.cr_would_modify = modifiedFields.length > 0 ? _capJoin(modifiedFields, ',') : 'none';
+            if (droppedFields.length > 0) __e.cr_would_drop = _capJoin(droppedFields, ',');
+          }
+
+          // ========================================================
+          // INTERNAL METRICS EMISSION (pack-wide, not per-event)
+          // ========================================================
+          // Theme-1 (v3.18.0): sample metric emission. The samples are scaled up
+          // by 1/rate so aggregate counters remain directionally accurate.
+          if (typeof C.Metric === 'function' && _emitMetric()) {
+            const _scale = metricsSampleRate >= 1 ? 1 : Math.round(1 / metricsSampleRate);
+            try {
+              // Always-on metrics (cheap, dimension-bounded)
+              C.Metric('cr_events_processed', _scale, {risk: risk, dest: destType});
+              if (matchCount > 0) C.Metric('cr_fields_normalized', matchCount * _scale, {risk: risk});
+              // Cat-7.9: separate counter for sensitive-field redactions for security audit.
+              // Counts per-field, not per-event, so heavy events with many redacted fields
+              // are weighted accordingly. Fixed in v3.18.5 — previous categories.has('redacted')
+              // check never fired because applyNorm uses category 'session_id', not 'redacted'.
+              if (sensitiveRedacted > 0) try { C.Metric('cr_sensitive_redacted', sensitiveRedacted * _scale); } catch (ignored) {}
+              if (droppedFields.length > 0) C.Metric('cr_fields_dropped', droppedFields.length * _scale);
+              if (whitelistedFields.length > 0) C.Metric('cr_fields_whitelisted', whitelistedFields.length * _scale);
+              if (dryRun) C.Metric('cr_dryrun_detections', (matchCount > 0 ? 1 : 0) * _scale);
+              // v3.6.6: per-category counter for the top-1 category. Bounded
+              // dimension cardinality (≈ 25 categories total) keeps this safe.
+              if (categories.size > 0) {
+                const topCat = categories.values().next().value;
+                C.Metric('cr_category_hits', _scale, {category: topCat});
+              }
+              // Theme-5 (v3.18.0) + Loop-2 (v3.18.3): live config snapshot.
+              // Bounded label cardinality (mode × destType × dryRun ≈ 32 series).
+              // Loop-2 fix: emit at 1/1000 the rate of regular metrics — config
+              // doesn't change per event, so a snapshot every ~1000 events is
+              // plenty to keep dashboards fresh without dominating metric volume.
+              if (Math.random() < 0.001) {
+                C.Metric('cr_config_snapshot', 1, {
+                  mode: mode, dest: destType, dry_run: dryRun ? 'true' : 'false'
+                });
+              }
+            } catch (me) { /* best-effort */ }
+          }
+
+        } catch (err) {
+          // v3.6.1: enrich error with stage info + event id for triage.
+          // The error is set as a structured-ish field so dashboards can
+          // facet on it without complex regex parsing.
+          // Cat-7.5: strip control chars from error messages to prevent log injection
+          // when these strings get serialized into JSON / CSV at the destination.
+          const errMsg = String(err && (err.message || err) || 'unknown').replace(/[\x00-\x1F]/g, ' ');
+          __e.cr_error = errMsg.slice(0, 500);  // truncate to avoid blowing event size
+          __e.cr_error_stage = 'core_engine';
+          // Cat-4.3: include the err.name (TypeError, ReferenceError, etc.) for better triage
+          if (err && err.name) __e.cr_error_type = String(err.name).replace(/[\x00-\x1F]/g, ' ').slice(0, 64);  // Cat-7.6
+          // Cat-4.5: stamp engine version on error events so triage knows which version threw
+          __e.cr_error_version = '4.0.0';
+          // Best-effort: emit a Cribl metric so operators can count errors
+          // aggregate-wide instead of having to search the destination.
+          if (typeof C.Metric === 'function') {
+            try { C.Metric('cr_engine_errors', 1, {stage: 'core_engine'}); } catch (ignored) { /* */ }
+          }
+          // Optional: include stack trace if DEBUG_MODE is on (off by default
+          // because stacks are large and rotate).
+          if (toBool(C.vars.DEBUG_MODE, false) && err && err.stack) {
+            // Cat-4.2: cap stack at 1KB total to bound event size in worst case
+            __e.cr_error_stack = String(err.stack).split('\n').slice(0, 4).join('\n').slice(0, 1024);
+            // Cat-4.4: also log to Cribl worker log so systems ingesting cribl
+            // logs see the issue without parsing destination events.
+            if (typeof C.Log === 'function' && C.Log.warn) {
+              try { C.Log.warn('cardinality_reduction engine error', {error: errMsg, type: __e.cr_error_type}); } catch (ignored) {}
+            }
+          }
+        }
+    description: "Core cardinality reduction engine — detection, risk classification, routing tags, dry-run, whitelisting, custom rules"
+
+  # ============================================================
+  # STAGE 2: Histogram Bucket Optimization
+  # ============================================================
+  # Reduces Prometheus histogram cardinality by dropping non-essential
+  # 'le' buckets. Keeps only SLO-aligned values. ~60% reduction.
+
+  # v3.5.4: replaced the CSV lookup with an inline eval. Cribl's lookup
+  # function in pack pipelines doesn't auto-resolve files to the pack's
+  # data/lookups/ directory — it searches the global /opt/cribl/data/lookups/.
+  # Hardcoding the bucket set here removes the path dependency and is
+  # actually faster (no CSV load on every event). The CSV at
+  # default/data/lookups/histogram_buckets.csv is kept as a human-readable
+  # reference; edit this Set if you need to change retention.
+  # v4.0.0: filter truthiness unified with stage-1 toBool() semantics. Earlier
+  # versions used three different boolean interpretations across the chain —
+  # DRY_RUN=off enabled live mutation in stage 1 while these filters silently
+  # never fired (and ENABLE_HISTOGRAM_OPTIMIZATION=off kept dropping buckets).
+  # v4.0.0: le matched NUMERICALLY (via parseFloat) — OpenMetrics and the
+  # Python client emit le="1.0"/"5.0"/"10.0", which the old exact-string list
+  # silently dropped: the exact SLO boundary buckets the feature promises to keep.
+  - id: eval
+    filter: "!(C.vars.ENABLE_HISTOGRAM_OPTIMIZATION === false || C.vars.ENABLE_HISTOGRAM_OPTIMIZATION === 0 || ['false','0','no','off'].indexOf(String(C.vars.ENABLE_HISTOGRAM_OPTIMIZATION).trim().toLowerCase()) >= 0) && _metric && _metric.endsWith('_bucket') && labels && labels.le"
+    disabled: false
+    conf:
+      add:
+        - name: __keep_bucket
+          value: "(String(labels.le) === '+Inf' || String(labels.le) === 'Inf' || ['0.005','0.01','0.05','0.1','0.25','0.5','1','2.5','5','10'].indexOf(String(Number(labels.le))) >= 0) ? 'true' : 'false'"
+    description: "Check if histogram bucket should be kept (SLO-aligned buckets only; numeric le match)"
+
+  - id: drop
+    filter: "!(C.vars.ENABLE_HISTOGRAM_OPTIMIZATION === false || C.vars.ENABLE_HISTOGRAM_OPTIMIZATION === 0 || ['false','0','no','off'].indexOf(String(C.vars.ENABLE_HISTOGRAM_OPTIMIZATION).trim().toLowerCase()) >= 0) && (C.vars.DRY_RUN === false || C.vars.DRY_RUN === 0 || ['false','0','no','off'].indexOf(String(C.vars.DRY_RUN).trim().toLowerCase()) >= 0) && _metric && _metric.endsWith('_bucket') && labels && labels.le && __keep_bucket === 'false'"
+    disabled: false
+    conf: {}
+    description: "Drop histogram buckets not in retention list (~60% reduction). Skipped in DRY_RUN mode."
+
+  # ============================================================
+  # STAGE 3: Metric Aggregation (Counter)
+  # ============================================================
+  # EXPERIMENTAL: Aggregates high-cardinality counter metrics.
+  # Preserves common query dimensions (job, namespace, method, status, endpoint)
+  # while collapsing high-cardinality dimensions that were already normalized.
+  # Only runs when ENABLE_AGGREGATION=true, risk=high/critical, DRY_RUN=false.
+
+  - id: aggregation
+    filter: "__cr_requires_aggregation === 'true' && __cr_metric_type === 'counter' && (C.vars.DRY_RUN === false || C.vars.DRY_RUN === 0 || ['false','0','no','off'].indexOf(String(C.vars.DRY_RUN).trim().toLowerCase()) >= 0)"
+    disabled: false
+    conf:
+      timeWindow: "${C.vars.AGGREGATION_WINDOW || '60s'}"
+      aggregations:
+        - sum(_value).as(_value)
+        - count(_value).as(_agg_count)
+      # Preserves _metric and every surviving label as a dimension.
+      # The wildcard means this works regardless of which labels your
+      # metrics actually carry; the high-cardinality ones (customer_id,
+      # trace_id, etc.) are already normalized/replaced before we get
+      # here, so they aggregate correctly.
+      groupbys:
+        - _metric
+        - labels.*
+        - "!_time"
+        - "!_value"
+      metricsMode: true
+      cumulative: true
+      flushOnInputClose: true
+      passthrough: false
+    description: "EXPERIMENTAL: Aggregate counters — preserves job/namespace/method/status/endpoint/service/env/cluster"
+
+  # ============================================================
+  # STAGE 4: Metric Aggregation (Gauge)
+  # ============================================================
+
+  - id: aggregation
+    filter: "__cr_requires_aggregation === 'true' && (__cr_metric_type === 'gauge' || __cr_metric_type === 'info') && (C.vars.DRY_RUN === false || C.vars.DRY_RUN === 0 || ['false','0','no','off'].indexOf(String(C.vars.DRY_RUN).trim().toLowerCase()) >= 0)"
+    disabled: false
+    conf:
+      timeWindow: "${C.vars.AGGREGATION_WINDOW || '60s'}"
+      aggregations:
+        - avg(_value).as(_value)
+        - min(_value).as(_agg_min)
+        - max(_value).as(_agg_max)
+        - count(_value).as(_agg_count)
+      # Preserves _metric and every surviving label as a dimension.
+      # The wildcard means this works regardless of which labels your
+      # metrics actually carry; the high-cardinality ones (customer_id,
+      # trace_id, etc.) are already normalized/replaced before we get
+      # here, so they aggregate correctly.
+      groupbys:
+        - _metric
+        - labels.*
+        - "!_time"
+        - "!_value"
+      metricsMode: true
+      cumulative: false
+      flushOnInputClose: true
+      passthrough: false
+    description: "EXPERIMENTAL: Aggregate gauges — preserves job/namespace/method/status/endpoint/service/env/cluster"
+
+  # ============================================================
+  # STAGE 5: Internal-Field Strip
+  # ============================================================
+  # v4.0.0: only inter-stage plumbing is stripped here. Operator-facing
+  # fields are now cr_* (no leading underscores) and intentionally survive
+  # to the destination — cr_otel_*, cr_orig_metric_name, cr_metric_entity
+  # are no longer computed-then-deleted dead work.
+  - id: eval
+    filter: "true"
+    disabled: false
+    conf:
+      remove:
+        - __keep_bucket
+        - __cr_requires_aggregation
+        - __cr_metric_type
+    description: "Strip internal plumbing fields used only by downstream pipeline stages."

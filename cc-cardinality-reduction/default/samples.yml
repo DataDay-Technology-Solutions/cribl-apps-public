@@ -1,0 +1,71 @@
+cardinality_test_data:
+  sampleName: cardinality_test_data.json
+  isTemplate: false
+  created: 1737126000000
+  size: 7694
+  numEvents: 20
+  description: Mixed cardinality scenarios covering low/medium/high/critical risk
+    patterns
+histogram_samples:
+  sampleName: histogram_samples.json
+  isTemplate: false
+  created: 1737126000000
+  size: 3615
+  numEvents: 20
+  description: Prometheus histogram bucket samples for testing histogram optimization
+k8s_prometheus_100:
+  sampleName: k8s_prometheus_100.json
+  isTemplate: false
+  created: 1737126000000
+  size: 25819
+  numEvents: 100
+  description: 100 Kubernetes Prometheus metrics with ephemeral labels
+k8s_structured_100:
+  sampleName: k8s_structured_100.json
+  isTemplate: false
+  created: 1737126000000
+  size: 51558
+  numEvents: 100
+  description: 100 structured Kubernetes events with pod hashes and container IDs
+kubernetes_events:
+  sampleName: kubernetes_events.json
+  isTemplate: false
+  created: 1737126000000
+  size: 8569
+  numEvents: 20
+  description: Kubernetes audit and event samples
+log_events_mixed:
+  sampleName: log_events_mixed.json
+  isTemplate: false
+  created: 1737126000000
+  size: 5604
+  numEvents: 20
+  description: Mixed log events with UUIDs, session IDs, and trace IDs
+metric_name_samples:
+  sampleName: metric_name_samples.json
+  isTemplate: false
+  created: 1737126000000
+  size: 2725
+  numEvents: 20
+  description: Metric names with embedded entity IDs (StatsD/Datadog patterns)
+mixed_enterprise_100:
+  sampleName: mixed_enterprise_100.json
+  isTemplate: false
+  created: 1737126000000
+  size: 38787
+  numEvents: 100
+  description: 100 mixed enterprise events across Splunk/Prometheus/Datadog formats
+otel_metrics:
+  sampleName: otel_metrics.json
+  isTemplate: false
+  created: 1737126000000
+  size: 3537
+  numEvents: 20
+  description: OpenTelemetry metric samples with various suffixes and families
+enterprise_1000:
+  sampleName: enterprise_1000.json
+  isTemplate: false
+  created: 1737126000000
+  size: 451183
+  numEvents: 1000
+  description: 1000-event enterprise benchmark sample covering all reduction patterns

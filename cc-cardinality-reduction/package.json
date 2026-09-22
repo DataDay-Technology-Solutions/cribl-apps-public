@@ -1,0 +1,12 @@
+{
+  "name": "cc-cardinality-reduction",
+  "version": "4.0.0",
+  "displayName": "Cardinality Reduction Pack",
+  "author": "DataDay Technology Solutions",
+  "description": "Detect 25+ high-cardinality patterns (UUIDs, session/trace IDs, emails, JWTs, vendor tokens, K8s ephemeral labels, container hashes, histogram buckets, timestamps, URL paths) and audit them in DRY_RUN — then normalize, drop, or aggregate them before they hit your destination. Ships in audit mode: no event changes shape until you flip one switch.",
+  "tags": {
+    "dataType": ["logs", "metrics"],
+    "useCase": ["reduction", "routing", "filtering"],
+    "technology": ["kubernetes", "prometheus", "splunk", "datadog", "otel"]
+  }
+}
