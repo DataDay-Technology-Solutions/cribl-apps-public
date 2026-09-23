@@ -1009,7 +1009,7 @@ Major behavior overhaul addressing brutal-evaluation findings. **Breaking change
 - Pointed the README issues link at this repo (`cribl-apps-public`).
 
 ### Removed
-- Bundled `datatap_generate` pipeline and `datatap_prometheus_metrics` sample. Use the [DataTap pack](https://github.com/DataDay-Technology-Solutions/cribl-apps) directly for live datagen; this pack ships its own static samples.
+- Bundled `datatap_generate` pipeline and `datatap_prometheus_metrics` sample. Use the [DataTap pack](https://github.com/DataDay-Technology-Solutions/cribl-apps-public/tree/main/cribl-datatap) directly for live datagen; this pack ships its own static samples.
 - `default/cribl/inputs.yml` (only depended on the removed `datatap_generate`).
 - 6 unused lookup CSVs that were never wired into the pipeline (`cardinality_budget`, `cardinality_rules`, `custom_cardinality_rules`, `destination_profiles`, `field_group_mapping`, `field_whitelist`). The pack reads its corresponding settings from pack variables only. `histogram_buckets.csv` remains and is wired up.
 

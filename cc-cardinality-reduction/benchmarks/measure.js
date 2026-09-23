@@ -5,7 +5,7 @@
 // What it does
 //   1. Generates synthetic Prometheus exposition lines with a seeded port of
 //      the generator behind DataTap's "datatap-prometheus" source
-//      (github.com/DataDay-Technology-Solutions/cribl-apps). Every sample
+//      (github.com/DataDay-Technology-Solutions/cribl-apps-public/tree/main/cribl-datatap). Every sample
 //      carries a fresh pod hash and a fresh instance IP:port, the worst-case
 //      churn pattern that blows up a TSDB. Synthetic data only.
 //   2. Runs every line through the pack's REAL pipeline

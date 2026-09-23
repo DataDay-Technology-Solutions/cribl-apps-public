@@ -9,7 +9,7 @@ node cc-cardinality-reduction/benchmarks/measure.js --events 20000 --seed 7 --js
 
 ## Method
 
-1. **Synthetic data only.** The script generates Prometheus exposition lines with a seeded port of the generator behind DataTap's `datatap-prometheus` source ([cribl-apps](https://github.com/DataDay-Technology-Solutions/cribl-apps)). Each sample gets a new pod name (`<service>-<8 hex>-<5 hex>`) and a new `instance` IP:port, and the metric name rotates every 15 seconds across 9 common metric families.
+1. **Synthetic data only.** The script generates Prometheus exposition lines with a seeded port of the generator behind DataTap's `datatap-prometheus` source ([cribl-apps](https://github.com/DataDay-Technology-Solutions/cribl-apps-public/tree/main/cribl-datatap)). Each sample gets a new pod name (`<service>-<8 hex>-<5 hex>`) and a new `instance` IP:port, and the metric name rotates every 15 seconds across 9 common metric families.
 2. **The pack's real pipeline.** Every line runs through all functions in `cc-cardinality-reduction/default/pipelines/cardinality_reduction/conf.yml`, in order, with each function's filter honored, the same way the pack's CI end-to-end harness runs them. The two aggregation functions are stateful and off by default (`ENABLE_AGGREGATION=false`), so they are skipped.
 3. **Before** is the audit-mode output (`DRY_RUN=true`), where values are never changed. **After** is the live-mode output (`DRY_RUN=false`). Both use `DESTINATION_TYPE=prometheus`. A series is the metric name plus its full label set, and samples the pipeline drops (non-SLO histogram buckets) are not counted after.
 
