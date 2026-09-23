@@ -11,9 +11,9 @@ cd $CRIBL_HOME && \
 git clone --depth 1 https://github.com/DataDay-Technology-Solutions/cribl-apps-public.git /tmp/datatap-install && \
 cp /tmp/datatap-install/cribl-datatap/pack/default/data/samples/datatap_*.json data/samples/ && \
 mkdir -p local/cribl/pipelines/datatap_generate && \
-cp /tmp/datatap-install/cribl-datatap/pack/default/cribl/pipelines/datatap_generate/conf.yml local/cribl/pipelines/datatap_generate/ && \
-cp /tmp/datatap-install/cribl-datatap/pack/default/cribl/samples.yml local/cribl/samples.yml && \
-cp /tmp/datatap-install/cribl-datatap/pack/default/cribl/inputs_standalone.yml local/cribl/inputs.yml && \
+cp /tmp/datatap-install/cribl-datatap/pack/default/pipelines/datatap_generate/conf.yml local/cribl/pipelines/datatap_generate/ && \
+cp /tmp/datatap-install/cribl-datatap/pack/default/samples.yml local/cribl/samples.yml && \
+cp /tmp/datatap-install/cribl-datatap/pack/default/inputs_standalone.yml local/cribl/inputs.yml && \
 rm -rf /tmp/datatap-install && \
 echo "DataTap installed. Restart Cribl or commit to git."
 ```

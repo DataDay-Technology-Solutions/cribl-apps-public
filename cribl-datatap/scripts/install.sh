@@ -40,11 +40,11 @@ for f in "$DIR"/default/data/samples/datatap_*.json; do
 done
 
 # Config
-docker cp "$DIR/default/cribl/samples.yml" "$CONTAINER:/opt/cribl/local/cribl/samples.yml"
-docker cp "$DIR/default/cribl/inputs_standalone.yml" "$CONTAINER:/opt/cribl/local/cribl/inputs.yml"
+docker cp "$DIR/default/samples.yml" "$CONTAINER:/opt/cribl/local/cribl/samples.yml"
+docker cp "$DIR/default/inputs_standalone.yml" "$CONTAINER:/opt/cribl/local/cribl/inputs.yml"
 
 # Pipeline (disk-based — loads on restart)
-docker cp "$DIR/default/cribl/pipelines/datatap_generate/conf.yml" \
+docker cp "$DIR/default/pipelines/datatap_generate/conf.yml" \
   "$CONTAINER:/opt/cribl/local/cribl/pipelines/datatap_generate/conf.yml"
 
 echo "  ✓ Copied $(ls "$DIR"/default/data/samples/datatap_*.json | wc -l | tr -d ' ') samples + config + pipeline"
