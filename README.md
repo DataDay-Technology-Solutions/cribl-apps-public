@@ -28,7 +28,7 @@ It ships in audit mode (`DRY_RUN=true`). Events pass through unchanged and pick 
 
 **Status:** Cribl Packs Dispensary listing pending. Install from this repo for early access.
 
-**Latest release:** [v4.0.0](../../releases/latest)
+**Latest release:** [v4.0.0](../../releases/tag/cc-cardinality-reduction-v4.0.0)
 
 Full documentation: [`cc-cardinality-reduction/README.md`](cc-cardinality-reduction/README.md)
 
@@ -65,7 +65,7 @@ Install and the full source list are in [`cribl-datatap/README.md`](cribl-datata
 
 ### Cribl Stream UI (recommended)
 
-1. Download the latest `.crbl` from the [Releases](../../releases/latest) page
+1. Download `cc-cardinality-reduction-4.0.0.crbl` from the [cc-cardinality-reduction-v4.0.0 release](../../releases/tag/cc-cardinality-reduction-v4.0.0)
 2. In Cribl Stream, go to **Processing → Packs**. On a distributed deployment, select the Worker Group first.
 3. Click **Add Pack → Import from file** and select the downloaded `.crbl`
 4. Attach the pack's `cardinality_reduction` pipeline to a route and keep `DRY_RUN=true` (the default) while you review the audit tags
