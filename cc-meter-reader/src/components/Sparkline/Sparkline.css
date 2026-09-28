@@ -1,0 +1,24 @@
+/* src/components/Sparkline/Sparkline.css — stroke colours from the money palette (src/styles/palette.css). */
+
+.mr-sparkline {
+  display: block;
+  overflow: visible;
+  flex: 0 0 auto;
+}
+.mr-sparkline path {
+  stroke: var(--mr-fill-saved);
+}
+.mr-sparkline--incident-high path {
+  stroke: var(--mr-fill-incident-high);
+}
+.mr-sparkline--incident-medium path {
+  stroke: var(--mr-fill-incident-medium);
+}
+.mr-sparkline--neutral path {
+  stroke: token('color.foreground.subtle');
+}
+/* Split at the newest commit (P2-W17): the stretch before it is quiet, only what came after carries the colour. */
+.mr-sparkline--split path.mr-sparkline-before {
+  stroke: token('color.foreground.subtle');
+  opacity: 0.5;
+}

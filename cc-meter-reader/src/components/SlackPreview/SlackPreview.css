@@ -1,0 +1,236 @@
+/*
+ * src/components/SlackPreview/SlackPreview.css — a Slack message, drawn with Capra tokens so it sits in both
+ * themes: neutral panel, square avatar, app name + badge + time, then Block Kit blocks.
+ */
+
+.mr-slack {
+  margin: 0;
+  display: grid;
+  grid-template-columns: token('dimension.component.lg') minmax(0, 1fr);
+  column-gap: token('spacing.md');
+  padding: token('spacing.lg');
+  background: var(--mr-surface-panel);
+  border: token('border.default');
+  border-radius: token('radius.xl');
+  color: token('color.foreground.default');
+  font: token('typography.body.md.normal');
+  text-align: left;
+  min-width: 0;
+}
+
+.mr-slack-avatar {
+  width: token('dimension.component.lg');
+  height: token('dimension.component.lg');
+  border-radius: token('radius.xl');
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: token('color.neutral.12');
+  color: token('color.neutral.1');
+  font: token('typography.body.sm.semibold');
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
+.mr-slack-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+}
+
+.mr-slack-meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: token('spacing.sm');
+  line-height: 1.4;
+}
+.mr-slack-name {
+  font: token('typography.body.md.semibold');
+}
+.mr-slack-badge {
+  font: token('typography.body.xs.semibold');
+  color: token('color.foreground.subtle');
+  background: token('color.background.neutral.default');
+  border-radius: token('radius.md');
+  padding: 0 token('spacing.xs');
+  align-self: center;
+}
+.mr-slack-time {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+
+.mr-slack-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  min-width: 0;
+  container-type: inline-size;
+}
+
+.mr-slack-header {
+  font: token('typography.heading.sm');
+  letter-spacing: token('typography.heading.sm.letterSpacing');
+  display: flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  text-wrap: balance;
+}
+
+.mr-slack-section {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  min-width: 0;
+}
+.mr-slack-section-text {
+  /* Break only a word that cannot fit a line on its own; never mid-word to fill a line (P1-G08). */
+  overflow-wrap: break-word;
+  word-break: normal;
+  min-width: 0;
+}
+
+/* Two columns that align, as Slack lays out `fields`. */
+.mr-slack-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: token('spacing.md') token('spacing.lg');
+}
+/* A phone-width preview stacks the fields: two ~110 px columns would split an id like mrd_pay_sample (P1-G08). */
+@container (max-width: 359px) {
+  .mr-slack-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.mr-slack-field {
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: normal;
+  font-variant-numeric: tabular-nums;
+}
+.mr-slack-field strong {
+  font-weight: 600;
+}
+
+.mr-slack-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: token('spacing.xs') token('spacing.md');
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+
+.mr-slack-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: token('spacing.md');
+}
+.mr-slack-button {
+  display: inline-flex;
+  align-items: center;
+  height: token('dimension.component.md');
+  padding: 0 token('spacing.lg');
+  border: token('border.default');
+  border-radius: token('radius.lg');
+  background: var(--mr-surface-panel);
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+  white-space: nowrap;
+}
+.mr-slack-button--primary {
+  background: token('color.background.success.solid.default');
+  border-color: transparent;
+  color: token('color.foreground.success.contrast');
+}
+.mr-slack-button--danger {
+  color: token('color.foreground.danger.default');
+}
+
+.mr-slack-divider {
+  border: 0;
+  border-top: 1px solid var(--mr-border-subtle);
+  margin: 0;
+}
+
+.mr-slack-link {
+  color: token('color.foreground.link');
+}
+
+.mr-slack-code {
+  font-family: token('core.fontFamily.mono');
+  font-size: 0.9em;
+  padding: 0 token('spacing.xs');
+  border: 1px solid var(--mr-border-subtle);
+  border-radius: token('radius.lg');
+  background: token('color.background.neutral.subtle');
+}
+
+/* The weekly receipt: 48 monospace columns whose dot leaders must line up (SPEC 12.4). The face scales
+   with the message width so the block never forces a horizontal page scroll at 390 px. */
+.mr-slack-pre {
+  margin: 0;
+  padding: token('spacing.md');
+  font-family: token('core.fontFamily.mono');
+  font-size: clamp(9px, calc((100cqi - 2 * token('spacing.md')) / 29.5), 14px);
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+  background: token('color.background.neutral.subtle');
+  border: 1px solid var(--mr-border-subtle);
+  border-radius: token('radius.lg');
+  color: token('color.foreground.default');
+  font-variant-ligatures: none;
+}
+/* The total reads heavier without leaving the grid. Capra ships Source Code Pro at 400 only, so a 600 weight
+   is synthesized, and Firefox and Safari widen every synthesized-bold glyph (by 7 % and 5 % at 9 px): the total's
+   figures would stand out of the columns above them and push the block past its message at 390 px. A stroke
+   of the glyphs' own colour thickens them as Chromium's synthetic bold does, without changing one advance. */
+.mr-slack-pre-line[data-callout='receipt-total'] {
+  font-weight: 400;
+  -webkit-text-stroke: 0.04em currentColor;
+}
+
+/* Emoji stand-ins: a filled circle per severity; a small receipt. */
+.mr-slack-glyph {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 0.875em;
+  height: 0.875em;
+  border-radius: token('radius.full');
+  vertical-align: -0.08em;
+}
+.mr-slack-glyph--red {
+  background: var(--mr-fill-incident-high);
+}
+.mr-slack-glyph--orange {
+  background: var(--mr-fill-incident-medium);
+}
+.mr-slack-glyph--green {
+  background: var(--mr-fill-saved);
+}
+.mr-slack-glyph--blue {
+  background: token('color.background.info.solid.default');
+}
+.mr-slack-glyph--receipt {
+  width: 1em;
+  height: 1em;
+  border-radius: 0;
+}
+.mr-slack-glyph-paper {
+  fill: token('color.background.neutral.subtle');
+  stroke: token('color.foreground.subtle');
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+.mr-slack-glyph-lines {
+  fill: none;
+  stroke: token('color.foreground.subtle');
+  stroke-width: 1.2;
+  stroke-linecap: round;
+}
+
+.mr-slack-empty {
+  color: token('color.foreground.subtle');
+}

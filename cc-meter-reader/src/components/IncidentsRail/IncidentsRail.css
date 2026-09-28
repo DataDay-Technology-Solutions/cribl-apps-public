@@ -1,0 +1,117 @@
+/* src/components/IncidentsRail/IncidentsRail.css — the Ledger's alerts rail. Tokens only. */
+
+.mr-rail {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+  min-width: 0;
+}
+.mr-rail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: token('spacing.md');
+}
+.mr-rail-titles {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+}
+.mr-rail-title {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  font: token('typography.heading.sm');
+  color: token('color.foreground.default');
+}
+.mr-rail-count {
+  /* A count, not a severity: neutral (BEAUTY F10 — red and amber mean an incident's severity, nothing else). */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(token('spacing.lg') + token('spacing.sm'));
+  height: calc(token('spacing.lg') + token('spacing.sm'));
+  padding: 0 token('spacing.sm');
+  border-radius: token('radius.full');
+  background: token('color.background.neutral.subtle');
+  color: token('color.foreground.default');
+  font: token('typography.body.sm.semibold');
+  line-height: 1;
+}
+.mr-rail-caption {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+/* The demo-profile note, once for the whole rail (P1-K02; the cards no longer repeat it). */
+.mr-rail-note {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  text-wrap: pretty;
+}
+
+/* The groups. Beside the timeline the Ledger caps the rail's height and this body scrolls (Ledger.css). */
+.mr-rail-body {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+  min-width: 0;
+}
+
+.mr-rail-group {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+}
+.mr-rail-group + .mr-rail-group {
+  padding-top: token('spacing.lg');
+  border-top: 1px solid var(--mr-border-subtle);
+}
+.mr-rail-group-title {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+}
+.mr-rail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+}
+.mr-rail-item {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+  border-radius: token('radius.xl');
+}
+/* Selected (the Ledger's ?object=): one quiet tint, like the selected table row — no ring, no extra shadow
+   (BEAUTY F8d). */
+.mr-rail-item.is-selected > :first-child {
+  background: token('color.background.accent.subtle');
+  border-color: token('color.border.accent.subtle');
+}
+
+/* ── Empty: one calm line with a neutral check (no dashed box, no green dot — BEAUTY F10 / F14) ── */
+.mr-rail-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: token('spacing.md');
+  padding: token('spacing.sm') 0;
+}
+.mr-rail-empty-mark {
+  flex: 0 0 auto;
+  display: inline-flex;
+  margin-top: 2px;
+  color: token('color.foreground.subtle');
+}
+.mr-rail-empty-title {
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+.mr-rail-empty-body {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  text-wrap: pretty;
+}

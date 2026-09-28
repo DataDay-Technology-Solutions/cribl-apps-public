@@ -1,0 +1,279 @@
+/* src/components/TrendChart/TrendChart.css — the 30-day savings chart. Money green for saved only. */
+
+.mr-trend {
+  position: relative;
+  min-width: 0;
+}
+
+.mr-trend-svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+  font-family: token('core.fontFamily.sans');
+  font-size: 12px;
+  touch-action: pan-y;
+}
+.mr-trend-svg:focus-visible {
+  outline: token('border.focus');
+  outline-offset: 4px;
+  border-radius: token('radius.lg');
+}
+
+.mr-trend-grid {
+  stroke: var(--mr-chart-grid);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+.mr-trend-ylabel,
+.mr-trend-xlabel {
+  fill: var(--mr-chart-axis);
+  font-variant-numeric: tabular-nums;
+}
+
+.mr-trend-area {
+  fill: var(--mr-fill-saved);
+  fill-opacity: 0.12;
+}
+.mr-trend-line {
+  fill: none;
+  stroke: var(--mr-fill-saved);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.mr-trend-deploy {
+  fill: var(--mr-chart-axis);
+  opacity: 0.55;
+}
+
+.mr-trend-cursor line {
+  stroke: var(--mr-border);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+.mr-trend-cursor circle {
+  fill: var(--mr-fill-saved);
+  stroke: var(--mr-chart-surface);
+  stroke-width: 2;
+}
+
+/* ── Tooltip ─────────────────────────────────────────────────────────── */
+.mr-trend-tip {
+  position: absolute;
+  top: 0;
+  z-index: 2;
+  min-width: 200px;
+  max-width: 280px;
+  padding: token('spacing.md') token('spacing.lg');
+  background: var(--mr-surface-panel);
+  border: token('border.default');
+  border-radius: token('radius.xl');
+  box-shadow: token('shadow.medium.down');
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+}
+.mr-trend-tip[data-side='right'] {
+  transform: translateX(token('spacing.lg'));
+}
+.mr-trend-tip[data-side='left'] {
+  transform: translateX(calc(-100% - token('spacing.lg')));
+}
+.mr-trend-tip-day {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+}
+.mr-trend-tip-rows {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+}
+.mr-trend-tip-rows > div {
+  display: flex;
+  justify-content: space-between;
+  gap: token('spacing.lg');
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-trend-tip-rows dd {
+  margin: 0;
+  color: token('color.foreground.default');
+}
+.mr-trend-tip-saved dt,
+.mr-trend-tip-saved dd {
+  font: token('typography.body.md.semibold');
+}
+.mr-trend-tip-saved dd {
+  color: var(--mr-color-saved);
+}
+.mr-trend-tip-ratio {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-trend-tip-deploys {
+  list-style: none;
+  margin: 0;
+  padding: token('spacing.sm') 0 0;
+  border-top: 1px solid var(--mr-border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.default');
+}
+.mr-trend-tip-deploys li {
+  display: flex;
+  gap: token('spacing.sm');
+  align-items: baseline;
+  overflow-wrap: anywhere;
+}
+.mr-trend-tip-diamond,
+.mr-trend-legend-diamond {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  transform: rotate(45deg) translateY(-1px);
+  background: var(--mr-chart-axis);
+  opacity: 0.7;
+}
+
+/* ── Legend ──────────────────────────────────────────────────────────── */
+.mr-trend-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: token('spacing.xs') token('spacing.lg');
+  margin-top: token('spacing.sm');
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-trend-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+}
+.mr-trend-legend-swatch {
+  width: token('spacing.lg');
+  height: token('spacing.md');
+  border-top: 2px solid var(--mr-fill-saved);
+  background: color-mix(in srgb, var(--mr-fill-saved) 12%, transparent);
+}
+
+/* The partial first day's hollow point, as it is drawn on the line. */
+.mr-trend-legend-partial {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--mr-fill-saved);
+  border-radius: 50%;
+  background: var(--mr-chart-surface);
+}
+
+/* ── Learning state ─────────────────────────────────────────────────── */
+/*
+ * The sentence stands in the band between the top gridline and the midline (its box is set inline from the
+ * chart's margins), on the card itself: no opaque plate cutting the ghost or the gridlines into stubs (P1-H06).
+ */
+.mr-trend--learning {
+  position: relative;
+}
+.mr-trend-ghost {
+  fill: none;
+  stroke: var(--mr-border);
+  stroke-width: 2;
+  stroke-dasharray: 4 6;
+  stroke-linecap: round;
+}
+.mr-trend--learning .mr-trend-learning {
+  position: absolute;
+  justify-content: center;
+  align-items: center;
+  max-width: none;
+  padding: 0 token('spacing.lg');
+  background: transparent;
+}
+.mr-trend--learning .mr-trend-learning > * {
+  max-width: 360px;
+}
+.mr-trend-learning {
+  align-self: center;
+  justify-self: center;
+  max-width: 360px;
+  padding: token('spacing.md') token('spacing.lg');
+  text-align: center;
+  background: var(--mr-surface-panel);
+  border-radius: token('radius.xl');
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+}
+.mr-trend-learning-title {
+  font: token('typography.heading.xs');
+  color: token('color.foreground.default');
+}
+
+/* ── Partial first day (P0-18) ──────────────────────────────────────── */
+/* Collecting began after that day's midnight: a hollow point says "this day is short because it is partial". */
+.mr-trend-partial {
+  fill: var(--mr-chart-surface);
+  stroke: var(--mr-fill-saved);
+  stroke-width: 2;
+}
+.mr-trend-tip-partial {
+  margin-top: calc(token('spacing.xs') * -1);
+}
+
+/* ── Nothing saved yet (P0-18) ──────────────────────────────────────── */
+/* Days are in and every one saved $0: the grid and its days stay, one sentence sits on the zero line's band. */
+.mr-trend--empty {
+  display: grid;
+}
+.mr-trend--empty > * {
+  grid-area: 1 / 1;
+}
+.mr-trend-empty {
+  /* Centred over the plot area (the chart's 52 px axis gutter and 12 px right margin), so no axis label is covered. */
+  margin: 0 12px token('spacing.xl') 52px;
+}
+
+/* P2-W07 (c): the largest priced change, at its diamond — red for a loss, green for a gain. */
+.mr-trend-annotation {
+  pointer-events: none;
+}
+.mr-trend-annotation-plate {
+  fill: var(--mr-surface-panel);
+  stroke: var(--mr-border-subtle);
+  opacity: 0.94;
+}
+.mr-trend-annotation-text {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mr-trend-annotation.is-up .mr-trend-annotation-text {
+  fill: var(--mr-color-saved);
+}
+.mr-trend-annotation.is-down .mr-trend-annotation-text {
+  fill: var(--mr-color-incident-high);
+}
+.mr-trend-annotation-rule {
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  pointer-events: none;
+}
+.mr-trend-annotation-rule.is-up {
+  stroke: var(--mr-color-saved);
+}
+.mr-trend-annotation-rule.is-down {
+  stroke: var(--mr-color-incident-high);
+}
+.mr-trend-deploy--annotated {
+  opacity: 1;
+}
+.mr-trend-deploy--annotated.is-up {
+  fill: var(--mr-color-saved);
+}
+.mr-trend-deploy--annotated.is-down {
+  fill: var(--mr-color-incident-high);
+}

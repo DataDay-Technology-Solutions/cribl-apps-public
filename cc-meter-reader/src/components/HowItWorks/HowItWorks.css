@@ -1,0 +1,160 @@
+/* src/components/HowItWorks/HowItWorks.css — the four-step strip. Tokens only; neutral (no money colour). */
+
+.mr-how {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: none;
+}
+
+/* ── Strip: four equal columns joined by a hairline through the icon centres ── */
+.mr-how--strip,
+.mr-how--stage {
+  --mr-how-icon-size: token('dimension.component.lg');
+  --mr-how-gap: token('spacing.lg');
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--mr-how-gap);
+}
+/*
+ * The hairline through the icon centres, in two layers: ::before the whole path (quiet), ::after the drawn part
+ * (the strip's own line colour), scaled to --mr-how-drawn (0..1, set by HowItWorks.tsx). A static strip draws it
+ * all (1), so it reads as one line exactly as before; Story and the mount sequence draw it step by step.
+ */
+.mr-how--strip::before,
+.mr-how--strip::after,
+.mr-how--stage::before,
+.mr-how--stage::after {
+  content: '';
+  position: absolute;
+  top: calc(var(--mr-how-icon-size) / 2);
+  left: calc(var(--mr-how-icon-size) / 2);
+  right: calc((100% - 3 * var(--mr-how-gap)) / 4 - var(--mr-how-icon-size) / 2);
+  height: 1px;
+  background: var(--mr-border-subtle);
+}
+.mr-how--strip::after,
+.mr-how--stage::after {
+  background: var(--mr-border);
+  transform-origin: left center;
+  transform: scaleX(var(--mr-how-drawn, 1));
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mr-how[data-sequence]::after {
+    transition: transform 400ms linear;
+  }
+  .mr-how--strip:not([data-sequence])::after,
+  .mr-how--stage:not([data-sequence])::after {
+    transition: transform var(--mr-duration-ribbon) var(--mr-easing);
+  }
+}
+.mr-how--strip .mr-how-step,
+.mr-how--stage .mr-how-step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  min-width: 0;
+}
+
+.mr-how-icon {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: var(--mr-how-icon-size, token('dimension.component.lg'));
+  height: var(--mr-how-icon-size, token('dimension.component.lg'));
+  border-radius: token('radius.full');
+  background: var(--mr-surface-panel);
+  border: token('border.default');
+  color: token('color.foreground.default');
+}
+
+.mr-how-text {
+  display: flex;
+  align-items: baseline;
+  gap: token('spacing.sm');
+  min-width: 0;
+}
+.mr-how-num {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+}
+.mr-how-label {
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.default');
+  text-wrap: balance;
+}
+
+/*
+ * A step still to come is dimmed with the subtle text colour and a quieter ring, never with opacity: 0.35 opacity
+ * read 2.14:1 on the Story stage (axe color-contrast). color.foreground.subtle holds ≥ 4.5:1 in both themes.
+ */
+.mr-how-step[data-active='false'] .mr-how-label,
+.mr-how-step[data-active='false'] .mr-how-icon {
+  color: token('color.foreground.subtle');
+}
+.mr-how-step[data-active='false'] .mr-how-icon {
+  border-color: var(--mr-border-subtle);
+}
+.mr-how-label,
+.mr-how-icon {
+  transition:
+    color var(--mr-duration-ribbon) var(--mr-easing),
+    border-color var(--mr-duration-ribbon) var(--mr-easing);
+}
+
+/*
+ * Stage: the strip on the presenter's unpriced stage (P2-W27), sized in stage pixels (--mr-sp and the caption
+ * size come from src/views/Presenter/Presenter.css): labels at the caption size (28 px at 1920), 72 px icons.
+ */
+.mr-how--stage {
+  --mr-how-icon-size: max(40px, calc(72 * var(--mr-sp, 1px)));
+  --mr-how-gap: max(16px, calc(32 * var(--mr-sp, 1px)));
+}
+.mr-how--stage .mr-how-step {
+  gap: max(8px, calc(20 * var(--mr-sp, 1px)));
+}
+.mr-how--stage .mr-how-label {
+  font-size: var(--mr-pv-caption, 28px);
+  line-height: 1.25;
+}
+.mr-how--stage .mr-how-num {
+  font-size: calc(var(--mr-pv-caption, 28px) * 0.7);
+}
+
+@media (max-width: 640px) {
+  .mr-how--strip,
+  .mr-how--stage {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: token('spacing.lg');
+  }
+  .mr-how--strip::before,
+  .mr-how--strip::after,
+  .mr-how--stage::before,
+  .mr-how--stage::after {
+    display: none;
+  }
+}
+
+/* ── Compact: a numbered vertical list ─────────────────────────────────── */
+.mr-how--compact {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+}
+.mr-how--compact .mr-how-step {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.md');
+}
+.mr-how--compact .mr-how-icon {
+  width: token('dimension.component.md');
+  height: token('dimension.component.md');
+}
+.mr-how--compact .mr-how-label {
+  font: token('typography.body.sm.normal');
+}

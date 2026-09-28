@@ -1,0 +1,40 @@
+{
+  "_note": "Pending (uncommitted) files the Leader already had before Meter Reader. The four groups/default paths are the live /m/default/version/status answer (tests/fixtures/cribl/version-status.json); the rest stand in for the hundreds pending elsewhere. A commit without an explicit files list would sweep them in.",
+  "files": [
+    {
+      "path": "groups/default/local/cribl/auth/cribl.secret",
+      "index": "?",
+      "working_dir": "?"
+    },
+    {
+      "path": "groups/default/local/cribl/auth/users.json",
+      "index": "?",
+      "working_dir": "?"
+    },
+    {
+      "path": "groups/default/local/cribl/secrets.yml",
+      "index": "?",
+      "working_dir": "?"
+    },
+    {
+      "path": "groups/default/package.json",
+      "index": "?",
+      "working_dir": "?"
+    },
+    {
+      "path": "groups/default_search/local/cribl/secrets.yml",
+      "index": "?",
+      "working_dir": "?"
+    },
+    {
+      "path": "groups/default_search/local/cribl/datasets.yml",
+      "index": "?",
+      "working_dir": "?"
+    },
+    {
+      "path": "local/cribl/auth/users.json",
+      "index": "?",
+      "working_dir": "?"
+    }
+  ]
+}

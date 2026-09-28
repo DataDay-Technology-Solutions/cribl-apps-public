@@ -1,0 +1,140 @@
+/*
+ * src/components/common/CommandPalette.css — the ⌘K palette (P2-W22) and the "Single-key shortcuts" switch it
+ * shares with the ? sheet (P1-A09). Tokens only.
+ */
+
+.mr-kbd-switch {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: token('spacing.lg');
+  padding-top: token('spacing.md');
+  border-top: 1px solid token('color.border.neutral.subtle');
+}
+.mr-kbd-switch-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+}
+/* The switch keeps its own size, inside the content column (review W2: squeezed at 390 px, its thumb overhung its
+   track and the dialog's column). */
+.mr-kbd-switch > :not(.mr-kbd-switch-text) {
+  flex: 0 0 auto;
+  margin-inline-end: 2px;
+}
+.mr-kbd-switch-label {
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+.mr-kbd-switch-hint {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-kbd-switch-hint[data-tone='error'] {
+  color: token('color.foreground.danger.default');
+}
+
+.mr-palette {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  min-width: 0;
+}
+.mr-palette-field {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  padding: 0 token('spacing.md');
+  height: token('dimension.component.lg');
+  border: token('border.default');
+  border-radius: token('radius.md');
+  background: token('color.background.panel.solid');
+}
+.mr-palette-field:focus-within {
+  outline: token('border.focus');
+  outline-offset: -1px;
+}
+.mr-palette-field-icon {
+  display: inline-flex;
+  color: token('color.foreground.subtle');
+}
+.mr-palette-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: token('color.foreground.default');
+  font: token('typography.body.md.normal');
+}
+.mr-palette-input::placeholder {
+  color: token('color.foreground.placeholder');
+}
+.mr-palette-results {
+  max-height: min(52vh, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0 calc(-1 * token('spacing.sm'));
+  padding: 0 token('spacing.sm');
+}
+.mr-palette-section + .mr-palette-section {
+  margin-top: token('spacing.sm');
+}
+.mr-palette-group {
+  padding: token('spacing.xs') token('spacing.sm');
+  font: token('typography.body.xs.semibold');
+  color: token('color.foreground.subtle');
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.mr-palette-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: token('spacing.md');
+  min-height: 40px;
+  padding: token('spacing.xs') token('spacing.sm');
+  border-radius: token('radius.md');
+  cursor: pointer;
+}
+.mr-palette-item[aria-selected='true'] {
+  background: token('color.background.accent.subtle');
+  box-shadow: inset 2px 0 0 token('color.border.accent.default');
+}
+.mr-palette-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.mr-palette-label {
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.default');
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mr-palette-hint {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-palette-keys {
+  flex: 0 0 auto;
+  display: inline-flex;
+  gap: token('spacing.xs');
+}
+.mr-palette-empty {
+  margin: token('spacing.md') token('spacing.sm');
+  color: token('color.foreground.subtle');
+}
+.mr-palette-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: token('spacing.xs') token('spacing.md');
+  margin: 0;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}

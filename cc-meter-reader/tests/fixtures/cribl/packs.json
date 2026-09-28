@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/m/default/packs"
+  },
+  "status": 200,
+  "capturedAt": "2026-09-26T04:40:00.000Z",
+  "source": "live",
+  "body": {
+    "items": [],
+    "count": 0
+  }
+}

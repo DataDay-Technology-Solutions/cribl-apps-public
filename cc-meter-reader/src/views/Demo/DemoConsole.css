@@ -1,0 +1,1335 @@
+/*
+ * src/views/Demo/DemoConsole.css — the Demo Console (DESIGN_BRIEF 5.7). Phone-first: one column at 390 px,
+ * the status line pinned under the tab bar, every control ≥ 48 px, the payoff levers in a bottom bar under
+ * the thumb. Two columns from 1024 px (Alert, Scenes and Tools | Levers) and three from 1440 px
+ * (Alert and Scenes | Levers | Tools), with the status line in the title row to the right of the title
+ * (BEAUTY F15; EPIC_AUDIT P1-L02: every lever and tool above the fold of a 1440 × 900 laptop). Disabled buttons drop their fill and shadow so they read quieter than enabled ones.
+ * The frame (width, left edge, h1, vertical rhythm) is the Shell's <Page> (.mr-page, BEAUTY F7); this sheet
+ * only lays the console out inside it. Tokens only; the money palette from src/styles/palette.css.
+ */
+
+.mr-demo {
+  --mr-demo-row-action: 7.5rem;
+}
+
+/* Tabular figures that may still wrap (long captions); .mr-num also forbids wrapping. */
+.mr-demo-tnum {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* ── Panels ──────────────────────────────────────────────────────────────── */
+.mr-demo-panel {
+  background: var(--mr-surface-panel);
+  border: 1px solid var(--mr-border-subtle);
+  border-radius: token('radius.xl');
+  box-shadow: token('shadow.low.down');
+  padding: token('spacing.lg');
+  min-width: 0;
+}
+
+/* ── Pinned status line ──────────────────────────────────────────────────── */
+/* It follows the header in the DOM (title first for screen readers) but leads on narrow screens, where it is
+   pinned under the tab bar. It must stay a direct child of .mr-demo for `sticky` to span the page. */
+.mr-demo-status {
+  order: -1;
+  position: sticky;
+  top: var(--mr-demo-sticky-top, 0px);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  padding: token('spacing.md') token('spacing.lg');
+  background: var(--mr-surface-panel);
+  border: 1px solid var(--mr-border-subtle);
+  border-radius: token('radius.xl');
+  box-shadow: token('shadow.low.down');
+}
+.mr-demo-status-row {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  min-width: 0;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-demo-status-dot {
+  flex: 0 0 auto;
+  width: token('spacing.md');
+  height: token('spacing.md');
+  border-radius: token('radius.full');
+  background: token('color.background.neutral.solid.default');
+}
+.mr-demo-status-dot[data-status='live'] {
+  background: var(--mr-fill-saved);
+  box-shadow: 0 0 0 token('spacing.xs') token('color.background.success.subtle');
+}
+.mr-demo-status-dot[data-status='stale'],
+.mr-demo-status-dot[data-status='rate-limited'],
+.mr-demo-status-dot[data-status='signed-out'],
+.mr-demo-status-dot[data-status='no-access'] {
+  background: var(--mr-fill-incident-medium);
+}
+.mr-demo-status-dot[data-status='offline'],
+.mr-demo-status-dot[data-status='failing'] {
+  background: var(--mr-fill-incident-high);
+}
+.mr-demo-status-dot[data-status='replay'],
+.mr-demo-status-dot[data-status='sample'] {
+  background: token('color.background.highlight.solid.default');
+}
+.mr-demo-status-state {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+  white-space: nowrap;
+}
+.mr-demo-status-sweep {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mr-demo-status-alerts {
+  margin-left: auto;
+  padding-left: token('spacing.md');
+  white-space: nowrap;
+}
+.mr-demo-status-alerts--open {
+  font: token('typography.body.sm.semibold');
+  color: var(--mr-color-incident-high);
+}
+
+.mr-demo-activity {
+  display: flex;
+  /* Top-aligned: when the text wraps on a phone the icon stays beside its first line (EPIC_AUDIT P1-L03). */
+  align-items: flex-start;
+  gap: token('spacing.md');
+  min-height: token('dimension.component.md');
+  padding-top: token('spacing.md');
+  border-top: 1px solid var(--mr-border-subtle);
+  min-width: 0;
+}
+/* A fixed 16 px icon slot, one body line tall, so the ring, the spinner and the clock sit on the same axis. */
+.mr-demo-activity-icon {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: token('dimension.icon.sm');
+  height: token('dimension.component.sm');
+}
+.mr-demo-activity-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: token('spacing.md');
+  row-gap: token('spacing.xs');
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.mr-demo-activity-lever {
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+.mr-demo-activity-stage {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  font-variant-numeric: tabular-nums;
+}
+.mr-demo-activity[data-state='running'] .mr-demo-activity-stage {
+  color: token('color.foreground.accent.default');
+}
+.mr-demo-activity[data-state='retry'] .mr-demo-activity-stage {
+  color: var(--mr-color-incident-medium);
+}
+.mr-demo-activity-action {
+  flex: 0 0 auto;
+  align-self: center;
+}
+.mr-demo-ready-dot {
+  width: token('spacing.md');
+  height: token('spacing.md');
+  border-radius: token('radius.full');
+  border: 2px solid var(--mr-fill-saved);
+}
+
+/* ── Title row (the Page's header) ───────────────────────────────────────── */
+.mr-demo .mr-page-subtitle {
+  max-width: 60ch;
+}
+/* "Default confirmation: 3 minutes…" (demo profile off), a caption line under the subtitle. */
+.mr-demo-profile {
+  display: block;
+  margin-top: token('spacing.xs');
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+
+.mr-demo-off {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+}
+.mr-demo-off-title {
+  margin: 0;
+  font: token('typography.heading.sm');
+}
+
+/* ── Grid ────────────────────────────────────────────────────────────────── */
+.mr-demo-grid {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xl');
+  min-width: 0;
+}
+.mr-demo-col {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xl');
+  min-width: 0;
+}
+@media (min-width: 1024px) {
+  /* Tools sits under Scenes in the main column (the Levers column is the taller one), so nothing leaves a
+     half-empty column below the scenes. */
+  .mr-demo-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      'main side'
+      'tools side';
+    align-items: start;
+  }
+  .mr-demo-col--main {
+    grid-area: main;
+  }
+  .mr-demo-col--side {
+    grid-area: side;
+  }
+  .mr-demo-col--tools {
+    grid-area: tools;
+  }
+  /* Title row: the Page's title on the left, the status line over the levers column (same 7 : 5 split and
+     gap as the grid below, so the status card lines up with the Levers column). */
+  .mr-page.mr-demo {
+    display: grid;
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    column-gap: token('spacing.xl');
+    align-items: start;
+  }
+  .mr-demo > * {
+    grid-column: 1 / -1;
+  }
+  /* The intro carries who to share the demo build with (P0-22): at caption size it stays three lines in the
+     title column, so every lever and tool still clears the fold of a 1440 × 900 laptop (P1-L02). */
+  .mr-demo .mr-page-subtitle {
+    max-width: none;
+    font: token('typography.body.sm.normal');
+    line-height: 1.5;
+  }
+  /* Top-aligned, so the h1 never moves when the status card beside it grows (retry, a remote lever). */
+  .mr-demo > .mr-page-head {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: start;
+  }
+  .mr-demo > .mr-demo-status {
+    grid-column: 2;
+    grid-row: 1;
+    position: static;
+  }
+}
+/* Three columns on the presenter laptop: Alert and Scenes | Levers | Tools (5 : 4 : 3 of the 12-column
+   grid); the status line spans the two lever columns. */
+@media (min-width: 1440px) {
+  .mr-demo-grid {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 4fr) minmax(0, 3fr);
+    grid-template-rows: auto;
+    grid-template-areas: 'main side tools';
+  }
+  .mr-page.mr-demo {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 4fr) minmax(0, 3fr);
+  }
+  .mr-demo > .mr-demo-status {
+    grid-column: 2 / -1;
+  }
+}
+
+/* ── Sections ────────────────────────────────────────────────────────────── */
+.mr-demo-section {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  min-width: 0;
+}
+.mr-demo-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: token('spacing.md');
+}
+.mr-demo-section-title {
+  margin: 0;
+  font: token('typography.heading.sm');
+  letter-spacing: token('typography.heading.sm.letterSpacing');
+  color: token('color.foreground.default');
+}
+
+.mr-demo-group {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+}
+.mr-demo-group-title {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.md');
+  margin: 0;
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+}
+
+/* ── Rows (scenes, streams) ──────────────────────────────────────────────── */
+.mr-demo-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mr-demo-list.mr-demo-panel {
+  padding: token('spacing.xs') token('spacing.lg');
+}
+.mr-demo-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--mr-demo-row-action);
+  align-items: center;
+  gap: token('spacing.lg');
+  padding: token('spacing.md') 0;
+  min-width: 0;
+}
+.mr-demo-list > .mr-demo-row + .mr-demo-row {
+  border-top: 1px solid var(--mr-border-subtle);
+}
+.mr-demo-list.mr-demo-panel > .mr-demo-row {
+  padding: token('spacing.md') 0;
+}
+.mr-demo-row--flat {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 0;
+}
+.mr-demo-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+}
+.mr-demo-row-text p {
+  margin: 0;
+}
+.mr-demo-row-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: token('spacing.md');
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+.mr-demo-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: token('spacing.md');
+  row-gap: token('spacing.xs');
+}
+.mr-demo-row-action {
+  min-width: 0;
+  display: flex;
+}
+.mr-demo-row-action > * {
+  flex: 1 1 auto;
+}
+.mr-demo-row-action button {
+  width: 100%;
+}
+.mr-demo-duration {
+  margin-left: auto;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  white-space: nowrap;
+}
+
+/* ── State dots (the money palette: grey raw, green saved, red broken, amber throttled) ── */
+.mr-demo-state {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+  white-space: nowrap;
+}
+.mr-demo-state-dot {
+  width: token('spacing.md');
+  height: token('spacing.md');
+  border-radius: token('radius.full');
+  background: var(--mr-fill-paid);
+}
+.mr-demo-state[data-tone='saved'] {
+  color: var(--mr-color-saved);
+}
+.mr-demo-state[data-tone='saved'] .mr-demo-state-dot {
+  background: var(--mr-fill-saved);
+}
+.mr-demo-state[data-tone='broken'] {
+  color: var(--mr-color-incident-high);
+}
+.mr-demo-state[data-tone='broken'] .mr-demo-state-dot {
+  background: var(--mr-fill-incident-high);
+}
+.mr-demo-state[data-tone='warm'] {
+  color: var(--mr-color-incident-medium);
+}
+.mr-demo-state[data-tone='warm'] .mr-demo-state-dot {
+  background: var(--mr-fill-incident-medium);
+}
+
+/* ── Disabled buttons: quieter than enabled ones (BEAUTY F15) ─────────────────
+   Capra fills a disabled primary with grey, which reads heavier than the enabled outline buttons beside it.
+   Here every disabled primary / secondary keeps only a faint outline and faint text: no fill, no shadow.
+   The label is neutral-10 (`color.foreground.placeholder`): 3.8:1 on the light panel and 4.1:1 on the dark
+   one (EPIC_AUDIT P1-L01: ≥ 3:1). Capra's own `onDisabled` step measured 1.9:1, and `color.foreground.disabled`
+   is the same neutral-11 as ENABLED secondary text, so it would make a disabled lever look live. Break the
+   trim keeps its danger fill whenever it is enabled. */
+.mr-demo button[data-variant='primary'][data-disabled='true'],
+.mr-demo button[data-variant='secondary'][data-disabled='true'] {
+  background-color: transparent;
+  box-shadow: none;
+  border: 1px solid token('color.border.disabled');
+  color: token('color.foreground.placeholder');
+}
+
+/* ── Break the trim: a danger fill white text can read on (EPIC_AUDIT P1-L01) ──
+   Capra's danger fill is red-9 (#e5484d), 3.9:1 under 14 px white text in both themes. Its `solid.active`
+   step is #d33236 in both themes: 4.9:1. Hover and press darken from there (Capra's hover step, red-10, is
+   LIGHTER than this fill). src/demo/demo.css points the confirmation's danger button at the same steps, so
+   the dialog's button and the console's are one colour. */
+.mr-demo button[data-variant='primary'][data-appearance='danger'] {
+  --_primary-background-color: token('color.background.danger.solid.active');
+  --_primary-hover-background-color: color-mix(in srgb, token('color.background.danger.solid.active') 88%, token('core.color.black.A12'));
+  --_primary-active-background-color: color-mix(in srgb, token('color.background.danger.solid.active') 78%, token('core.color.black.A12'));
+}
+
+/* ── Button rows ─────────────────────────────────────────────────────────── */
+.mr-demo-actions-1 {
+  display: flex;
+}
+.mr-demo-actions-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: token('spacing.md');
+}
+.mr-demo-keyed {
+  position: relative;
+  min-width: 0;
+}
+/* Key hints for the presenter laptop, tucked inside the button's right edge. Hidden on touch screens. */
+.mr-demo-keyed > .mr-demo-kbd {
+  position: absolute;
+  top: 50%;
+  right: token('spacing.md');
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.mr-demo-kbd {
+  flex: 0 0 auto;
+}
+/* A key hint on a disabled lever is as quiet as the lever: its glyph takes the disabled label's colour
+   (≥ 3:1), where a 45 % opacity measured 2.5:1. */
+.mr-demo-keyed:has(button[data-disabled='true']) > .mr-demo-kbd {
+  color: token('color.foreground.placeholder');
+  border-color: token('color.border.disabled');
+}
+@media (max-width: 640px), (hover: none) {
+  .mr-demo-kbd {
+    display: none;
+  }
+}
+
+.mr-demo-divider {
+  height: 1px;
+  background: var(--mr-border-subtle);
+}
+/* Tools: as many columns as fit a 13rem button (three under Scenes on a laptop, one in the narrow third
+   column and on the phone). */
+.mr-demo-tools-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: token('spacing.md');
+}
+/* The four ways onto the stage: two by two where there is room (never three plus an orphan). */
+.mr-demo-tools-grid--stage {
+  grid-template-columns: repeat(auto-fill, minmax(max(13rem, 40%), 1fr));
+}
+.mr-demo-switch {
+  display: flex;
+  align-items: center;
+  min-height: token('dimension.component.xl');
+}
+.mr-demo-hint-desktop {
+  margin: 0;
+}
+@media (max-width: 640px), (hover: none) {
+  .mr-demo-hint-desktop {
+    display: none;
+  }
+}
+
+/* ── Alert slot ──────────────────────────────────────────────────────────── */
+.mr-demo-alert {
+  min-width: 0;
+}
+/* On the laptop the projector panel's caption already says "No alert on screen · Alert expected in ~2:07 after
+   a break", so the quiet card steps aside (it keeps Scenes above the fold of a 1440 × 900 laptop). */
+.mr-demo-col--main:has(.mr-demo-stagepanel) .mr-demo-alert[data-state='quiet'] {
+  display: none;
+}
+.mr-demo-quiet {
+  display: flex;
+  align-items: flex-start;
+  gap: token('spacing.md');
+}
+.mr-demo-quiet p {
+  margin: 0;
+}
+.mr-demo-quiet-dot {
+  flex: 0 0 auto;
+  width: token('spacing.md');
+  height: token('spacing.md');
+  margin-top: token('spacing.sm');
+  border-radius: token('radius.full');
+  background: var(--mr-fill-saved);
+}
+.mr-demo-quiet-title {
+  margin: 0 0 token('spacing.xs');
+  font: token('typography.heading.sm');
+  color: token('color.foreground.default');
+}
+.mr-demo-quiet .mr-demo-quiet-eta {
+  margin-top: token('spacing.sm');
+}
+
+/* "Alert expected in ~2:07 after a break · measured lag" (demo/state.measuredLagSec). */
+.mr-demo-eta {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-demo-eta-lead {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+}
+
+.mr-demo-next {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: token('spacing.lg');
+  border-left: token('spacing.sm') solid var(--mr-fill-incident-medium);
+}
+.mr-demo-next[data-due='true'] {
+  border-left-color: var(--mr-fill-incident-high);
+}
+.mr-demo-next[data-due='true'] .mr-demo-next-clock {
+  color: var(--mr-color-incident-high);
+}
+.mr-demo-next-text {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+}
+.mr-demo-next-text p {
+  margin: 0;
+}
+.mr-demo-next-title {
+  margin: 0;
+  font: token('typography.heading.sm');
+  color: token('color.foreground.default');
+  font-variant-numeric: tabular-nums;
+}
+.mr-demo-next-clock {
+  flex: 0 0 auto;
+  align-self: center;
+  font: token('typography.metric.lg');
+  letter-spacing: -0.02em;
+  color: token('color.foreground.default');
+}
+
+/* ── A scene left running / abandoned (REVIEW-3a #8) ─────────────────────── */
+.mr-demo-left {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+}
+.mr-demo-left p {
+  margin: 0;
+}
+.mr-demo-left-text {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+  min-width: 0;
+}
+.mr-demo-left-title {
+  margin: 0;
+  font: token('typography.heading.sm');
+  color: token('color.foreground.default');
+}
+.mr-demo-left-detail {
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.default');
+}
+.mr-demo-left .mr-demo-left-caption {
+  margin-top: token('spacing.sm');
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+}
+.mr-demo-left-list {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mr-demo-left-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: token('spacing.md');
+  row-gap: token('spacing.xs');
+  padding: token('spacing.md');
+  background: token('color.background.neutral.subtle');
+  /* In dark, neutral.subtle IS the panel colour (neutral-2): the border is what makes the item a card. */
+  border: 1px solid var(--mr-border-subtle);
+  border-radius: token('radius.md');
+  min-width: 0;
+}
+.mr-demo-left-label {
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+.mr-demo-left-id {
+  font: token('typography.body.sm.normal');
+  font-family: token('core.fontFamily.mono');
+  color: token('color.foreground.subtle');
+  overflow-wrap: anywhere;
+}
+.mr-demo-left-action {
+  flex-basis: 100%;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+/* Two long labels ("Abandon and restore", "Restore what it changed") never truncate: stacked on phones. */
+@media (max-width: 640px) {
+  .mr-demo-left-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (min-width: 1024px) {
+  .mr-demo-left-actions {
+    max-width: 480px;
+  }
+}
+
+/* ── Running scene ───────────────────────────────────────────────────────── */
+.mr-demo-scene-run {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  border-left: token('spacing.sm') solid token('color.background.accent.solid.default');
+}
+.mr-demo-scene-run p {
+  margin: 0;
+}
+.mr-demo-scene-run-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: token('spacing.md');
+}
+.mr-demo-scene-run-title {
+  font: token('typography.heading.sm');
+  color: token('color.foreground.default');
+}
+.mr-demo-scene-run-step {
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+.mr-demo-scene-run-detail {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-demo-scene-run-error {
+  font: token('typography.body.sm.normal');
+  color: var(--mr-color-incident-high);
+}
+@media (min-width: 1024px) {
+  .mr-demo-scene-run .mr-demo-actions-1 {
+    max-width: 480px;
+  }
+}
+/* The run of show (P2-W18 slice 2): the scene's beats as receipt lines, a time at the end of each dot leader
+   ("~" when planned), a caret on the beat that happens next. Done: a filled dot; next: a ring; the caret's line
+   sits on the accent tint. No motion: the caret moves by the line it is on. */
+.mr-demo-show-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+}
+.mr-demo-show {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font: token('typography.code');
+  line-height: 1.5;
+}
+.mr-demo-show-beat {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75ch;
+  min-width: 0;
+  padding: token('spacing.xs') token('spacing.sm');
+  border-radius: token('radius.md');
+  color: token('color.foreground.subtle');
+}
+.mr-demo-show-beat[data-state='done'] {
+  color: token('color.foreground.default');
+}
+.mr-demo-show-beat[data-state='now'] {
+  font-weight: 600;
+  color: token('color.foreground.default');
+  background: token('color.background.accent.subtle');
+}
+.mr-demo-show-mark {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 0.6em;
+  height: 0.6em;
+  box-sizing: border-box;
+  border: 1.5px solid token('color.border.neutral.strong');
+  border-radius: token('radius.full');
+}
+.mr-demo-show-beat[data-state='done'] .mr-demo-show-mark {
+  background: token('color.background.accent.solid.default');
+  border-color: token('color.background.accent.solid.default');
+}
+.mr-demo-show-beat[data-state='now'] .mr-demo-show-mark {
+  height: 0.7em;
+  border: 0;
+  border-radius: 0;
+  background: token('color.foreground.accent.default');
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+.mr-demo-show-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mr-demo-show-leader {
+  flex: 1 1 3ch;
+  min-width: 2ch;
+  align-self: baseline;
+  height: 0.2em;
+  color: token('color.foreground.subtle');
+  background: radial-gradient(circle closest-side, currentColor 0 70%, transparent 85%) 0 0 / 0.8em 100% round no-repeat;
+}
+.mr-demo-show-time {
+  flex: 0 0 auto;
+}
+/* A phone's column is too narrow for the mono face ("Apply the pack · Windows w…"): the sans face, same lines. */
+@media (max-width: 640px) {
+  .mr-demo-show {
+    font: token('typography.body.sm.normal');
+    line-height: 1.6;
+  }
+}
+
+/* ── The trim lever: Break → countdown → Restore (EPIC_AUDIT P2-W18) ─────── */
+/* After a break the Break slot is the countdown to the alert: disabled, tabular, a red edge and red digits. */
+.mr-demo .mr-demo-countdown button[data-variant][data-disabled='true'] {
+  border-color: var(--mr-fill-incident-high);
+  color: var(--mr-color-incident-high);
+  font: token('typography.body.md.semibold');
+  font-variant-numeric: tabular-nums;
+}
+/* The alert is open: one Restore across the row, the only thing left to do. */
+.mr-demo-lever-solo {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+/* ── What the room sees: the phone's one-line projector strip (P2-W18) ─── */
+.mr-demo-projector {
+  display: none;
+}
+@media (max-width: 640px) {
+  .mr-demo-projector {
+    order: -1;
+    display: block;
+    margin: 0;
+    padding: 0 token('spacing.md');
+    font: token('typography.body.sm.normal');
+    color: token('color.foreground.subtle');
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mr-demo-projector-figure {
+    font: token('typography.body.sm.semibold');
+    color: token('color.foreground.default');
+  }
+  .mr-demo-projector[data-alert='true'] .mr-demo-projector-state {
+    font: token('typography.body.sm.semibold');
+    color: var(--mr-color-incident-high);
+  }
+}
+
+/* ── On the projector: a live thumbnail of the presenter view (P2-W18 slice 2) ──
+   The stage is laid out in its own pixels (1920 × 1080, src/views/Presenter/Presenter.css) and scaled to the
+   frame with container units: --mr-demo-sp is one stage pixel, resolved in each child against the frame (the
+   nearest container). The frame's own padding and gaps are percentages of it for the same reason. Text keeps
+   a readable floor, so the miniature is a schematic of the stage, not a pixel copy. The laptop only (641 px
+   and up); the phone has its one-line strip. */
+.mr-demo-stagepanel {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+}
+.mr-demo-stagepanel p {
+  margin: 0;
+}
+.mr-demo-stagepanel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  column-gap: token('spacing.md');
+}
+.mr-demo-stagepanel-state {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-demo-stagepanel-quiet {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+}
+.mr-demo-stagepanel[data-alert='true'] .mr-demo-stagepanel-state {
+  font: token('typography.body.sm.semibold');
+  color: var(--mr-color-incident-high);
+}
+.mr-demo-stagepanel[data-takeover='recovery'] .mr-demo-stagepanel-state {
+  font: token('typography.body.sm.semibold');
+  color: var(--mr-color-saved);
+}
+
+.mr-demo-stage {
+  --mr-demo-sp: calc(100cqw / 1920);
+  --mr-demo-small: max(9px, calc(var(--mr-demo-sp) * 20));
+  --mr-demo-label: max(10px, calc(var(--mr-demo-sp) * 28));
+  --mr-demo-list: max(10px, calc(var(--mr-demo-sp) * 32));
+  container-type: inline-size;
+  position: relative;
+  box-sizing: border-box;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'top top'
+    'hero savers'
+    'rest .'
+    'scene qr';
+  column-gap: 4.2%;
+  row-gap: 3%;
+  padding: 3.3%;
+  background: var(--mr-surface-app);
+  border: 1px solid var(--mr-border-subtle);
+  border-radius: token('radius.lg');
+  color: token('color.foreground.default');
+  line-height: 1.25;
+}
+.mr-demo-stage-top {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  gap: 1.2em;
+  min-width: 0;
+  font-size: var(--mr-demo-small);
+}
+.mr-demo-stage-wordmark {
+  font-size: 1.2em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.mr-demo-stage-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  font-weight: 600;
+}
+.mr-demo-stage-live-dot {
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: token('radius.full');
+  background: var(--mr-fill-saved);
+}
+.mr-demo-stage-hero {
+  grid-area: hero;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--mr-demo-sp) * 16);
+  min-width: 0;
+}
+/* The stage's one soft glow, behind the number (DESIGN_BRIEF 5.2). */
+.mr-demo-stage-hero::before {
+  content: '';
+  position: absolute;
+  left: -5%;
+  top: 50%;
+  width: 92%;
+  aspect-ratio: 2 / 1;
+  transform: translateY(-50%);
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--mr-fill-saved) 12%, transparent), transparent);
+  pointer-events: none;
+}
+.mr-demo-stage-hero > * {
+  position: relative;
+}
+.mr-demo-stage-label {
+  font-size: var(--mr-demo-label);
+  font-weight: 600;
+  color: token('color.foreground.subtle');
+}
+/* The stage's Meter (its odometer), fitted to the hero column of the miniature. */
+.mr-demo-stage .mr-pv-figure {
+  font-size: min(calc(var(--mr-demo-sp) * 160), calc(100cqw * 0.5 / (var(--mr-hero-chars, 8) * 0.6)));
+}
+.mr-demo-stage-caption {
+  font-size: var(--mr-demo-label);
+  color: token('color.foreground.subtle');
+  text-wrap: balance;
+}
+.mr-demo-stage-savers {
+  grid-area: savers;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--mr-demo-sp) * 20);
+  min-width: 0;
+}
+.mr-demo-stage-list {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--mr-demo-sp) * 10);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--mr-demo-list);
+}
+.mr-demo-stage-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35em;
+  min-width: 0;
+}
+.mr-demo-stage-item-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mr-demo-stage-leader {
+  flex: 1 1 0;
+  min-width: 1em;
+  align-self: baseline;
+  height: 0.2em;
+  color: token('color.foreground.subtle');
+  background: radial-gradient(circle closest-side, currentColor 0 70%, transparent 85%) 0 0 / 0.5em 100% round no-repeat;
+}
+.mr-demo-stage-item-amount {
+  flex: 0 0 auto;
+  font-weight: 600;
+}
+/* W3-STAGE-1: the stage's red drop pill, in miniature, at the end of the leader (the amounts keep one column). */
+.mr-demo-stage-drop {
+  flex: 0 0 auto;
+  padding: 0.05em 0.45em;
+  border-radius: token('radius.full');
+  background: var(--mr-fill-incident-high-subtle);
+  color: var(--mr-color-incident-high);
+  font-size: 0.8em;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.mr-demo-stage-scene {
+  grid-area: scene;
+  align-self: end;
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  min-width: 0;
+  font-size: var(--mr-demo-small);
+  color: token('color.foreground.subtle');
+  font-variant-numeric: tabular-nums;
+}
+.mr-demo-stage-scene svg {
+  flex: 0 0 auto;
+  width: 1em;
+  height: 1em;
+}
+.mr-demo-stage-qr {
+  grid-area: qr;
+  justify-self: end;
+  align-self: end;
+}
+.mr-demo-stage .mr-qr {
+  --mr-qr-size: calc(var(--mr-demo-sp) * 240);
+}
+.mr-demo-stage .mr-qr-plate {
+  border-radius: token('radius.md');
+}
+/* The takeover over the lower half, left of the QR column, as the stage places it. */
+.mr-demo-stage-takeover {
+  position: absolute;
+  left: 3.3%;
+  right: calc(3.3% + 12.5% + 1.7%);
+  bottom: 5.9%;
+  height: 44%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--mr-surface-panel);
+  border: 1px solid var(--mr-border);
+  border-radius: token('radius.lg');
+  box-shadow: token('shadow.high.down');
+}
+.mr-demo-stage-tk-band {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  min-width: 0;
+  padding: calc(var(--mr-demo-sp) * 24) calc(var(--mr-demo-sp) * 40);
+  font-size: max(11px, calc(var(--mr-demo-sp) * 36));
+  font-weight: 600;
+  background: token('color.background.danger.default');
+  border-bottom: 1px solid token('color.border.danger.subtle');
+}
+.mr-demo-stage-tk-band svg {
+  width: 1.1em;
+  height: 1.1em;
+}
+.mr-demo-stage-tk-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mr-demo-stage-takeover[data-tone='medium'] .mr-demo-stage-tk-band {
+  background: token('color.background.warning.default');
+  border-bottom-color: token('color.border.warning.subtle');
+}
+.mr-demo-stage-takeover[data-tone='recovered'] {
+  background: var(--mr-fill-saved-subtle);
+  border-color: token('color.border.success.subtle');
+}
+.mr-demo-stage-takeover[data-tone='recovered'] .mr-demo-stage-tk-band {
+  background: token('color.background.success.default');
+  border-bottom-color: token('color.border.success.subtle');
+}
+.mr-demo-stage-tk-ratio {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3em;
+  padding: calc(var(--mr-demo-sp) * 16) calc(var(--mr-demo-sp) * 40) 0;
+  font-size: max(18px, calc(var(--mr-demo-sp) * 104));
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+.mr-demo-stage-tk-arrow {
+  font-size: 0.6em;
+  color: token('color.foreground.subtle');
+}
+.mr-demo-stage-tk-worse {
+  color: var(--mr-color-incident-high);
+}
+.mr-demo-stage-tk-saved {
+  color: var(--mr-color-saved);
+}
+.mr-demo-stage-tk-money {
+  padding: calc(var(--mr-demo-sp) * 8) calc(var(--mr-demo-sp) * 40) 0;
+  font-size: max(10px, calc(var(--mr-demo-sp) * 36));
+  font-weight: 600;
+}
+/* The card's foot, pinned to its bottom edge like the stage card's (beats the panel's `p { margin: 0 }`). */
+.mr-demo-stage .mr-demo-stage-tk-foot {
+  margin-top: auto;
+  padding: calc(var(--mr-demo-sp) * 12) calc(var(--mr-demo-sp) * 40) calc(var(--mr-demo-sp) * 20);
+  border-top: 1px solid var(--mr-border-subtle);
+  font-size: max(9px, calc(var(--mr-demo-sp) * 24));
+  color: token('color.foreground.subtle');
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── The lever ledger: the last five levers as receipt lines (P2-W18 slice 2) ──
+   Source Code Pro with dot leaders to the commit id (DESIGN_BRIEF 1, the receipt motif); who pulled it, the
+   deploy and "caught in" as a sans caption. Lines are separated by space, never by rules. One line per lever
+   from 1024 px; on phones the caption drops under the lever, aligned with it. */
+.mr-demo-ledger-panel {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+}
+.mr-demo-ledger-panel p {
+  margin: 0;
+}
+.mr-demo-ledger-empty {
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.default');
+}
+.mr-demo-ledger-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font: token('typography.code');
+  line-height: 1.5;
+}
+/* Phone: time · lever ........ id on the first line; what it changed, then who / deployed / caught under it. */
+.mr-demo-ledger-item {
+  display: grid;
+  grid-template-columns: max-content minmax(0, max-content) minmax(3ch, 1fr) max-content;
+  grid-template-areas:
+    'time lever leader hash'
+    '. target target target'
+    '. meta meta meta';
+  align-items: baseline;
+  column-gap: token('spacing.md');
+  padding: token('spacing.sm') 0;
+  min-width: 0;
+}
+.mr-demo-ledger-time {
+  grid-area: time;
+  color: token('color.foreground.subtle');
+  white-space: nowrap;
+}
+.mr-demo-ledger-lever {
+  grid-area: lever;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: token('color.foreground.default');
+}
+.mr-demo-ledger-target {
+  grid-area: target;
+  min-width: 0;
+  color: token('color.foreground.subtle');
+}
+.mr-demo-ledger-sep {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+/* The receipt's dot leader (src/components/ReceiptList): whole dots on the baseline, up to the commit id. */
+.mr-demo-ledger-leader {
+  grid-area: leader;
+  align-self: baseline;
+  height: 0.2em;
+  min-width: 3ch;
+  color: token('color.foreground.subtle');
+  background: radial-gradient(circle closest-side, currentColor 0 70%, transparent 85%) 0 0 / 0.8em 100% round no-repeat;
+}
+.mr-demo-ledger-hash {
+  grid-area: hash;
+  padding: 0 token('spacing.sm');
+  font: inherit;
+  font-weight: 600;
+  color: token('color.foreground.default');
+  background: token('color.background.neutral.subtle');
+  border: 1px solid var(--mr-border-subtle);
+  border-radius: token('radius.md');
+  white-space: nowrap;
+}
+.mr-demo-ledger-meta {
+  grid-area: meta;
+  min-width: 0;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-demo-ledger-caught {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+}
+/* Laptop: one line per lever, the columns shared by every line (a subgrid), so the leaders, the ids and the
+   captions line up like a printed receipt. */
+@media (min-width: 1024px) {
+  .mr-demo-ledger-list {
+    display: grid;
+    grid-template-columns: max-content max-content max-content minmax(3ch, 1fr) max-content max-content;
+    column-gap: token('spacing.md');
+  }
+  .mr-demo-ledger-item {
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    grid-template-areas: 'time lever target leader hash meta';
+  }
+  /* The separator carries its own space: pull the target back over the column gap. */
+  .mr-demo-ledger-target {
+    margin-left: calc(token('spacing.md') * -1);
+  }
+  .mr-demo-ledger-sep {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    white-space: pre;
+  }
+  .mr-demo-ledger-meta {
+    padding-left: token('spacing.md');
+    white-space: nowrap;
+  }
+}
+
+/* ── An alert just landed: one 1.2 s flash of the status line, never a loop (P2-W18, DESIGN_BRIEF 4) ── */
+.mr-demo-status[data-flash='true'] {
+  animation: mr-demo-status-flash 1.2s ease-out 1;
+}
+@keyframes mr-demo-status-flash {
+  from {
+    background: token('color.background.danger.subtle');
+    border-color: var(--mr-fill-incident-high);
+    box-shadow: 0 0 0 token('spacing.xs') var(--mr-fill-incident-high);
+  }
+  to {
+    background: var(--mr-surface-panel);
+    border-color: var(--mr-border-subtle);
+    box-shadow: token('shadow.low.down');
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mr-demo-status[data-flash='true'] {
+    animation: none;
+    border-color: var(--mr-fill-incident-high);
+  }
+}
+
+/* ── Phone: the payoff levers under the thumb ────────────────────────────── */
+.mr-demo-bottombar {
+  display: none;
+}
+@media (max-width: 640px) {
+  .mr-demo-grid,
+  .mr-demo-col {
+    gap: token('spacing.lg');
+  }
+  .mr-demo-panel {
+    padding: token('spacing.lg');
+  }
+  .mr-demo-status {
+    padding: token('spacing.md');
+  }
+  /* One line at idle (EPIC_AUDIT P1-L03: the two-line card cost 9 % of the phone). The idle row stays in the
+     accessibility tree (it is the polite live region) and returns the moment a lever runs. */
+  .mr-demo-activity[data-state='idle'] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    min-height: 0;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .mr-demo-trim-actions {
+    display: none;
+  }
+  .mr-demo-bottombar {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: token('spacing.md');
+    margin: 0 token('spacing.lg/negative');
+    padding: token('spacing.md') token('spacing.lg');
+    background: var(--mr-surface-panel);
+    border-top: 1px solid var(--mr-border-subtle);
+    box-shadow: token('shadow.low.up');
+  }
+  /* The phone is the remote: the pinned status already says what a lever is; the incident card must fit
+     above the bottom bar without scrolling. */
+  .mr-demo-subtitle-text,
+  .mr-demo .mr-page-subtitle:not(:has(.mr-demo-profile)) {
+    display: none;
+  }
+  .mr-demo-profile {
+    margin-top: 0;
+  }
+}
+
+/* On the phone remote the alert card keeps its words, its money and Restore on one screen without scrolling; the
+   drop is drawn on the stage and the full card elsewhere (P2-W15), not in the presenter's pocket. */
+@media (max-width: 640px) {
+  .mr-demo-alert .mr-rw {
+    display: none;
+  }
+}
+
+/* The stage's rest band at thumbnail scale (P2-W04): the month's bar and the completed days' line (review W2). */
+.mr-demo-stage-rest {
+  grid-area: rest;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: calc(var(--mr-demo-sp) * 24);
+  min-width: 0;
+  min-height: 0;
+}
+.mr-demo-stage-bar {
+  display: flex;
+  height: max(4px, calc(var(--mr-demo-sp) * 18));
+  border-radius: token('radius.full');
+  overflow: hidden;
+}
+.mr-demo-stage-bar-paid {
+  background: var(--mr-fill-paid);
+}
+.mr-demo-stage-bar-saved {
+  background: var(--mr-fill-saved);
+}
+.mr-demo-stage-trend {
+  width: 100%;
+  height: calc(var(--mr-demo-sp) * 150);
+  min-height: 12px;
+}

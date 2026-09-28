@@ -1,0 +1,52 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/master/groups"
+  },
+  "status": 200,
+  "capturedAt": "2026-09-26T04:40:00.000Z",
+  "source": "live",
+  "body": {
+    "items": [
+      {
+        "onPrem": false,
+        "description": "Default Worker Group",
+        "tags": "default",
+        "name": "default",
+        "provisioned": true,
+        "estimatedIngestRate": 1024,
+        "cloud": {
+          "provider": "aws",
+          "region": "us-east-1"
+        },
+        "type": "stream",
+        "id": "default",
+        "collectorsHaEnabled": true
+      },
+      {
+        "description": "Default Fleet",
+        "tags": "default",
+        "isFleet": true,
+        "type": "edge",
+        "id": "default_fleet",
+        "workerRemoteAccess": true,
+        "onPrem": true
+      },
+      {
+        "description": "Search Group",
+        "tags": "default",
+        "isSearch": true,
+        "onPrem": false,
+        "type": "search",
+        "id": "default_search"
+      },
+      {
+        "description": "Default Outpost Group",
+        "tags": "default",
+        "type": "outpost",
+        "id": "default_outpost"
+      }
+    ],
+    "count": 4
+  }
+}

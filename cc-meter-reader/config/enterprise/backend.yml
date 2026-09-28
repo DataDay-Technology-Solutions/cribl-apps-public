@@ -1,0 +1,24 @@
+# ENTERPRISE VARIANT ONLY (DECISIONS D12b, D23). The primary release (meter-reader-X.Y.Z.tgz) is front-end only and
+# ships no backend; `npm run package:backend` overlays this file as config/backend.yml (with
+# config/enterprise/schedules.yml as config/schedules.yml) into meter-reader-X.Y.Z-backend.tgz, for workspaces that
+# have App backend compute (an Enterprise plan). Since D57 it declares no proxy host: no build stores a webhook URL.
+# Timeouts are capped at 120 s by @cribl/apps 1.1.0 (DECISIONS D3); the sweep abandons writes at 100 s. `apps build`
+# bundles each script into one CommonJS file and rejects one over 5 MB (AGENTS.md); tests/compliance.test.ts checks
+# the packaged bundles against that cap.
+runtime: js
+endpoints:
+  - name: meter
+    script: backend/meter.ts
+    description: Reads throughput, prices flows, updates rollups, runs detection, sends notifications. Reads Cribl config; never writes it.
+    timeout: 120
+    memory: 512
+  - name: weeklyReceipt
+    script: backend/weeklyReceipt.ts
+    description: Posts the weekly receipt to configured notification endpoints.
+    timeout: 60
+    memory: 256
+  - name: sendTest
+    script: backend/sendTest.ts
+    description: Sends a test notification to one endpoint.
+    timeout: 30
+    memory: 128

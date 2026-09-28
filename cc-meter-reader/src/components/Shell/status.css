@@ -1,0 +1,21 @@
+/* src/components/Shell/status.css — the status dot's colour for the states added in EPIC_AUDIT P0-07 / P1-D01.
+   The base dot (neutral) and the original states live in Shell.css; 'not-metering' keeps the neutral dot on
+   purpose: nothing is wrong, nothing is running yet. */
+
+.mr-status[data-status='failing'] .mr-status-dot {
+  background: var(--mr-fill-incident-high);
+}
+.mr-status[data-status='signed-out'] .mr-status-dot,
+.mr-status[data-status='no-access'] .mr-status-dot {
+  background: var(--mr-fill-incident-medium);
+}
+.mr-status-action {
+  display: inline-flex;
+  align-items: center;
+}
+@media (max-width: 640px) {
+  /* Phones keep the dot + one word; the reload action is in the page's own session-expired notice. */
+  .mr-status-action {
+    display: none;
+  }
+}

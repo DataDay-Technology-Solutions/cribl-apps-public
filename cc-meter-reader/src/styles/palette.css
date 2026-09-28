@@ -1,0 +1,135 @@
+/*
+ * src/styles/palette.css — the app's semantic aliases over Capra tokens.
+ *
+ * WHY `body` AND NOT `:root`: Capra's dark theme is a `.dark` class on <body> that re-declares every
+ * semantic --cds2-* token there. A custom property's var() is resolved on the element that declares
+ * it, so aliases declared on :root would freeze the LIGHT values and <body> would inherit them. Declared
+ * on body, they resolve against whichever theme <body> carries — for the app tree and for every Capra
+ * overlay portalled into <body>. They are declared on `.dark` too, so a subtree carrying Capra's dark class
+ * (the presenter stage, dark on every account — EPIC_AUDIT P1-A07) re-resolves them against its dark tokens.
+ *
+ * Money palette — PRD 8.8 item 3: four colours, used semantically and nowhere else.
+ *   saved            one green (Capra success scale: same hue in both themes, luminance per theme)
+ *   paid             one neutral (mid grey)
+ *   would-have-paid  the same neutral at 40 % (or a hatch, see --mr-hatch-*)
+ *   incident         red (high) / amber (medium) by severity
+ *
+ * Destination ramp — at most six hues from Capra's `visualization.categorical.observable10`, choosing
+ * indices that cannot be confused with the money colours: 1 blue, 4 teal, 7 purple, 6 pink, 8 light
+ * blue, 9 brown (skipping 2 yellow ≈ amber, 3 red-orange ≈ red, 5 green ≈ saved, 10 grey ≈ paid).
+ * Capra's data-viz palettes are theme-independent by design (foundation-design-tokens-visualization).
+ * The ramp colours destinations in "Where the money goes" and the price tiles; on the Flow map destinations are ink.
+ *
+ * Source hues — the Flow map's bands (the owner, 9/27: three top sources into one SIEM read as one blue slab; then "a
+ * calmer set built around Cribl teal and blue with one warm accent: no two sources alike, no source sharing its
+ * destination's colour"). Five hue families, one Capra visualization token per family per theme: Cribl teal, azure,
+ * navy (periwinkle in dark), purple (violet in dark), copper (orange in dark), measured over the panel at the band
+ * opacity (DECISIONS D55): every PAIR ≥ 14 ΔE for full-colour readers and ≥ 8 under protanopia/deuteranopia (OKLab
+ * ×100), a light band ≥ 3:1 on the white panel (P1-I03), away from the incident red and amber. Sources past the top
+ * five take --mr-src-tail, a neutral, never a repeated hue (src/components/FlowDiagram/sourceColors.ts).
+ */
+
+body,
+.dark {
+  /* ── Money: text (4.5:1 on panels in both themes — Capra `foreground.*` steps). A 40 % grey can't
+        carry text at 4.5:1, so as TEXT "paid" is the default neutral and "would have paid" the subtle
+        neutral; the exact 40 % rule applies to fills below. ── */
+  --mr-color-saved: token('color.foreground.success.default');
+  --mr-color-paid: token('color.foreground.default');
+  --mr-color-whp: token('color.foreground.subtle');
+  --mr-color-incident-high: token('color.foreground.danger.default');
+  --mr-color-incident-medium: token('color.foreground.warning.default');
+  --mr-color-info: token('color.foreground.info.default');
+
+  /* ── Money: fills (bars, ribbons, wedges, sparklines) ── */
+  --mr-fill-saved: token('color.background.success.solid.default');
+  --mr-fill-saved-subtle: token('color.background.success.subtle');
+  --mr-fill-paid: token('color.background.neutral.solid.default');
+  --mr-fill-whp: color-mix(in srgb, token('color.background.neutral.solid.default') 40%, transparent);
+  --mr-fill-incident-high: token('color.background.danger.solid.default');
+  --mr-fill-incident-high-subtle: token('color.background.danger.subtle');
+  --mr-fill-incident-medium: token('color.background.warning.solid.default');
+  --mr-fill-incident-medium-subtle: token('color.background.warning.subtle');
+
+  /* Hatch for the saved wedge / would-have-paid remainder (SVG patterns read these at runtime). */
+  --mr-hatch-saved: token('color.success.A7');
+  --mr-hatch-whp: token('color.neutral.A6');
+
+  /* ── Destinations (Flow ribbons, stacked bars) ── */
+  --mr-dest-1: token('visualization.categorical.observable10.1');
+  --mr-dest-2: token('visualization.categorical.observable10.4');
+  --mr-dest-3: token('visualization.categorical.observable10.7');
+  --mr-dest-4: token('visualization.categorical.observable10.6');
+  /* dest-5 stays off every --mr-src-* token (App QA: observable10.8 was also the Windows workstations band) */
+  --mr-dest-5: token('visualization.categorical.observable10.2');
+  --mr-dest-6: token('visualization.categorical.observable10.9');
+  /* the seventh destination and beyond: one neutral, a step apart from --mr-src-tail, never a repeated hue */
+  --mr-dest-tail: token('color.neutral.9');
+
+  /* ── Sources (Flow bands, source nodes, the phone list's bars): teal, azure, periwinkle, violet, orange. ── */
+  --mr-src-1: token('visualization.sequential.Viridis.5');
+  --mr-src-2: token('visualization.consistent.Blue');
+  --mr-src-3: token('visualization.categorical.observable10.8');
+  --mr-src-4: token('visualization.diverging.Spectral.11');
+  --mr-src-5: token('visualization.categorical.tableau10.2');
+  /* past the coloured sources: one neutral at the band's own opacity, a step apart from the muted teal, above the fold */
+  --mr-src-tail: token('color.neutral.8');
+
+  /* ── Chart chrome ── */
+  --mr-chart-axis: token('color.foreground.subtle');
+  --mr-chart-grid: token('color.border.neutral.subtle');
+  --mr-chart-marker: token('color.foreground.accent.default');
+  --mr-chart-surface: token('color.background.panel.solid');
+
+  /* ── Surfaces used by the shell ── */
+  --mr-surface-app: token('color.background.application');
+  --mr-surface-panel: token('color.background.panel.solid');
+  --mr-border: token('color.border.neutral.default');
+  --mr-border-subtle: token('color.border.neutral.subtle');
+
+  /* ── The ONE card (BEAUTY F8): every card in the app is `.mr-panel` (src/styles/utilities.css) or, where a
+        component can't take the class, these four values. A card inside a card is flat (no shadow on shadow).
+        Dashed borders mean "projected" and are used only on projections. ── */
+  --mr-card-bg: token('color.background.panel.solid');
+  --mr-card-border: token('color.border.neutral.default');
+  --mr-card-radius: token('radius.xl');
+  --mr-card-shadow: token('shadow.low.down');
+  /* The same elevation as a filter, for shapes a box-shadow can't follow (the Receipt's perforated edge). */
+  --mr-card-drop-shadow: drop-shadow(0 2px 3px token('core.color.black.A2')) drop-shadow(0 6px 10px token('core.color.black.A1'));
+
+  /* ── Motion budget (PRD 8.8 item 4) ── */
+  --mr-duration-fast: token('motion.duration.short');
+  --mr-duration-ribbon: token('motion.duration.medium.1');
+  --mr-duration-takeover: 450ms; /* PRD 8.1: the incident takeover slides up in 450 ms — no Capra step matches */
+  --mr-easing: token('motion.easing.standard');
+}
+
+/* Light theme (P1-I03): the observable10 pastels land at 1.3–1.7:1 on a white panel, too faint for a Flow band on a
+   washed-out projector. The same hue families from Capra's named `visualization.consistent.*` colours, deep enough
+   for ≥ 3:1 at the band opacity (teal stays teal, pink stays pink); dark keeps the observable10 ramp above. */
+body:not(.dark) {
+  --mr-dest-1: token('visualization.consistent.Indigo');
+  --mr-dest-2: token('visualization.consistent.Teal');
+  --mr-dest-3: token('visualization.consistent.Purple');
+  --mr-dest-4: token('visualization.consistent.Pink');
+  /* dest-5 stays off every --mr-src-* token (App QA: consistent.Blue was also the Splunk forwarder fleet band) */
+  --mr-dest-5: token('visualization.consistent.Orange');
+  --mr-dest-6: token('visualization.consistent.Brown');
+  --mr-dest-tail: token('color.neutral.10');
+  /* Sources, light: Cribl teal, azure, navy, purple, copper, every band ≥ 3:1 on the white panel at 0.9. */
+  --mr-src-1: token('visualization.sequential.Viridis.5');
+  --mr-src-2: token('visualization.consistent.Blue');
+  --mr-src-3: token('visualization.sequential.Blues.9');
+  --mr-src-4: token('visualization.categorical.paired.10');
+  --mr-src-5: token('visualization.diverging.PuOr.10');
+  --mr-src-tail: token('color.neutral.11');
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body,
+  .dark {
+    --mr-duration-fast: 0ms;
+    --mr-duration-ribbon: 0ms;
+    --mr-duration-takeover: 0ms;
+  }
+}

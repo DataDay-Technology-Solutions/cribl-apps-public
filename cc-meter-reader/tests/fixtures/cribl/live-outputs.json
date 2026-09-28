@@ -1,0 +1,20 @@
+{
+  "items": [
+    {
+      "id": "default",
+      "type": "default",
+      "defaultId": "devnull",
+      "status": {}
+    },
+    {
+      "id": "devnull",
+      "type": "devnull",
+      "status": {
+        "health": "Green",
+        "timestamp": 1790395520163,
+        "metrics": {}
+      }
+    }
+  ],
+  "count": 2
+}

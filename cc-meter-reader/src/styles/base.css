@@ -1,0 +1,83 @@
+/*
+ * src/styles/base.css — document-level rules. Capra's base.css already sets box-sizing, the Open Sans
+ * family, body colour and the application background; this file only adds what the app needs on top.
+ */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100vh;
+  font: token('typography.body.md.normal');
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+figure,
+blockquote,
+dl,
+dd,
+ul,
+ol {
+  margin: 0;
+}
+
+/* Headlines never leave an orphan (PRD 8.8 item 1). */
+h1,
+h2,
+h3,
+h4 {
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+/* SVG text never falls back to a default browser font (PRD 8.8 item 1). */
+svg {
+  font-family: token('core.fontFamily.sans');
+}
+
+/* One visible, styled focus ring for everything we render ourselves (Capra styles its own). */
+:where(a, button, [tabindex], summary, svg [tabindex]):focus-visible {
+  outline: token('border.focus');
+  outline-offset: 2px;
+  border-radius: token('radius.lg');
+}
+
+::selection {
+  background: token('color.background.accent.selected');
+}
+
+/* Reduced motion: nothing animates by itself; JS-driven motion checks prefersReducedMotion(). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

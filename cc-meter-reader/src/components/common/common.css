@@ -1,0 +1,475 @@
+/* src/components/common/common.css — styles for the shared components. Tokens only. */
+
+/* ── Figures ─────────────────────────────────────────────────────────────── */
+.mr-figure {
+  display: inline-flex;
+  align-items: baseline;
+  gap: token('spacing.sm');
+  white-space: nowrap;
+}
+.mr-figure-unit {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  letter-spacing: normal;
+}
+
+/* ── Sample band (DESIGN_BRIEF 5.6, BEAUTY F5 / F10, P2-W27) ──────────────────
+ * "This isn't your data", read like a receipt stamp: a flat warning.subtle band (not a fifth hue) with a
+ * perforated lower edge (the receipt's 6 px teeth), the stripe only on its left cap, and the stamp in Source
+ * Code Pro. One grid row at every width: cap · note · beat chip · button; phones drop the note and shorten the
+ * chip so nothing wraps into an orphan.
+ */
+.mr-sample-band {
+  --mr-perf: 6px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-auto-columns: auto;
+  align-items: center;
+  column-gap: token('spacing.md');
+  padding: 0 token('spacing.xl') var(--mr-perf) 0;
+  background: token('color.background.warning.subtle');
+  color: token('color.foreground.default');
+  font: token('typography.body.sm.normal');
+  min-height: calc(token('dimension.component.lg') + var(--mr-perf));
+  -webkit-mask:
+    linear-gradient(#000 0 0) left 0 top 0 / 100% calc(100% - var(--mr-perf)) no-repeat,
+    conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) left 0 bottom 0 / calc(var(--mr-perf) * 2) var(--mr-perf) repeat-x;
+  mask:
+    linear-gradient(#000 0 0) left 0 top 0 / 100% calc(100% - var(--mr-perf)) no-repeat,
+    conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) left 0 bottom 0 / calc(var(--mr-perf) * 2) var(--mr-perf) repeat-x;
+}
+/* The left cap: the band's only stripe, behind the stamp. */
+.mr-sample-band-cap {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding: token('spacing.sm') token('spacing.md') token('spacing.sm') token('spacing.xl');
+  background: repeating-linear-gradient(
+    135deg,
+    token('color.background.warning.default') 0 6px,
+    token('color.background.warning.subtle') 6px 12px
+  );
+}
+.mr-sample-band-stamp {
+  display: inline-block;
+  padding: 1px token('spacing.sm');
+  border: 1.5px solid token('color.border.warning.strong');
+  border-radius: token('radius.md');
+  background: token('color.background.warning.subtle');
+  color: token('color.foreground.warning.strong');
+  font: token('typography.code');
+  font-size: 12px;
+  line-height: 18px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.mr-sample-band-text {
+  min-width: 0;
+  text-wrap: pretty;
+}
+/* The whole sentence is for screen readers; the stamp already says its first words. */
+.mr-sample-band-full {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.mr-sample-band-beat {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px token('spacing.sm');
+  border: 1px solid token('color.border.warning.subtle');
+  border-radius: token('radius.full');
+  background: var(--mr-surface-panel);
+  color: token('color.foreground.default');
+  font: token('typography.body.sm.semibold');
+  white-space: nowrap;
+}
+.mr-sample-band-beat-short {
+  display: none;
+}
+@media (max-width: 640px) {
+  .mr-sample-band {
+    padding-right: token('spacing.lg');
+    column-gap: token('spacing.sm');
+  }
+  .mr-sample-band-cap {
+    padding-left: token('spacing.lg');
+    padding-right: token('spacing.sm');
+  }
+  .mr-sample-band-note,
+  .mr-sample-band-beat-long {
+    display: none;
+  }
+  .mr-sample-band-beat-short {
+    display: inline;
+  }
+}
+
+/* ── Empty state (BEAUTY F14): a 40 % ghost of the real layout, one sentence, one action ──── */
+.mr-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: token('spacing.lg');
+  padding: token('spacing.xl') token('spacing.lg');
+  text-align: center;
+}
+.mr-empty-ghost {
+  width: 100%;
+  max-width: 640px;
+}
+.mr-empty--lg .mr-empty-ghost {
+  max-width: 880px;
+}
+.mr-empty-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: token('spacing.xs');
+  max-width: 56ch;
+}
+.mr-empty-title {
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+  text-wrap: balance;
+}
+.mr-empty--lg .mr-empty-title {
+  font: token('typography.heading.sm');
+}
+.mr-empty-body {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  text-wrap: pretty;
+}
+.mr-empty--lg .mr-empty-body {
+  font: token('typography.body.md.normal');
+}
+.mr-empty-actions {
+  display: flex;
+  justify-content: center;
+  gap: token('spacing.sm');
+  margin-top: token('spacing.md');
+}
+
+/* ── Ghost (static skeleton of the real layout; neutral, 40 %, never animated) ──── */
+.mr-ghost {
+  --mr-ghost-fill: token('color.border.neutral.default');
+  --mr-ghost-line: token('color.border.neutral.strong');
+  opacity: 0.4;
+  pointer-events: none;
+  user-select: none;
+}
+.mr-ghost-bar {
+  display: block;
+  flex: 0 0 auto;
+  height: 10px;
+  border-radius: token('radius.full');
+  background: var(--mr-ghost-fill);
+}
+.mr-ghost-fill {
+  flex: 1 1 auto;
+}
+.mr-ghost-rows {
+  display: flex;
+  flex-direction: column;
+}
+.mr-ghost-row {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.xl');
+  height: 40px;
+  padding: 0 token('spacing.md');
+  border-bottom: 1px solid var(--mr-ghost-line);
+}
+.mr-ghost-row:last-child {
+  border-bottom: 0;
+}
+.mr-ghost-row--head .mr-ghost-bar {
+  height: 8px;
+}
+.mr-ghost-svg {
+  display: block;
+  width: 100%;
+  height: 120px;
+  overflow: visible;
+}
+.mr-ghost-svg--flow {
+  height: 160px;
+}
+.mr-ghost-grid {
+  stroke: var(--mr-ghost-line);
+  stroke-width: 1;
+}
+.mr-ghost-axis {
+  stroke: var(--mr-ghost-line);
+  stroke-width: 1.5;
+}
+.mr-ghost-line {
+  fill: none;
+  stroke: var(--mr-ghost-line);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.mr-ghost-ribbon {
+  fill: var(--mr-ghost-fill);
+  stroke: var(--mr-ghost-line);
+  stroke-width: 1;
+}
+.mr-ghost-node {
+  fill: var(--mr-ghost-line);
+}
+.mr-ghost-list,
+.mr-ghost-bars {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+  padding: token('spacing.sm') 0;
+}
+.mr-ghost-line-item {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.md');
+}
+.mr-ghost-dots {
+  flex: 1 1 auto;
+  height: 2px;
+  background: radial-gradient(circle, var(--mr-ghost-line) 1px, transparent 1.5px) 0 50% / 8px 2px repeat-x;
+}
+.mr-ghost-bars-row {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+}
+.mr-ghost-track {
+  display: block;
+  height: token('spacing.md');
+  border-radius: token('radius.full');
+  background: token('color.background.neutral.subtle');
+  overflow: hidden;
+}
+.mr-ghost-track-fill {
+  display: block;
+  height: 100%;
+  border-radius: token('radius.full');
+  background: var(--mr-ghost-fill);
+}
+/* Setting cards (Settings → Where to send alerts): title + badge + switch, a line beside a field, one action. */
+.mr-ghost-cards {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+  text-align: start;
+}
+.mr-ghost-card {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+  padding: token('spacing.lg') token('spacing.xl');
+  border: 1px solid var(--mr-ghost-line);
+  border-radius: token('radius.xl');
+}
+.mr-ghost-card-head,
+.mr-ghost-card-body {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.md');
+}
+.mr-ghost-card-foot {
+  padding-top: token('spacing.md');
+  border-top: 1px solid var(--mr-ghost-line);
+}
+.mr-ghost-bar--title {
+  height: 12px;
+}
+.mr-ghost-pill {
+  flex: 0 0 auto;
+  width: 56px;
+  height: 18px;
+  border-radius: token('radius.full');
+  border: 1px solid var(--mr-ghost-line);
+}
+.mr-ghost-switch {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 20px;
+  border-radius: token('radius.full');
+  background: var(--mr-ghost-fill);
+}
+.mr-ghost-field {
+  flex: 0 0 auto;
+  width: 32%;
+  height: token('dimension.component.md');
+  border-radius: token('radius.md');
+  border: 1px solid var(--mr-ghost-line);
+}
+.mr-ghost-button {
+  display: block;
+  width: 120px;
+  max-width: 40%;
+  height: token('dimension.component.md');
+  border-radius: token('radius.md');
+  border: 1px solid var(--mr-ghost-line);
+}
+
+/* ── Notices ─────────────────────────────────────────────────────────────── */
+.mr-notice-body {
+  display: inline;
+}
+/* Neutral inline notice (BEAUTY F10): subtle glyph, one sentence, one action. */
+.mr-notice {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.md');
+  min-width: 0;
+  padding: token('spacing.md') token('spacing.lg');
+  color: token('color.foreground.default');
+  font: token('typography.body.md.normal');
+}
+.mr-notice--card {
+  background: var(--mr-card-bg);
+  border: 1px solid var(--mr-card-border);
+  border-radius: var(--mr-card-radius);
+}
+.mr-notice--inline {
+  padding: token('spacing.sm') 0;
+}
+.mr-notice-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: token('color.foreground.subtle');
+}
+.mr-notice-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-wrap: pretty;
+}
+.mr-notice-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+}
+@media (max-width: 640px) {
+  .mr-notice {
+    flex-wrap: wrap;
+    padding: token('spacing.md');
+  }
+  .mr-notice-text {
+    flex-basis: calc(100% - 32px);
+  }
+  .mr-notice-actions {
+    margin-left: calc(token('dimension.icon.sm') + token('spacing.md'));
+  }
+}
+
+/* ── Loading ─────────────────────────────────────────────────────────────── */
+.mr-view-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xl');
+  padding: token('spacing.xl') 0;
+}
+.mr-view-skeleton-hero {
+  max-width: 640px;
+}
+
+.mr-view-error {
+  padding: token('spacing.xl') 0;
+}
+
+/* ── Confirm modal ───────────────────────────────────────────────────────── */
+.mr-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+}
+.mr-confirm-list {
+  margin: token('spacing.sm') 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+}
+.mr-confirm-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: token('spacing.xs') token('spacing.md');
+  padding: token('spacing.md');
+  border: token('border.default');
+  border-radius: token('radius.lg');
+  background: token('color.background.neutral.subtle');
+}
+.mr-confirm-label {
+  font: token('typography.body.md.semibold');
+}
+.mr-confirm-id {
+  font: token('typography.body.sm.normal');
+  font-family: token('core.fontFamily.mono');
+  color: token('color.foreground.subtle');
+}
+.mr-confirm-action {
+  flex-basis: 100%;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-confirm-warning {
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.danger.default');
+}
+
+/* ── Shortcut sheet ──────────────────────────────────────────────────────── */
+.mr-shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+}
+.mr-shortcuts-heading {
+  margin-bottom: token('spacing.sm');
+  text-transform: none;
+}
+.mr-shortcuts-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: token('spacing.sm') token('spacing.lg');
+  margin: 0;
+}
+.mr-shortcuts-row {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.md');
+}
+.mr-shortcuts-row dd {
+  margin: 0;
+}
+.mr-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: token('dimension.component.sm');
+  height: token('dimension.component.sm');
+  padding: 0 token('spacing.sm');
+  font: token('typography.body.sm.normal');
+  font-family: token('core.fontFamily.mono');
+  color: token('color.foreground.default');
+  background: token('color.background.neutral.subtle');
+  border: token('border.default');
+  border-bottom-width: 2px;
+  border-radius: token('radius.lg');
+}
+
+/* ── Credit: the builder's signature (Credit.tsx) ─────────────────────────────
+ * The words take the surrounding type; the name is set a touch stronger, in the default foreground, as a builder
+ * signs his work. Never a colour of its own: it is a signature, not a link or a badge.
+ */
+.mr-credit-name {
+  white-space: nowrap;
+  font-weight: 600;
+  color: token('color.foreground.default');
+}

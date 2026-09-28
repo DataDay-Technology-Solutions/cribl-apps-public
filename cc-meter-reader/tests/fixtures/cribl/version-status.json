@@ -1,0 +1,54 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/m/default/version/status"
+  },
+  "status": 200,
+  "capturedAt": "2026-09-26T04:40:00.000Z",
+  "source": "live",
+  "body": {
+    "items": [
+      {
+        "not_added": [
+          "groups/default/local/cribl/auth/cribl.secret",
+          "groups/default/local/cribl/auth/users.json",
+          "groups/default/local/cribl/secrets.yml",
+          "groups/default/package.json"
+        ],
+        "conflicted": [],
+        "created": [],
+        "deleted": [],
+        "modified": [],
+        "renamed": [],
+        "files": [
+          {
+            "path": "groups/default/local/cribl/auth/cribl.secret",
+            "index": "?",
+            "working_dir": "?"
+          },
+          {
+            "path": "groups/default/local/cribl/auth/users.json",
+            "index": "?",
+            "working_dir": "?"
+          },
+          {
+            "path": "groups/default/local/cribl/secrets.yml",
+            "index": "?",
+            "working_dir": "?"
+          },
+          {
+            "path": "groups/default/package.json",
+            "index": "?",
+            "working_dir": "?"
+          }
+        ],
+        "staged": [],
+        "ahead": 0,
+        "behind": 0,
+        "current": "master",
+        "detached": false
+      }
+    ],
+    "count": 1
+  }
+}

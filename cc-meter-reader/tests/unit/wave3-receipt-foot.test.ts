@@ -1,0 +1,162 @@
+// W3-RECEIPT-1: every printed would have paid / paid / saved triple adds up to the dollar (core/format.ts footMoney).
+// The video's weekly receipt printed "Saved by Cribl $177,198 · Would have paid $452,147 · Paid $274,948" (452,147 −
+// 274,948 = 177,199), and the Receipt bar printed "You paid $958,407" beside $544,974 saved while the Report card
+// printed the footed $958,406. Every receipt built from the tour snapshot is checked here: the weekly one (Slack, the
+// bell, the Story), today, the last 30 days, month to date, a custom range and a comparison; and the by-reduction /
+// by-diversion split sums to the printed saved.
+
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import type { Snapshot, WeeklyReceipt } from '../../core/types.ts';
+import { renderAlert } from '../../core/delivery.ts';
+import { receiptText, receiptTextForComparison, receiptTextForPeriod, receiptTextForRange } from '../../core/receipt.ts';
+import { compareRanges, planRangeReads, resolveRange, sumRange, type RangeDoc, type RangeFigures } from '../../core/range.ts';
+import { sampleRollups } from '../../core/sampleRollups.ts';
+import { footMoney, fmtDollars } from '../../core/format.ts';
+import { fromIso } from '../../core/time.ts';
+
+interface Tour {
+  snapshot: Snapshot;
+  weeklyReceipt: WeeklyReceipt;
+  timezone?: string;
+}
+const TOUR = JSON.parse(readFileSync(resolve(__dirname, '../../demo/sample/tour.json'), 'utf8')) as Tour;
+const SNAP = TOUR.snapshot;
+const TZ = 'America/New_York';
+
+/** '$1,503,380' → 1503380 (whole dollars; the receipt's minus sign is U+2212). */
+const dollars = (s: string): number => Number(s.replace(/[^0-9−-]/g, '').replace('−', '-'));
+
+/** The printed triple of a receipt: the "Saved by Cribl…" total line and the "Would have paid $X · Paid $Y" segments. */
+function printedTriple(text: string, totalLine: RegExp): { whp: number; paid: number; saved: number } {
+  const flat = text.replace(/\n/g, ' ');
+  const whp = /Would have paid (\$[\d,]+)/i.exec(flat);
+  const paid = /Paid (\$[\d,]+)/.exec(flat);
+  const total = text.split('\n').find((l) => totalLine.test(l));
+  expect(whp, text).not.toBeNull();
+  expect(paid, text).not.toBeNull();
+  expect(total, text).toBeDefined();
+  const saved = /(\$[\d,]+)\s*$/.exec(total!);
+  expect(saved, total).not.toBeNull();
+  return { whp: dollars(whp![1]), paid: dollars(paid![1]), saved: dollars(saved![1]) };
+}
+
+/** "By reduction $X · by diversion $Y" (either case), when the receipt prints the split. */
+function printedSplit(text: string): { reduced: number; diverted: number } | undefined {
+  const flat = text.replace(/\n/g, ' ');
+  const m = /reduction (\$[\d,]+).*?diversion (\$[\d,]+)/i.exec(flat);
+  return m ? { reduced: dollars(m[1]), diverted: dollars(m[2]) } : undefined;
+}
+
+describe('W3-RECEIPT-1: the weekly receipt adds up (the video bug)', () => {
+  it('prints Would have paid $452,147 · Paid $274,949 under Saved by Cribl, last week $177,198', () => {
+    const text = receiptText(TOUR.weeklyReceipt);
+    expect(text).toMatch(/Saved by Cribl, last week\s+\$177,198/);
+    expect(text.replace(/\n/g, ' ')).toContain('Would have paid $452,147 · Paid $274,949');
+    expect(text).not.toContain('$274,948');
+    const t = printedTriple(text, /^Saved by Cribl, last week/);
+    expect(t.whp - t.paid).toBe(t.saved);
+  });
+
+  it('the bell line for the weekly receipt prints the same footed triple (paid $274,949, never $274,948)', () => {
+    const { line } = renderAlert({ event: 'receipt.weekly', receipt: TOUR.weeklyReceipt } as Parameters<typeof renderAlert>[0]);
+    expect(line).toContain('Saved by Cribl $177,198');
+    expect(line).toContain('would have paid $452,147');
+    expect(line).toContain('paid $274,949');
+    expect(line).not.toContain('$274,948');
+    const m = /Saved by Cribl (\$[\d,]+) · would have paid (\$[\d,]+) · paid (\$[\d,]+)/.exec(line);
+    expect(m, line).not.toBeNull();
+    expect(dollars(m![2]) - dollars(m![3])).toBe(dollars(m![1]));
+  });
+
+  it('the split of a receipt with a diversion credit sums to the printed saved', () => {
+    // The week's own figures with a third of the saving credited by diversion (a price-dependent credit).
+    const week: WeeklyReceipt = { ...TOUR.weeklyReceipt, divertedM: Math.round(TOUR.weeklyReceipt.savedM / 3) + 555_555 };
+    const text = receiptText(week);
+    const t = printedTriple(text, /^Saved by Cribl, last week/);
+    const split = printedSplit(text);
+    expect(split, text).toBeDefined();
+    expect(split!.reduced + split!.diverted).toBe(t.saved);
+    expect(t.whp - t.paid).toBe(t.saved);
+  });
+});
+
+describe('W3-RECEIPT-1: the period receipts from the tour snapshot add up', () => {
+  for (const [period, label, total] of [
+    ['today', 'today', /^Saved by Cribl, today/],
+    ['30d', 'last 30 days', /^Saved by Cribl, last 30 days/],
+    ['mtd', 'month to date', /^Saved by Cribl, month to date/],
+  ] as const) {
+    it(`${label}: printed would have paid − printed paid = printed saved`, () => {
+      const text = receiptTextForPeriod(label, SNAP, { period, tz: TZ });
+      const t = printedTriple(text, total);
+      expect(t.whp - t.paid, text).toBe(t.saved);
+      const split = printedSplit(text);
+      if (split) expect(split.reduced + split.diverted, text).toBe(t.saved);
+    });
+  }
+
+  it('month to date agrees with the Report card: $1,503,380 − $958,406 = $544,974, with the split summing to it', () => {
+    const text = receiptTextForPeriod('month to date', SNAP, { period: 'mtd', tz: TZ });
+    const t = printedTriple(text, /^Saved by Cribl, month to date/);
+    expect(t).toEqual({ whp: 1_503_380, paid: 958_406, saved: 544_974 });
+    // The tour's month has a diversion credit, so the split line prints and foots.
+    expect(SNAP.headline.divertedMtdM).toBeGreaterThan(0);
+    const split = printedSplit(text);
+    expect(split, text).toBeDefined();
+    expect(split!.reduced + split!.diverted).toBe(544_974);
+    const shown = footMoney({ whpM: SNAP.headline.whpMtdM, paidM: SNAP.headline.paidMtdM, savedM: SNAP.headline.mtdM });
+    expect(fmtDollars(shown.paidM)).toBe('$958,406');
+  });
+});
+
+describe('W3-RECEIPT-1: the range and comparison receipts from the tour snapshot add up', () => {
+  const s = sampleRollups(SNAP, TZ);
+  const now = s.toMs + 35_000;
+  const since = fromIso(SNAP.collectingSince);
+
+  async function readRange(fromMs: number, toMs: number): Promise<RangeFigures> {
+    const plan = planRangeReads(fromMs, toMs, now);
+    const docs: Record<string, RangeDoc | null> = {};
+    for (const key of plan.keys) docs[key] = plan.granularity === 'minute' ? await s.readMinute(key) : plan.granularity === 'hour' ? await s.readHour(key) : await s.readDay(key);
+    return sumRange(docs, plan.granularity, plan.window.fromMs, plan.window.toMs);
+  }
+
+  it('a custom range (the last 7 days) prints a triple that adds up, and its split sums to its saved', async () => {
+    const r = resolveRange({ kind: 'relative', hours: 7 * 24 }, now, since);
+    const figures = await readRange(r.fromMs, r.toMs);
+    expect(figures.savedM).toBeGreaterThan(0);
+    const text = receiptTextForRange(figures, { tz: TZ, nowMs: now, destinations: SNAP.destinations });
+    const t = printedTriple(text, /^Saved(?: by Cribl)?/);
+    expect(t.whp - t.paid, text).toBe(t.saved);
+    const split = printedSplit(text);
+    if (split) expect(split.reduced + split.diverted, text).toBe(t.saved);
+  });
+
+  it('a comparison (the last 24 hours against the 24 before) prints each window’s triple adding up', async () => {
+    // Two whole-hour windows of the same length, both fully metered: the comparison sums them (basis 'sum').
+    const H = 3_600_000;
+    const end = Math.floor(s.toMs / H) * H - H;
+    const current = await readRange(end - 24 * H, end);
+    const baseline = await readRange(end - 48 * H, end - 24 * H);
+    const cmp = compareRanges(current, baseline);
+    expect(cmp.basis).toBe('sum');
+    const text = receiptTextForComparison(cmp, { tz: TZ, nowMs: now, baselineName: 'Previous period' });
+    const lines = text.split('\n');
+    for (const [name, f] of [
+      ['This range', cmp.current],
+      ['Previous period', cmp.baseline],
+    ] as const) {
+      const i = lines.findIndex((l) => l.startsWith(`${name}: would have paid`));
+      expect(i, text).toBeGreaterThanOrEqual(0);
+      const whp = dollars(/(\$[\d,]+)/.exec(lines[i])![1]);
+      const paid = dollars(/paid (\$[\d,]+)/.exec(lines[i + 1])![1]);
+      const savedLine = lines.find((l) => l.toLowerCase().startsWith(`saved by cribl, ${name.toLowerCase()}`));
+      expect(savedLine, text).toBeDefined();
+      const saved = dollars(/(\$[\d,]+)\s*$/.exec(savedLine!)![1]);
+      expect(saved).toBe(dollars(fmtDollars(f.savedM)));
+      expect(whp - paid, text).toBe(saved);
+    }
+  });
+});

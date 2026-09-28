@@ -1,0 +1,256 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/m/default/version/show?commit=<hash>&diffLineLimit=200"
+  },
+  "status": 200,
+  "capturedAt": "2026-09-27T20:30:00.000Z",
+  "source": "live",
+  "note": "Route-table hunks of two commits on the demo org (read-only GET, 27 Sep 2026). 'revertWorkstations' is f727f09 'demo: revert the pack on mrd_windows_workstations': its only file is the group's route.yml and its one hunk edits mrd_windows_workstations (the entry's '- id:' line sits above the hunk's context; its 'name:' line is inside). 'applyPanPack' is 5943ac6 'Apply Palo Alto Networks pack to mrd_pan_firewall': the group route.yml (top-level keys added, and mrd_pan_firewall's pipeline changed) plus the pack's own route table, here replaced by a SYNTHETIC stand-in (the pack's routes are not republished). Checksums, the other files and the git-show header (it names the API client) are left out.",
+  "revertWorkstations": {
+    "hash": "f727f09d7b6e349277d157a351083220567b78b6",
+    "diffJson": [
+      {
+        "blocks": [
+          {
+            "lines": [
+              {
+                "content": "     name: mrd_windows_workstations",
+                "type": "context",
+                "oldNumber": 17,
+                "newNumber": 17
+              },
+              {
+                "content": "     final: true",
+                "type": "context",
+                "oldNumber": 18,
+                "newNumber": 18
+              },
+              {
+                "content": "     disabled: false",
+                "type": "context",
+                "oldNumber": 19,
+                "newNumber": 19
+              },
+              {
+                "content": "-    pipeline: pack:cribl_splunk_forwarder_windows_xml_events_to_json",
+                "type": "delete",
+                "oldNumber": 20
+              },
+              {
+                "content": "+    pipeline: mrd_passthrough",
+                "type": "insert",
+                "newNumber": 20
+              },
+              {
+                "content": "     description: \"[meter-reader-demo] Windows workstations: Datagen",
+                "type": "context",
+                "oldNumber": 21,
+                "newNumber": 21
+              },
+              {
+                "content": "       mrd_windows_workstations → mrd_passthrough → mrd_siem_prod\"",
+                "type": "context",
+                "oldNumber": 22,
+                "newNumber": 22
+              },
+              {
+                "content": "     enableOutputExpression: false",
+                "type": "context",
+                "oldNumber": 23,
+                "newNumber": 23
+              }
+            ],
+            "oldStartLine": 17,
+            "newStartLine": 17,
+            "header": "@@ -17,7 +17,7 @@ routes:"
+          }
+        ],
+        "deletedLines": 1,
+        "addedLines": 1,
+        "isGitDiff": true,
+        "mode": "100644",
+        "oldName": "groups/default/local/cribl/pipelines/route.yml",
+        "language": "yml",
+        "newName": "groups/default/local/cribl/pipelines/route.yml",
+        "isCombined": false
+      }
+    ]
+  },
+  "applyPanPack": {
+    "hash": "5943ac6",
+    "diffJson": [
+      {
+        "blocks": [
+          {
+            "lines": [
+              {
+                "content": " id: default",
+                "type": "context",
+                "oldNumber": 1,
+                "newNumber": 1
+              },
+              {
+                "content": "+groups: {}",
+                "type": "insert",
+                "newNumber": 2
+              },
+              {
+                "content": "+comments: []",
+                "type": "insert",
+                "newNumber": 3
+              },
+              {
+                "content": " routes:",
+                "type": "context",
+                "oldNumber": 2,
+                "newNumber": 4
+              },
+              {
+                "content": "   - id: mrd_windows_dc",
+                "type": "context",
+                "oldNumber": 3,
+                "newNumber": 5
+              },
+              {
+                "content": "     name: mrd_windows_dc",
+                "type": "context",
+                "oldNumber": 4,
+                "newNumber": 6
+              }
+            ],
+            "oldStartLine": 1,
+            "newStartLine": 1,
+            "header": "@@ -1,4 +1,6 @@"
+          },
+          {
+            "lines": [
+              {
+                "content": "     name: mrd_pan_firewall",
+                "type": "context",
+                "oldNumber": 26,
+                "newNumber": 28
+              },
+              {
+                "content": "     final: true",
+                "type": "context",
+                "oldNumber": 27,
+                "newNumber": 29
+              },
+              {
+                "content": "     disabled: false",
+                "type": "context",
+                "oldNumber": 28,
+                "newNumber": 30
+              },
+              {
+                "content": "-    pipeline: mrd_passthrough",
+                "type": "delete",
+                "oldNumber": 29
+              },
+              {
+                "content": "+    pipeline: pack:cribl-palo-alto-networks",
+                "type": "insert",
+                "newNumber": 31
+              },
+              {
+                "content": "     description: \"[meter-reader-demo] Palo Alto firewalls: Datagen mrd_pan_firewall",
+                "type": "context",
+                "oldNumber": 30,
+                "newNumber": 32
+              },
+              {
+                "content": "       → mrd_passthrough → mrd_siem_prod\"",
+                "type": "context",
+                "oldNumber": 31,
+                "newNumber": 33
+              },
+              {
+                "content": "     enableOutputExpression: false",
+                "type": "context",
+                "oldNumber": 32,
+                "newNumber": 34
+              }
+            ],
+            "oldStartLine": 26,
+            "newStartLine": 28,
+            "header": "@@ -26,7 +28,7 @@ routes:"
+          }
+        ],
+        "deletedLines": 1,
+        "addedLines": 3,
+        "isGitDiff": true,
+        "mode": "100644",
+        "oldName": "groups/default/local/cribl/pipelines/route.yml",
+        "language": "yml",
+        "newName": "groups/default/local/cribl/pipelines/route.yml",
+        "isCombined": false
+      },
+      {
+        "blocks": [
+          {
+            "oldStartLine": 0,
+            "newStartLine": 1,
+            "header": "@@ -0,0 +1,9 @@",
+            "lines": [
+              {
+                "type": "insert",
+                "newNumber": 1,
+                "content": "+id: default"
+              },
+              {
+                "type": "insert",
+                "newNumber": 2,
+                "content": "+routes:"
+              },
+              {
+                "type": "insert",
+                "newNumber": 3,
+                "content": "+  - id: default"
+              },
+              {
+                "type": "insert",
+                "newNumber": 4,
+                "content": "+    name: default"
+              },
+              {
+                "type": "insert",
+                "newNumber": 5,
+                "content": "+    final: true"
+              },
+              {
+                "type": "insert",
+                "newNumber": 6,
+                "content": "+    pipeline: main"
+              },
+              {
+                "type": "insert",
+                "newNumber": 7,
+                "content": "+    filter: \"true\""
+              },
+              {
+                "type": "insert",
+                "newNumber": 8,
+                "content": "+    output: default"
+              },
+              {
+                "type": "insert",
+                "newNumber": 9,
+                "content": "+comments: []"
+              }
+            ]
+          }
+        ],
+        "deletedLines": 0,
+        "addedLines": 9,
+        "isGitDiff": true,
+        "newFileMode": "100644",
+        "isNew": true,
+        "oldName": "/dev/null",
+        "language": "yaml",
+        "newName": "groups/default/default/example-pack/pipelines/route.yml",
+        "isCombined": false
+      }
+    ]
+  }
+}

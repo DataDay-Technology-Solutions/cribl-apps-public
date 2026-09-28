@@ -1,0 +1,134 @@
+/* src/components/MathDrawer/MathDrawer.css — Show the math: formulas in plain text, values in tabular mono. */
+
+.mr-math {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xl');
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.default');
+}
+/* The content is the drawer's keyboard stop (P1-H07): its ring sits clear of the text, inside the body's padding. */
+.mr-math:focus-visible {
+  outline-offset: 6px;
+}
+.mr-math-intro {
+  color: token('color.foreground.subtle');
+}
+
+.mr-math-section {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+}
+.mr-math-title {
+  font: token('typography.heading.xs');
+  color: token('color.foreground.default');
+  padding-bottom: token('spacing.sm');
+  border-bottom: 1px solid var(--mr-border-subtle);
+}
+
+.mr-math-formula {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+}
+.mr-math-formula-text {
+  font: token('typography.body.md.semibold');
+}
+.mr-math-tnum,
+.mr-math-values,
+.mr-math-grid {
+  font-variant-numeric: tabular-nums;
+}
+.mr-math-values {
+  font: token('typography.code');
+  color: token('color.foreground.default');
+  padding: token('spacing.sm') token('spacing.md');
+  background: token('color.background.neutral.subtle');
+  border-radius: token('radius.lg');
+  overflow-wrap: anywhere;
+}
+.mr-math-values strong {
+  font-weight: 600;
+}
+
+.mr-math-body {
+  color: token('color.foreground.subtle');
+}
+
+.mr-math-dests {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+}
+.mr-math-dest {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+}
+.mr-math-dest + .mr-math-dest {
+  padding-top: token('spacing.lg');
+  border-top: 1px solid var(--mr-border-subtle);
+}
+.mr-math-dest-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: token('spacing.sm');
+}
+.mr-math-dest-name {
+  font: token('typography.body.md.semibold');
+}
+.mr-math-dest-type {
+  font: token('typography.body.sm.normal');
+  font-family: token('core.fontFamily.mono');
+  color: token('color.foreground.subtle');
+}
+/* "priced as Splunk Cloud" is words, like the Receipt's own rows; only an output type is an identifier. */
+.mr-math-dest-type[data-basis='preset'] {
+  font-family: token('core.fontFamily.sans');
+}
+
+/* Month to date: the sentence that the rows add up to the hero closes the list, set off like a total. */
+.mr-math-reconcile {
+  padding-top: token('spacing.md');
+  border-top: 1px solid var(--mr-border-subtle);
+  color: token('color.foreground.default');
+}
+
+.mr-math-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: token('spacing.xs') token('spacing.lg');
+  margin: token('spacing.sm') 0 0;
+  padding: token('spacing.sm') token('spacing.md');
+  background: token('color.background.neutral.subtle');
+  border-radius: token('radius.lg');
+  font: token('typography.body.sm.normal');
+}
+.mr-math-grid dt {
+  color: token('color.foreground.subtle');
+}
+.mr-math-grid dd {
+  margin: 0;
+  font-family: token('core.fontFamily.mono');
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .mr-math-grid {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 0;
+  }
+  .mr-math-grid dd + dt {
+    margin-top: token('spacing.sm');
+  }
+}
+
+.mr-math-footer {
+  display: flex;
+  justify-content: flex-end;
+}

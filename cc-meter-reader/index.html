@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Meter Reader</title>
+    <style>
+      /*
+       * First paint only (AGENTS.md "Theming → First paint"). The Cribl shell pushes the real theme by
+       * postMessage after load; until main.tsx applies it (and adds .mr-themed), guess from
+       * prefers-color-scheme, which the host points at the Cribl theme. Tokens can't be read here, so the
+       * hex values are Capra's resolved colours: color.background.application, color.border.neutral.subtle
+       * (the tab bar's hairline), color.background.panel.solid and color.border.neutral.default (the card),
+       * and a neutral block that reads on the card in both themes.
+       *
+       * The splash is the Receipt's loading skeleton (src/views/Receipt/Sections.tsx ReceiptSkeleton) drawn
+       * before any JS (EPIC_AUDIT P1-M02): the tab bar's height, the Page frame (1280 px, centred, 24 px
+       * gutters; 16 px at <= 640 px), the hero card with its label, number block, caption and receipt bar
+       * at the skeleton's own offsets, and the four cards under it — so the first paint, the skeleton and
+       * the ghost are one shape, not three. tests/e2e/first-run.spec.ts holds the number block to the
+       * skeleton's within 8 px at 1440 and 390.
+       */
+      :root {
+        color-scheme: light dark;
+        --mr-splash-bg: #fff;
+        --mr-splash-line: #d9d9e0;
+        --mr-splash-card: #fff;
+        --mr-splash-edge: #cdced6;
+        --mr-splash-block: #f0f0f3;
+      }
+      html:not(.mr-themed),
+      html:not(.mr-themed) body {
+        margin: 0;
+        background: var(--mr-splash-bg);
+      }
+      .mr-splash {
+        box-sizing: border-box;
+      }
+      .mr-splash *,
+      .mr-splash *::before {
+        box-sizing: border-box;
+      }
+      .mr-splash span {
+        display: block;
+        border-radius: 4px;
+        background: var(--mr-splash-block);
+      }
+      .mr-splash-head {
+        height: 37px;
+        border-bottom: 1px solid var(--mr-splash-line);
+      }
+      .mr-splash-page {
+        box-sizing: content-box !important;
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 24px 24px 32px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      /* The hero card, perforated at the bottom like the Receipt's (6 px teeth). */
+      .mr-splash-hero {
+        position: relative;
+        height: 304px;
+        padding: 24px 32px 30px;
+        border-radius: 8px 8px 0 0;
+        background: var(--mr-splash-card);
+      }
+      /* From 1024 px the skeleton's hero holds the other periods beside the number (P1-H01), 16 px taller. */
+      @media (min-width: 1024px) {
+        .mr-splash-hero {
+          height: 320px;
+        }
+      }
+      /* A mask clips box-shadow, so the elevation is a drop-shadow on a frame around the torn card. */
+      .mr-splash-frame {
+        filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.1)) drop-shadow(0 6px 10px rgba(0, 0, 0, 0.05));
+      }
+      .mr-splash-hero::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border: 1px solid var(--mr-splash-edge);
+        border-bottom: 0;
+        border-radius: inherit;
+        -webkit-mask:
+          linear-gradient(#000 0 0) left 0 top 0 / 100% calc(100% - 6px) no-repeat,
+          conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) left 0 bottom 0 / 12px 6px repeat-x;
+        mask:
+          linear-gradient(#000 0 0) left 0 top 0 / 100% calc(100% - 6px) no-repeat,
+          conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) left 0 bottom 0 / 12px 6px repeat-x;
+      }
+      .mr-splash-hero {
+        -webkit-mask:
+          linear-gradient(#000 0 0) left 0 top 0 / 100% calc(100% - 6px) no-repeat,
+          conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) left 0 bottom 0 / 12px 6px repeat-x;
+        mask:
+          linear-gradient(#000 0 0) left 0 top 0 / 100% calc(100% - 6px) no-repeat,
+          conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) left 0 bottom 0 / 12px 6px repeat-x;
+      }
+      .mr-splash-id {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 16px;
+        min-height: 24px;
+      }
+      .mr-splash-id > span:first-child {
+        width: 120px;
+        height: 16px;
+      }
+      .mr-splash-id > span:last-child {
+        width: 280px;
+        max-width: 100%;
+        height: 24px;
+      }
+      .mr-splash .mr-splash-number {
+        width: min(420px, 80%);
+        height: 72px;
+        margin-top: 32px;
+      }
+      .mr-splash .mr-splash-caption {
+        width: 260px;
+        max-width: 100%;
+        height: 14px;
+        margin-top: 8px;
+      }
+      .mr-splash-bar {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-top: 40px;
+      }
+      .mr-splash-bar > span {
+        height: 14px;
+        width: 200px;
+      }
+      .mr-splash-bar > span:nth-child(2) {
+        width: 100%;
+        height: 16px;
+        border-radius: 999px;
+      }
+      .mr-splash-bar > span:nth-child(3) {
+        width: 40%;
+      }
+      .mr-splash-grid {
+        display: grid;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        gap: 16px;
+      }
+      .mr-splash-card {
+        grid-column: span 8;
+        height: 270px;
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        border: 1px solid var(--mr-splash-edge);
+        border-radius: 8px;
+        background: var(--mr-splash-card);
+        box-shadow:
+          0 1px 2px -2px rgba(0, 0, 0, 0.16),
+          0 3px 6px 0 rgba(0, 0, 0, 0.12),
+          0 5px 12px 4px rgba(0, 0, 0, 0.09);
+      }
+      .mr-splash-card:nth-child(even) {
+        grid-column: span 4;
+      }
+      .mr-splash-card > span:first-child {
+        width: 180px;
+        max-width: 100%;
+        height: 16px;
+      }
+      .mr-splash-card > span:nth-child(2) {
+        width: 60%;
+        height: 12px;
+      }
+      .mr-splash-card > span:last-child {
+        flex: 1 1 auto;
+        border-radius: 8px;
+      }
+      @media (max-width: 1024px) {
+        .mr-splash-card {
+          grid-column: span 12;
+        }
+        .mr-splash-card:nth-child(even) {
+          grid-column: span 6;
+        }
+      }
+      @media (max-width: 640px) {
+        .mr-splash-page {
+          padding: 16px 16px 24px;
+        }
+        .mr-splash-hero {
+          padding: 16px 16px 22px;
+        }
+        .mr-splash .mr-splash-number {
+          margin-top: 24px;
+        }
+        .mr-splash-bar {
+          margin-top: 32px;
+        }
+        .mr-splash-card,
+        .mr-splash-card:nth-child(even) {
+          grid-column: span 12;
+          height: 254px;
+          padding: 16px;
+        }
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --mr-splash-bg: #111113;
+          --mr-splash-line: #363a3f;
+          --mr-splash-card: #18191b;
+          --mr-splash-edge: #43484e;
+          --mr-splash-block: #2b2d31;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div class="mr-splash" aria-busy="true" aria-label="Loading Meter Reader">
+        <div class="mr-splash-head"></div>
+        <div class="mr-splash-page">
+          <div class="mr-splash-frame">
+            <div class="mr-splash-hero">
+              <div class="mr-splash-id"><span></span><span></span></div>
+              <span class="mr-splash-number"></span>
+              <span class="mr-splash-caption"></span>
+              <div class="mr-splash-bar"><span></span><span></span><span></span></div>
+            </div>
+          </div>
+          <div class="mr-splash-grid">
+            <div class="mr-splash-card"><span></span><span></span><span></span></div>
+            <div class="mr-splash-card"><span></span><span></span><span></span></div>
+            <div class="mr-splash-card"><span></span><span></span><span></span></div>
+            <div class="mr-splash-card"><span></span><span></span><span></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

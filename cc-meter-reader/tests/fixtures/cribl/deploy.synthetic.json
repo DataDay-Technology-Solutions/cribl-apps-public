@@ -1,0 +1,33 @@
+{
+  "request": {
+    "method": "PATCH",
+    "path": "/products/stream/groups/default/deploy",
+    "body": {
+      "version": "a1f3c9e7b2d4f6a8c0e1a1f3c9e7b2d4f6a8c0e1"
+    }
+  },
+  "status": 200,
+  "capturedAt": null,
+  "source": "synthetic",
+  "note": "SYNTHETIC: openapi.json example GroupDeployResponseExamplesWorkerGroup, group renamed to default.",
+  "body": {
+    "count": 1,
+    "items": [
+      {
+        "id": "default",
+        "name": "default",
+        "cloud": {
+          "provider": "aws",
+          "region": "us-east-1"
+        },
+        "type": "stream",
+        "onPrem": false,
+        "provisioned": true,
+        "configVersion": "a1f3c9e",
+        "workerCount": 1,
+        "incompatibleWorkerCount": 0,
+        "deployingWorkerCount": 1
+      }
+    ]
+  }
+}

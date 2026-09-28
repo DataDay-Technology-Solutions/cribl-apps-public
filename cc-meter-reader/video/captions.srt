@@ -1,0 +1,73 @@
+1
+00:00:04,000 --> 00:00:09,000
+You bought Cribl to save money.
+Can you show it?
+
+2
+00:00:09,000 --> 00:00:14,000
+Every minute, Meter Reader
+reads every flow through Cribl.
+
+3
+00:00:14,000 --> 00:00:19,000
+It prices each one at what
+its destination charges.
+
+4
+00:00:19,000 --> 00:00:23,000
+You would have paid $1,503,380.
+You paid $958,407.
+
+5
+00:00:23,000 --> 00:00:27,000
+Saved by Cribl: $544,974.
+
+6
+00:00:27,000 --> 00:00:33,000
+An admin ships a pipeline change.
+A real commit, a real deploy.
+
+7
+00:00:33,000 --> 00:00:38,000
+Meter Reader never touches config.
+
+8
+00:00:38,000 --> 00:00:43,000
+It watches the savings
+ratio, minute by minute.
+
+9
+00:00:43,000 --> 00:00:47,000
+Savings dropped 25 points
+on this pipeline.
+
+10
+00:00:47,000 --> 00:00:51,000
+Commit 22d0a5e, deployed by Steve Koelpin.
+
+11
+00:00:51,000 --> 00:00:55,000
+$1,250 a day. $456,250 a year.
+Caught in 2:51.
+
+12
+00:00:55,000 --> 00:01:01,000
+It's already in Slack, with a name on it.
+
+13
+00:01:01,000 --> 00:01:05,000
+Restore the change. The savings come back.
+
+14
+00:01:05,000 --> 00:01:09,000
+The incident closes itself.
+
+15
+00:01:09,000 --> 00:01:17,000
+Every Monday, leadership gets the receipt.
+They never open Cribl.
+
+16
+00:01:23,000 --> 00:01:31,000
+Meter Reader by Steve Koelpin.
+Join the Cribl Innovators Network.

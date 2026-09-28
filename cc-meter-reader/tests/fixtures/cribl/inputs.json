@@ -1,0 +1,327 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/m/default/system/inputs"
+  },
+  "status": 200,
+  "capturedAt": "2026-09-26T04:40:00.000Z",
+  "source": "live",
+  "body": {
+    "items": [
+      {
+        "id": "CriblMetrics",
+        "disabled": true,
+        "pipeline": "cribl_metrics_rollup",
+        "type": "criblmetrics",
+        "fullFidelity": false,
+        "status": {
+          "health": "Green",
+          "timestamp": 1790395503698,
+          "metrics": {
+            "buffered": 0,
+            "dropped": 0,
+            "received": 0
+          }
+        }
+      },
+      {
+        "id": "CriblLogs",
+        "type": "cribl",
+        "disabled": true,
+        "filter": "channel.startsWith('input:') || channel.startsWith('output:') || channel.startsWith('SourcePQ:') || channel.startsWith('DestPQ:') || source.includes('audit.log') || source.includes('access.log')",
+        "status": {
+          "health": "Green",
+          "timestamp": 1790395503698,
+          "metrics": {
+            "buffered": 0,
+            "dropped": 0,
+            "received": 0
+          }
+        }
+      },
+      {
+        "id": "http",
+        "criblAPI": "/cribl",
+        "elasticAPI": "/elastic",
+        "host": "0.0.0.0",
+        "port": 10080,
+        "splunkHecAPI": "/services/collector",
+        "tls": {
+          "certPath": "$CRIBL_CLOUD_CRT",
+          "disabled": false,
+          "minVersion": "TLSv1.2",
+          "privKeyPath": "$CRIBL_CLOUD_KEY"
+        },
+        "type": "http",
+        "status": {
+          "health": "Green",
+          "timestamp": 1790395503698,
+          "metrics": {
+            "numInProgress": 0,
+            "numEventProcessors": 0
+          }
+        }
+      },
+      {
+        "id": "in_cribl_http",
+        "activityLogSampleRate": 100,
+        "captureHeaders": false,
+        "disabled": false,
+        "enableProxyHeader": false,
+        "host": "0.0.0.0",
+        "maxActiveReq": 256,
+        "port": 10200,
+        "pqEnabled": false,
+        "requestTimeout": 0,
+        "sendToRoutes": true,
+        "streamtags": [],
+        "tls": {
+          "certPath": "$CRIBL_CLOUD_CRT",
+          "disabled": false,
+          "minVersion": "TLSv1.2",
+          "privKeyPath": "$CRIBL_CLOUD_KEY"
+        },
+        "type": "cribl_http",
+        "status": {
+          "health": "Green",
+          "timestamp": 1790395503698,
+          "metrics": {
+            "numInProgress": 0,
+            "numEventProcessors": 0
+          }
+        }
+      },
+      {
+        "id": "in_cribl_tcp",
+        "disabled": false,
+        "enableProxyHeader": false,
+        "host": "0.0.0.0",
+        "maxActiveCxn": 1000,
+        "port": 10300,
+        "pqEnabled": false,
+        "sendToRoutes": true,
+        "streamtags": [],
+        "tls": {
+          "certPath": "$CRIBL_CLOUD_CRT",
+          "disabled": false,
+          "minVersion": "TLSv1.2",
+          "privKeyPath": "$CRIBL_CLOUD_KEY"
+        },
+        "type": "cribl_tcp",
+        "status": {
+          "health": "Green",
+          "timestamp": 1790395503698,
+          "metrics": {
+            "count": 0,
+            "items": []
+          }
+        }
+      },
+      {
+        "id": "in_elastic",
+        "elasticAPI": "/",
+        "host": "0.0.0.0",
+        "port": 9200,
+        "tls": {
+          "certPath": "$CRIBL_CLOUD_CRT",
+          "disabled": false,
+          "minVersion": "TLSv1.2",
+          "privKeyPath": "$CRIBL_CLOUD_KEY"
+        },
+        "type": "elastic",
+        "status": {
+          "health": "Green",
+          "timestamp": 1790395503698,
+          "metrics": {
+            "numProxyReq": 0,
+            "numProxyErrors": 0,
+            "numInProgress": 0,
+            "numEventProcessors": 0
+          }
+        }
+      },
+      {
+        "id": "in_syslog_default",
+        "disabled": true,
+        "type": "syslog",
+        "tcpPort": 10514,
+        "udpPort": 10514,
+        "host": "0.0.0.0",
+        "status": {
+          "health": "Green",
+          "timestamp": 1790395503698,
+          "metrics": {
+            "items": [],
+            "count": 0
+          }
+        }
+      },
+      {
+        "id": "in_splunk_tcp",
+        "host": "0.0.0.0",
+        "port": 9997,
+        "tls": {
+          "certPath": "$CRIBL_CLOUD_CRT",
+          "disabled": false,
+          "minVersion": "TLSv1.2",
+          "privKeyPath": "$CRIBL_CLOUD_KEY"
+        },
+        "type": "splunk",
+        "maxS2Sversion": "v4",
+        "status": {
+          "health": "Green",
+          "timestamp": 1790395503699,
+          "metrics": {
+            "activeSockets": 0,
+            "received": 0,
+            "activeBreakers": 0,
+            "broken": 0
+          }
+        }
+      },
+      {
+        "id": "in_syslog",
+        "host": "0.0.0.0",
+        "tcpPort": 9514,
+        "type": "syslog",
+        "udpPort": 9514,
+        "status": {
+          "health": "Green",
+          "timestamp": 1790395503699,
+          "metrics": {
+            "items": [],
+            "count": 0
+          }
+        }
+      },
+      {
+        "id": "in_syslog_tls",
+        "host": "0.0.0.0",
+        "tcpPort": 6514,
+        "tls": {
+          "certPath": "$CRIBL_CLOUD_CRT",
+          "disabled": false,
+          "minVersion": "TLSv1.2",
+          "privKeyPath": "$CRIBL_CLOUD_KEY"
+        },
+        "type": "syslog",
+        "status": {
+          "health": "Green",
+          "timestamp": 1790395503699,
+          "metrics": {
+            "items": [],
+            "count": 0
+          }
+        }
+      },
+      {
+        "id": "in_tcp",
+        "host": "0.0.0.0",
+        "port": 10060,
+        "tls": {
+          "certPath": "$CRIBL_CLOUD_CRT",
+          "disabled": false,
+          "minVersion": "TLSv1.2",
+          "privKeyPath": "$CRIBL_CLOUD_KEY"
+        },
+        "type": "tcp",
+        "authType": "manual",
+        "status": {
+          "health": "Green",
+          "timestamp": 1790395503699,
+          "metrics": {
+            "activeSockets": 0,
+            "received": 0,
+            "activeBreakers": 0,
+            "broken": 0
+          }
+        }
+      },
+      {
+        "id": "in_tcp_json",
+        "host": "0.0.0.0",
+        "port": 10070,
+        "tls": {
+          "certPath": "$CRIBL_CLOUD_CRT",
+          "disabled": false,
+          "minVersion": "TLSv1.2",
+          "privKeyPath": "$CRIBL_CLOUD_KEY"
+        },
+        "type": "tcpjson",
+        "authType": "manual",
+        "status": {
+          "health": "Green",
+          "timestamp": 1790395503699,
+          "metrics": {
+            "count": 0,
+            "items": []
+          }
+        }
+      },
+      {
+        "id": "open_telemetry",
+        "activityLogSampleRate": 100,
+        "captureHeaders": false,
+        "disabled": false,
+        "enableProxyHeader": false,
+        "extractMetrics": false,
+        "extractSpans": false,
+        "host": "0.0.0.0",
+        "maxActiveCxn": 1000,
+        "maxActiveReq": 256,
+        "port": 4317,
+        "pqEnabled": false,
+        "requestTimeout": 0,
+        "sendToRoutes": true,
+        "streamtags": [],
+        "tls": {
+          "certPath": "$CRIBL_CLOUD_CRT",
+          "disabled": false,
+          "minVersion": "TLSv1.2",
+          "privKeyPath": "$CRIBL_CLOUD_KEY"
+        },
+        "type": "open_telemetry",
+        "authType": "none",
+        "authMethodsExt": [],
+        "status": {
+          "health": "Green",
+          "timestamp": 1790395503699,
+          "metrics": {
+            "numRequests": 0,
+            "numPushed": 0,
+            "numErrors": 0,
+            "numDropped": 0
+          }
+        }
+      },
+      {
+        "id": "in_splunk_hec",
+        "type": "splunk_hec",
+        "port": 8088,
+        "host": "0.0.0.0",
+        "splunkHecAPI": "/services/collector",
+        "authTokens": [
+          {
+            "token": "00000000-0000-4000-8000-000000000000",
+            "description": "Default token"
+          }
+        ],
+        "tls": {
+          "disabled": false,
+          "privKeyPath": "$CRIBL_CLOUD_KEY",
+          "certPath": "$CRIBL_CLOUD_CRT",
+          "minVersion": "TLSv1.2"
+        },
+        "status": {
+          "health": "Green",
+          "timestamp": 1790395503699,
+          "metrics": {
+            "numInProgress": 0,
+            "numEventProcessors": 0
+          }
+        }
+      }
+    ],
+    "count": 14
+  }
+}

@@ -1,0 +1,151 @@
+{
+  "schemaVersion": 1,
+  "groupId": "default",
+  "note": "Meter Reader demo rig sources and their routes (SPEC 14.2, PRD 9.1). One Datagen Source per data stream, one route per Source at the top of the default route table (filter __inputId=='datagen:<id>', final). targetGbPerDay is the PRD 9.1 design rate; rateFactor is the fraction of it the free-tier Worker sustains (measured, see docs/RIG.md). eventsPerSec = targetGbPerDay x rateFactor x 1e9 / 86400 / bytesPerEvent / workerNodes (Datagen rates are per Worker Node). GB = 1e9 bytes. datagenSampleField names which sample-library field a Datagen's samples[].sample holds (the sample id: the samples.yml key and the data/samples/<id>.json file name).",
+  "gigabyte": 1000000000,
+  "rateFactor": 1,
+  "datagenSampleField": "id",
+  "sources": [
+    {
+      "id": "mrd_windows_dc",
+      "label": "Windows domain controllers",
+      "sampleKey": "windows_security_xml",
+      "targetGbPerDay": 150,
+      "stage": "reduced",
+      "route": {
+        "id": "mrd_windows_dc",
+        "pipeline": "mrd_win_xml_pack",
+        "output": "mrd_siem_prod"
+      },
+      "packPipeline": null,
+      "aggressivePipeline": null,
+      "targetRatio": {
+        "min": 0.3,
+        "max": 0.35
+      },
+      "description": "[meter-reader-demo] Windows Security XML events from domain controllers (Datagen). Runs through the Windows XML pack all week."
+    },
+    {
+      "id": "mrd_windows_workstations",
+      "label": "Windows workstations",
+      "sampleKey": "windows_security_xml",
+      "targetGbPerDay": 80,
+      "stage": "raw",
+      "route": {
+        "id": "mrd_windows_workstations",
+        "pipeline": "mrd_passthrough",
+        "output": "mrd_siem_prod"
+      },
+      "packPipeline": "mrd_win_xml_pack",
+      "aggressivePipeline": "mrd_win_docs_reduce",
+      "targetRatio": {
+        "min": 0.0,
+        "max": 0.0
+      },
+      "packTargetRatio": {
+        "min": 0.3,
+        "max": 0.35
+      },
+      "aggressiveTargetRatio": {
+        "min": 0.6,
+        "max": 0.75
+      },
+      "description": "[meter-reader-demo] Windows Security XML events from workstations (Datagen). Raw until \"Apply the pack\" (Windows XML pack; \"Go aggressive\" = Docs reduction)."
+    },
+    {
+      "id": "mrd_pan_firewall",
+      "label": "Palo Alto firewalls",
+      "sampleKey": "pan_traffic",
+      "targetGbPerDay": 60,
+      "stage": "raw",
+      "route": {
+        "id": "mrd_pan_firewall",
+        "pipeline": "mrd_passthrough",
+        "output": "mrd_siem_prod"
+      },
+      "packPipeline": "mrd_pan_pack",
+      "aggressivePipeline": null,
+      "preProcessingOnApply": null,
+      "targetRatio": {
+        "min": 0.0,
+        "max": 0.0
+      },
+      "packTargetRatio": {
+        "min": 0.35,
+        "max": 0.5
+      },
+      "description": "[meter-reader-demo] Palo Alto PAN-OS TRAFFIC syslog (Datagen). Raw until \"Apply the pack\" (syslog pre-processing + Palo Alto Networks pack, both inside mrd_pan_pack)."
+    },
+    {
+      "id": "mrd_vpc_flow",
+      "label": "AWS VPC Flow Logs",
+      "sampleKey": "vpc_flow_v2",
+      "targetGbPerDay": 60,
+      "stage": "raw",
+      "route": {
+        "id": "mrd_vpc_flow",
+        "pipeline": "mrd_passthrough",
+        "output": "mrd_archive_s3"
+      },
+      "packPipeline": "mrd_vpc_pack",
+      "aggressivePipeline": null,
+      "targetRatio": {
+        "min": 0.0,
+        "max": 0.0
+      },
+      "packTargetRatio": {
+        "min": 0.6,
+        "max": 1
+      },
+      "description": "[meter-reader-demo] AWS VPC Flow Logs v2 (Datagen). Raw until \"Apply the pack\" (one-minute aggregation)."
+    },
+    {
+      "id": "mrd_payments_api",
+      "label": "Payments API",
+      "sampleKey": "api_access",
+      "targetGbPerDay": 40,
+      "stage": "reduced",
+      "route": {
+        "id": "mrd_payments_api",
+        "pipeline": "mrd_pay_sample",
+        "output": "mrd_siem_apps"
+      },
+      "packPipeline": null,
+      "aggressivePipeline": null,
+      "trimPipeline": "mrd_pay_sample",
+      "targetRatio": {
+        "min": 0.7,
+        "max": 0.8
+      },
+      "trimBrokenRatio": {
+        "min": 0.45,
+        "max": 0.55
+      },
+      "description": "[meter-reader-demo] Payments API JSON access logs (Datagen). Sampled 1:2 and trimmed; the break-the-trim target."
+    },
+    {
+      "id": "mrd_k8s_prod",
+      "label": "Kubernetes (prod)",
+      "sampleKey": "k8s_container",
+      "targetGbPerDay": 60,
+      "stage": "reduced",
+      "route": {
+        "id": "mrd_k8s_prod",
+        "pipeline": "mrd_k8s_noise",
+        "output": "mrd_analytics"
+      },
+      "packPipeline": null,
+      "aggressivePipeline": null,
+      "trimPipeline": "mrd_k8s_noise",
+      "targetRatio": {
+        "min": 0.65,
+        "max": 0.75
+      },
+      "description": "[meter-reader-demo] Kubernetes container logs (Datagen). Debug dropped, pod labels trimmed."
+    }
+  ],
+  "verifyTolerance": {
+    "reduced": 0.1,
+    "raw": 0.03
+  }
+}

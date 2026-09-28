@@ -1,0 +1,7 @@
+/*
+ * src/styles/index.css — the app's global stylesheet, imported once from main.tsx AFTER the Capra CSS.
+ * Component styles live next to their components; view styles next to their views.
+ */
+@import './palette.css';
+@import './base.css';
+@import './utilities.css';

@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "note": "Meter Reader demo rig destinations. All are DevNull (nothing leaves the org); the names and the app's price presets make them read like real ones. Simulated destinations are labelled as such in the README and the demo Settings panel (PRD 9).",
+  "destinations": [
+    {
+      "id": "mrd_siem_prod",
+      "pricePreset": "splunk_cloud",
+      "label": "SIEM (prod)",
+      "output": {
+        "id": "mrd_siem_prod",
+        "type": "devnull",
+        "description": "[meter-reader-demo] Simulated SIEM destination (DevNull). Priced with the splunk_cloud preset in Meter Reader.",
+        "streamtags": [
+          "meter-reader-demo"
+        ]
+      }
+    },
+    {
+      "id": "mrd_siem_apps",
+      "pricePreset": "splunk_cloud",
+      "label": "SIEM (apps)",
+      "output": {
+        "id": "mrd_siem_apps",
+        "type": "devnull",
+        "description": "[meter-reader-demo] Simulated SIEM destination for application logs (DevNull). Priced with the splunk_cloud preset in Meter Reader. Owns the Payments API flow so the break-the-trim regression is measured from an exact destination counter (DECISIONS D21).",
+        "streamtags": [
+          "meter-reader-demo"
+        ]
+      }
+    },
+    {
+      "id": "mrd_analytics",
+      "pricePreset": "datadog",
+      "label": "Analytics",
+      "output": {
+        "id": "mrd_analytics",
+        "type": "devnull",
+        "description": "[meter-reader-demo] Simulated observability/analytics destination (DevNull). Priced with the datadog preset in Meter Reader.",
+        "streamtags": [
+          "meter-reader-demo"
+        ]
+      }
+    },
+    {
+      "id": "mrd_archive_s3",
+      "pricePreset": "s3",
+      "label": "Archive (S3)",
+      "output": {
+        "id": "mrd_archive_s3",
+        "type": "devnull",
+        "description": "[meter-reader-demo] Simulated S3 archive destination (DevNull). Priced with the s3 preset in Meter Reader.",
+        "streamtags": [
+          "meter-reader-demo"
+        ]
+      }
+    }
+  ]
+}

@@ -1,6 +1,22 @@
 # cribl-apps-public
 
-Public distribution of DataDay Technology Solutions Cribl packs — early-access releases for the Cribl community before packs are live on the Cribl Packs Dispensary.
+Public distribution of DataDay Technology Solutions Cribl packs and Apps — early-access releases for the Cribl community before they are live on the Cribl Packs Dispensary or the Cribl Marketplace.
+
+## Apps in this repo
+
+### Meter Reader (`cc-meter-reader`)
+
+A free, open-source Cribl App built by Steve Koelpin. It turns Cribl's throughput into a receipt: it prices every flow at what its destination charges, works out what Cribl cut, sampled or diverted before the meter ran, and shows one number, **Saved by Cribl**, by source, route, pipeline and destination, drawn against the commit timeline. When a change erodes the savings, the alert names the commit and the person and arrives through Cribl's own notification bell and the notification targets an administrator already set up (Slack, PagerDuty, email, webhook). A Report Card for leadership downloads as PDF, HTML or CSV. It never changes pipeline, route, source or destination configuration.
+
+**What one Cribl pack saves: $1.6M\* a year, projected**, for the Palo Alto Networks pack at 10 TB/day of firewall logs: 10,000 GB/day × $1.50/GB\* × 30% × 365 = $1,642,500\*. 30% is the top of the 15–30% Cribl publishes for this pack and the default in Cribl's ROI calculator; $1.50/GB\* ≈ Splunk Cloud's 5–10 TB/day list ($2.10\*) after an assumed volume discount. When a pipeline change broke a trim, the alert arrived in 1:27 to 2:13 across nine live runs, and the incident closed itself after the fix deployed ([`docs/LIVE_VALIDATION.md`](cc-meter-reader/docs/LIVE_VALIDATION.md)).
+
+\* For demonstration purposes only. Does not reflect actual prices.
+
+**Status:** v1.1.0, the first public release. **Latest release:** [meter-reader-v1.1.0](../../releases/tag/meter-reader-v1.1.0)
+
+**Install:** download `meter-reader-1.1.0.tgz` from the [meter-reader-v1.1.0 release](../../releases/tag/meter-reader-v1.1.0), then in Cribl open **Apps → Add App → Import from File**. The release declares no external host and no backend, so it installs on every Cribl.Cloud plan, Standard included. This is an App, not a pack: it is not imported under Processing → Packs.
+
+Full documentation: [`cc-meter-reader/README.md`](cc-meter-reader/README.md). Questions and ideas: an issue on this repo.
 
 ## Packs in this repo
 
@@ -65,14 +81,14 @@ On a single-instance deployment, omit `-g <worker-group>`.
 
 Next steps (the audit → evaluate → activate workflow, pack variables, and the whitelist advisor) are in the [pack README](cc-cardinality-reduction/README.md).
 
-## Compatibility
+## Compatibility (Cardinality Reduction Pack)
 
 - Self-managed Cribl Stream or Cribl Edge 4.0+, or hybrid worker groups where Code functions are allowed
 - Not for Cribl.Cloud-managed worker groups: the engine runs in Cribl Code functions, which are restricted there
 
 ## License
 
-Apache License 2.0. See [`cc-cardinality-reduction/LICENSE`](cc-cardinality-reduction/LICENSE).
+Apache License 2.0. See each folder's own license: [`cc-cardinality-reduction/LICENSE`](cc-cardinality-reduction/LICENSE), [`cribl-datatap/LICENSE`](cribl-datatap/LICENSE), [`cc-meter-reader/LICENSE`](cc-meter-reader/LICENSE).
 
 ## Author
 

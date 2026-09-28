@@ -1,0 +1,23 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/m/default/version?count=20"
+  },
+  "status": 200,
+  "capturedAt": "2026-09-26T04:40:00.000Z",
+  "source": "live",
+  "body": {
+    "items": [
+      {
+        "hash": "bbef631b46bd226130b80c43223a25645e919852",
+        "date": "2026-09-24 00:09:51 +0000",
+        "message": "create group default",
+        "refs": "",
+        "body": "",
+        "author_name": "Cribl System",
+        "author_email": "cribl@leader-host.example-org"
+      }
+    ],
+    "count": 1
+  }
+}

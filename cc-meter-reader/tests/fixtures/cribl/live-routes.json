@@ -1,0 +1,22 @@
+{
+  "items": [
+    {
+      "id": "default",
+      "routes": [
+        {
+          "id": "default",
+          "name": "default",
+          "final": true,
+          "disabled": false,
+          "pipeline": "main",
+          "description": "",
+          "enableOutputExpression": false,
+          "filter": "true",
+          "clones": [],
+          "output": "default"
+        }
+      ]
+    }
+  ],
+  "count": 1
+}

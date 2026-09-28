@@ -1,0 +1,779 @@
+/*
+ * src/components/WhatIf/WhatIf.css — the What-if calculator (DESIGN_BRIEF 5.9). Tokens only; the money
+ * palette rules hold (saved = the one green; a projection is dashed, never a new hue). No text under 12 px
+ * anywhere in the panel (P1-J02).
+ */
+
+/* An ordinary card (F8): dashed is reserved for the projection itself (the ribbon, the receipt card). It is
+   revealed, not popped (P1-J04): 200 ms of opacity and a 6 px rise when it opens over the map. The global
+   reduced-motion rule shortens this to nothing. */
+.mr-whatif {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+  padding: token('spacing.xl');
+  background: var(--mr-surface-panel);
+  border: token('border.default');
+  border-radius: token('radius.xl');
+  box-shadow: token('shadow.low.down');
+  min-width: 0;
+  animation: mr-whatif-enter 200ms var(--mr-easing) both;
+}
+@keyframes mr-whatif-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (max-width: 640px) {
+  .mr-whatif {
+    padding: token('spacing.lg');
+  }
+}
+
+/* ── Controls ─────────────────────────────────────────────────────────────── */
+/* The results grid (2fr / 1fr, gap xl) repeated, so the fields share the strip's and the hero's edges (F25);
+   the free column holds the drop slider or the dry run (P1-J02). */
+.mr-whatif-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  grid-template-areas:
+    'main side'
+    'tiles tiles';
+  gap: token('spacing.lg') token('spacing.xl');
+  align-items: end;
+}
+.mr-whatif-controls-main {
+  grid-area: main;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: token('spacing.lg');
+  /* top: a caption under one select (P1-F13) never pushes the other one down */
+  align-items: start;
+  min-width: 0;
+}
+/* One column: the treatment's help stays under its field, then the side control, then its outcome (a
+   column of flex items, so a control that is not there leaves no gap). */
+@media (max-width: 1024px) {
+  .mr-whatif-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .mr-whatif-controls-main {
+    order: 0;
+  }
+  .mr-whatif-help,
+  .mr-whatif-tiles {
+    order: 1;
+  }
+  .mr-whatif-field--drop,
+  .mr-whatif-field--dryrun {
+    order: 2;
+  }
+  .mr-whatif-dryrun-note {
+    order: 3;
+  }
+}
+@media (max-width: 640px) {
+  .mr-whatif-controls-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.mr-whatif-field {
+  min-width: 0;
+}
+/* A field label that is not a Capra field's own (the dry run's): the same type as "Stream" and "Treatment". */
+.mr-whatif-field-label {
+  display: block;
+  margin-bottom: token('spacing.sm');
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+.mr-whatif-help {
+  grid-area: help;
+  margin-top: calc(-1 * token('spacing.sm'));
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+
+/* The dry run: its field sits in the free column; its outcome notice runs the full width of the row below. */
+.mr-whatif-dryrun {
+  display: contents;
+}
+.mr-whatif-field--dryrun {
+  grid-area: side;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.mr-whatif-field--dryrun .mr-whatif-field-label {
+  margin-bottom: token('spacing.sm');
+}
+.mr-whatif-dryrun-note {
+  /* Its own row under the help, only when there is an outcome to say (no empty row, no stray gap). */
+  grid-column: 1 / -1;
+  padding: 0 token('spacing.lg');
+  border-radius: token('radius.xl');
+  background: token('color.background.neutral.subtle');
+  font: token('typography.body.sm.normal');
+}
+
+/* The custom drop (P1-J02): Capra has no Slider, so it is drawn from its track and indicator tokens — a 4 px
+   track filled to the value, a 16 px round thumb — the same in every browser. The native range input lies on
+   top, transparent, for keyboard, pointer and screen readers; its own (invisible) thumb is 16 px too, so a
+   click lands where the drawn thumb goes. --mr-range-fill is the value as a fraction of the scale. */
+.mr-whatif-field--drop {
+  grid-area: side;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+}
+.mr-whatif-drop-label {
+  margin-bottom: token('spacing.xs');
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+  font-variant-numeric: tabular-nums;
+}
+.mr-whatif-range {
+  --mr-range-thumb: 16px;
+  position: relative;
+  height: 20px;
+}
+.mr-whatif-range-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 8px;
+  height: 4px;
+  border-radius: token('radius.full');
+  background: token('color.background.neutral.track');
+  overflow: hidden;
+  pointer-events: none;
+}
+.mr-whatif-range-indicator {
+  display: block;
+  height: 100%;
+  width: calc(var(--mr-range-thumb) / 2 + (100% - var(--mr-range-thumb)) * var(--mr-range-fill, 0));
+  background: token('color.background.accent.solid.default');
+}
+.mr-whatif-range-thumb {
+  position: absolute;
+  top: 2px;
+  left: calc((100% - var(--mr-range-thumb)) * var(--mr-range-fill, 0));
+  width: var(--mr-range-thumb);
+  height: var(--mr-range-thumb);
+  box-sizing: border-box;
+  border: 2px solid var(--mr-surface-panel);
+  border-radius: token('radius.full');
+  background: token('color.background.accent.solid.default');
+  box-shadow: token('shadow.low.down');
+  pointer-events: none;
+  transition: box-shadow var(--mr-duration-fast) var(--mr-easing);
+}
+.mr-whatif-range-input {
+  -webkit-appearance: none;
+  appearance: none;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.mr-whatif-range-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+}
+.mr-whatif-range-input::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 0;
+}
+.mr-whatif-range-input:hover ~ .mr-whatif-range-thumb {
+  box-shadow: token('shadow.medium.down');
+}
+.mr-whatif-range-input:focus-visible ~ .mr-whatif-range-thumb {
+  outline: token('border.focus');
+  outline-offset: 2px;
+}
+.mr-whatif-range-ends {
+  display: flex;
+  justify-content: space-between;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Results ──────────────────────────────────────────────────────────────── */
+.mr-whatif-results {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: token('spacing.xl');
+  align-items: stretch;
+}
+@media (max-width: 1024px) {
+  .mr-whatif-results {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.mr-whatif-compare-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  min-width: 0;
+}
+.mr-whatif-subhead {
+  font: token('typography.heading.xs');
+  color: token('color.foreground.subtle');
+  margin-block: 1em; /* an h3's default: it became an h2 for the heading order (P1-A09), same look */
+}
+/*
+ * The before → after strip (P1-J01): every cell is stacked on the same three lines — before, → after, the
+ * change — and every row of cells is as tall as the tallest (grid-auto-rows 1fr), in the four-across row
+ * and in the phone's two-by-two alike. A figure breaks only after a range's dash (figures.ts), never inside
+ * "24.0 GB", so nothing is clipped at 390 px.
+ */
+.mr-whatif-compare {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
+  gap: 0;
+  margin: 0;
+  border: token('border.default');
+  border-radius: token('radius.xl');
+  overflow: hidden;
+}
+@media (max-width: 760px) {
+  .mr-whatif-compare {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.mr-whatif-cell {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  padding: token('spacing.lg');
+  min-width: 0;
+  border-right: 1px solid var(--mr-border-subtle);
+}
+.mr-whatif-cell:last-child {
+  border-right: 0;
+}
+@media (max-width: 760px) {
+  .mr-whatif-cell:nth-child(2n) {
+    border-right: 0;
+  }
+  .mr-whatif-cell:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--mr-border-subtle);
+  }
+}
+.mr-whatif-cell > dd {
+  margin: 0;
+  min-width: 0;
+}
+.mr-whatif-cell-label {
+  margin-bottom: token('spacing.xs');
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-whatif-cell-before {
+  font: token('typography.body.md.normal');
+  line-height: 20px;
+  color: token('color.foreground.subtle');
+}
+.mr-whatif-cell-after {
+  font: token('typography.metric.sm');
+  line-height: 22px;
+  color: token('color.foreground.default');
+}
+.mr-whatif-arrow {
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-whatif-unit {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  white-space: nowrap;
+}
+/* Nothing saved today: the new figure stands alone under a quiet tag instead of "$0 →". */
+.mr-whatif-new {
+  display: inline-block;
+  padding: 0 token('spacing.md');
+  border-radius: token('radius.full');
+  background: var(--mr-fill-saved-subtle);
+  border: 1px solid token('color.border.success.subtle');
+  font: token('typography.body.sm.semibold');
+  line-height: 18px;
+  color: var(--mr-color-saved);
+}
+.mr-whatif-delta {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+}
+.mr-whatif-delta .mr-whatif-unit {
+  font: token('typography.body.sm.semibold');
+  color: inherit;
+}
+.mr-whatif-delta--saved {
+  color: var(--mr-color-saved);
+}
+.mr-whatif-delta--loss {
+  color: var(--mr-color-incident-medium);
+}
+
+.mr-whatif-basis {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: token('spacing.sm');
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+/* 12 px (P1-J02): the smallest type in the panel. */
+.mr-whatif-basis-tag {
+  flex: 0 0 auto;
+  padding: 0 token('spacing.md');
+  border-radius: token('radius.full');
+  background: token('color.background.neutral.subtle');
+  border: 1px solid var(--mr-border-subtle);
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+  line-height: 20px;
+}
+
+/* P2-W08: the Receipt hero it would produce is the Receipt's own hero card (Receipt.css .mr-hero: perforated
+   edge, label, display figure, receipt bar) marked PROJECTION, fitted to the results' free column. */
+.mr-whatif-heroframe {
+  align-self: stretch;
+}
+.mr-whatif .mr-hero--whatif {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'id'
+    'number'
+    'caption'
+    'bar';
+  padding: token('spacing.lg') token('spacing.xl') calc(token('spacing.lg') + var(--mr-perf));
+  height: 100%;
+  align-content: start;
+}
+.mr-whatif .mr-hero--whatif .mr-hero-number {
+  margin-top: token('spacing.md');
+}
+.mr-whatif .mr-hero--whatif .mr-hero-bar {
+  margin-top: token('spacing.lg');
+}
+/* The hero's caption at the Receipt's size, one phrase per line (P1-J04). */
+.mr-whatif .mr-hero--whatif .mr-whatif-hero-caption {
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.default');
+}
+/* The projection pill: the Flow map's dashed chip (flow.projectionChip), the same words in the same sentence case,
+   so the marker reads one way on the whole page (review W2: an uppercase pill beside a sentence-case chip). */
+.mr-whatif-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 token('spacing.md');
+  border: 1px dashed token('color.border.neutral.strong');
+  border-radius: token('radius.full');
+  font: token('typography.body.sm.semibold');
+  line-height: 22px;
+  color: token('color.foreground.default');
+}
+
+/* The applied state's live hero (Applied.tsx) — the calm secondary size (metric.lg), not the display. */
+.mr-whatif-hero {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: token('spacing.xs');
+  padding: token('spacing.lg') token('spacing.xl');
+  border-radius: token('radius.xl');
+  background: var(--mr-fill-saved-subtle);
+  border: 1px solid token('color.border.success.subtle');
+  min-width: 0;
+}
+.mr-whatif-hero-label {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+}
+.mr-whatif-hero-value {
+  font: token('typography.metric.lg');
+  letter-spacing: -0.02em;
+  color: var(--mr-color-saved);
+}
+/* One phrase per line (P1-J04): "annualized, +$24,109" / "from $95,615 today" never run together. */
+.mr-whatif-hero-caption {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.default');
+  font-variant-numeric: tabular-nums;
+}
+.mr-whatif-hero-from {
+  color: token('color.foreground.subtle');
+}
+
+.mr-whatif-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: token('spacing.md') token('spacing.lg');
+}
+.mr-whatif-note {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-whatif-empty {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  padding: token('spacing.lg');
+  border-radius: token('radius.xl');
+  background: token('color.background.neutral.subtle');
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.default');
+}
+.mr-whatif-empty-title {
+  font: token('typography.heading.xs');
+}
+/* P1-F13: a pack that does not fit the source offers the one that does, or a custom drop. */
+.mr-whatif-notfit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: token('spacing.sm');
+  margin-top: token('spacing.xs');
+}
+
+/* ── Show the math ────────────────────────────────────────────────────────── */
+/* One rule above it and the Receipt's tertiary "Show the math" button (P1-J02) — never a box inside the card. */
+.mr-whatif-mathbox {
+  border-top: 1px solid var(--mr-border-subtle);
+  padding-top: token('spacing.md');
+}
+.mr-whatif-mathpanel {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  padding-top: token('spacing.md');
+  max-width: 760px;
+}
+.mr-whatif-mathpanel[hidden] {
+  display: none;
+}
+/* Receipt lines (DESIGN_BRIEF 1): label ····· value in the mono face, the formula under it, at every width. */
+.mr-whatif-math {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  margin: 0;
+  font: token('typography.code');
+}
+.mr-whatif-math-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.5ch;
+  min-width: 0;
+  color: token('color.foreground.default');
+}
+.mr-whatif-math-line::before {
+  content: '';
+  order: 1;
+  flex: 1 1 2ch;
+  min-width: 2ch;
+  align-self: baseline;
+  height: 0.8em;
+  background-image: radial-gradient(circle, token('color.foreground.subtle') 0.9px, transparent 1.1px);
+  background-size: 0.5em 0.5em;
+  background-repeat: repeat-x;
+  background-position: left bottom;
+  opacity: 0.55;
+}
+.mr-whatif-math-label {
+  order: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.mr-whatif-math-value {
+  order: 2;
+  flex: 0 0 auto;
+  margin: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: token('spacing.sm');
+  white-space: nowrap;
+}
+.mr-whatif-math-unit {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-whatif-math-formula {
+  order: 3;
+  flex: 1 0 100%;
+  margin: 2px 0 0;
+  font: token('typography.body.sm.normal');
+  font-variant-numeric: tabular-nums;
+  color: token('color.foreground.subtle');
+  overflow-wrap: anywhere;
+}
+.mr-whatif-math-line--saved .mr-whatif-math-label,
+.mr-whatif-math-line--saved .mr-num {
+  color: var(--mr-color-saved);
+  font-weight: 600;
+}
+
+/* ── Applied: projected against measured (P1-J03) ─────────────────────────── */
+.mr-whatif-applied {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: token('spacing.xl');
+  align-items: stretch;
+}
+@media (max-width: 1024px) {
+  .mr-whatif-applied {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.mr-whatif-applied-main {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  min-width: 0;
+}
+.mr-whatif-applied-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: token('spacing.sm') token('spacing.lg');
+}
+.mr-whatif-applied-clock {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+}
+/* "Projected 33%, measured 34% after 3 min": the two ratios in the metric size, the words around them calm. */
+.mr-whatif-actual {
+  margin: 0;
+  font: token('typography.body.lg.normal');
+  color: token('color.foreground.subtle');
+  text-wrap: balance;
+}
+.mr-whatif-actual[data-state='waiting'] {
+  padding: token('spacing.md') token('spacing.lg');
+  border-radius: token('radius.xl');
+  background: token('color.background.neutral.subtle');
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+.mr-whatif-keep {
+  white-space: nowrap;
+}
+.mr-whatif-actual-fig {
+  font: token('typography.metric.lg');
+  letter-spacing: -0.02em;
+  color: token('color.foreground.default');
+}
+.mr-whatif-actual-fig--saved {
+  color: var(--mr-color-saved);
+}
+.mr-whatif-applied-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: token('border.default');
+  border-radius: token('radius.xl');
+  overflow: hidden;
+  font: token('typography.body.md.normal');
+  font-variant-numeric: tabular-nums;
+  table-layout: fixed;
+}
+.mr-whatif-applied-table th,
+.mr-whatif-applied-table td {
+  padding: token('spacing.md') token('spacing.lg');
+  text-align: right;
+  vertical-align: baseline;
+  border-bottom: 1px solid var(--mr-border-subtle);
+}
+.mr-whatif-applied-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+.mr-whatif-applied-table thead th {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+}
+.mr-whatif-applied-table tbody th {
+  text-align: left;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-whatif-applied-table tbody td {
+  color: token('color.foreground.default');
+}
+/* The Measured column is the answer: set apart by a tint and the metric type, green once it reads. */
+.mr-whatif-applied-table .is-measured {
+  background: token('color.background.neutral.subtle');
+}
+.mr-whatif-applied-table tbody td.is-measured {
+  font: token('typography.metric.sm');
+}
+.mr-whatif-applied-table tbody td.is-measured[data-tone='saved'] {
+  color: var(--mr-color-saved);
+}
+.mr-whatif-applied-waiting {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-whatif-applied-none {
+  color: token('color.foreground.subtle');
+}
+@media (max-width: 640px) {
+  .mr-whatif-applied-table th,
+  .mr-whatif-applied-table td {
+    padding: token('spacing.sm') token('spacing.md');
+  }
+  .mr-whatif-applied-table tbody td {
+    font: token('typography.body.sm.normal');
+  }
+  .mr-whatif-applied-table tbody td.is-measured {
+    font: token('typography.body.sm.semibold');
+  }
+  .mr-whatif-applied-table thead td {
+    width: 30%;
+  }
+  .mr-whatif-actual-fig {
+    font: token('typography.metric.md');
+  }
+}
+
+/* ── Loading ──────────────────────────────────────────────────────────────── */
+.mr-whatif--skeleton {
+  animation: none;
+}
+.mr-whatif-skel-field {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+}
+.mr-whatif-hero--skeleton {
+  min-height: 220px;
+}
+
+/* ── P2-W23: the treatment tiles ─────────────────────────────────────────────
+   Capra RadioTiles in one row on a desktop (five), three on a laptop, one column on a phone. Each tile: the pack,
+   its documented range in the money green, one line of what it does, and whether it runs here / fits. */
+.mr-whatif-tiles {
+  grid-area: tiles;
+  min-width: 0;
+}
+.mr-whatif-tiles > fieldset {
+  display: block;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.mr-whatif-tiles-legend {
+  display: block;
+  margin-bottom: token('spacing.sm');
+  padding: 0;
+}
+.mr-whatif-tiles-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: token('spacing.md');
+  align-items: stretch;
+}
+.mr-whatif-tiles-grid > * {
+  min-width: 0;
+  height: 100%;
+}
+@media (max-width: 1280px) {
+  .mr-whatif-tiles-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .mr-whatif-tiles-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: token('spacing.sm');
+  }
+}
+.mr-whatif-tile-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.mr-whatif-tile-range {
+  font: token('typography.body.sm.semibold');
+  color: var(--mr-color-saved);
+}
+.mr-whatif-tile-desc {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  text-wrap: pretty;
+}
+.mr-whatif-tile-foot {
+  margin-top: token('spacing.xs');
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.default');
+}
+.mr-whatif-tile-foot--why {
+  color: token('color.foreground.subtle');
+  font-style: italic;
+}
+/* A disabled tile's range is not a saving on offer: no green. */
+[data-applicable='false'] .mr-whatif-tile-range,
+.mr-whatif-tiles-grid > :has([data-applicable='false']) .mr-whatif-tile-range {
+  color: token('color.foreground.subtle');
+}
+
+/* ── P2-W23: the biggest unclaimed savings ───────────────────────────────────
+   A short receipt above the calculator: the title and caption, then up to five lines with dot leaders (the
+   Receipt's .mr-rlist), each loading the calculator on its stream and pack. */
+.mr-whatif-unclaimed {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: token('spacing.sm') token('spacing.xl');
+  padding-bottom: token('spacing.lg');
+  border-bottom: 1px solid var(--mr-border-subtle);
+}
+.mr-whatif-unclaimed-head {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+}
+.mr-whatif-unclaimed-list .mr-rlist-line {
+  padding: token('spacing.xs') token('spacing.sm');
+  margin: 0 calc(-1 * token('spacing.sm'));
+}
+.mr-whatif-unclaimed-list .mr-rlist-line[aria-current='true'] {
+  background: var(--mr-fill-saved-subtle);
+}
+@media (max-width: 1024px) {
+  .mr-whatif-unclaimed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* On a phone a line never cuts "Windows XML pack on W…": the words wrap inside their box and the dot leader runs
+   from the last word into the figure, like a receipt's wrapped item (the Receipt's own lines, P1-H02). */
+
+/* P2-W26: the group's samples under the 'no sample of its own' notice. */
+.mr-whatif-samplepick {
+  max-width: 420px;
+  padding: 0 0 token('spacing.md');
+}

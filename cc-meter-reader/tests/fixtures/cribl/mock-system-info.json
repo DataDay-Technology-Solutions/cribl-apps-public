@@ -1,0 +1,58 @@
+{
+  "items": [
+    {
+      "BUILD": {
+        "VERSION": "4.20.1-590ec085",
+        "BRANCH": "master",
+        "COMMIT": "590ec085"
+      },
+      "version": "4.20.1",
+      "distMode": "master",
+      "apiPort": 9000,
+      "hostname": "leader.example",
+      "guid": "00000000-0000-4000-8000-00000000c1b1",
+      "os": {
+        "arch": "x64",
+        "endianness": "LE",
+        "platform": "linux",
+        "release": "6.1.0",
+        "type": "Linux"
+      },
+      "cpus": [],
+      "loadavg": [
+        0.1,
+        0.2,
+        0.2
+      ],
+      "memory": {
+        "free": 4294967296,
+        "total": 8589934592
+      },
+      "uptime": 86400,
+      "license": {
+        "type": "standard",
+        "isRegistered": true
+      },
+      "conf": {
+        "confVersion": "master",
+        "name": "main"
+      },
+      "systemConf": {
+        "installType": "cloud",
+        "restart": "api",
+        "upgrade": "api"
+      },
+      "messages": [],
+      "limits": {
+        "samples": {
+          "maxSize": "10MB"
+        }
+      },
+      "workerProcesses": 2,
+      "_mock": "Cribl.Cloud 4.20.1 Leader (values from SPIKE.md; hostname and guid are placeholders)"
+    }
+  ],
+  "count": 1,
+  "offset": 0,
+  "limit": 20
+}

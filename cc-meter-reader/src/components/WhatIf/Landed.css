@@ -1,0 +1,28 @@
+/*
+ * src/components/WhatIf/Landed.css — the good-news takeover's own touches (P2-W06, LandedCard.tsx). Everything
+ * else is the incident takeover's card (IncidentTakeover.css: band, sizes, placement) in the recovery's green.
+ */
+
+/* The money is what landed: in saved green, at the alert card's money size. */
+.mr-takeover--landed .mr-landed-money {
+  color: var(--mr-color-saved);
+}
+
+/* The forecast line: a "What-if" chip, then "Projected 30–35%, measured 33% after 3 min". It wraps between
+   phrases on a phone instead of running off the card. */
+.mr-tk-caught.mr-landed-forecast {
+  flex-wrap: wrap;
+  row-gap: clamp(6px, 0.63vw, 12px);
+  white-space: normal;
+  text-wrap: balance;
+}
+.mr-landed-chip {
+  font-size: var(--mr-tk-small);
+  font-weight: 600;
+  background: var(--mr-fill-saved-subtle);
+  border-color: token('color.border.success.subtle');
+  color: token('color.foreground.success.default');
+}
+.mr-landed-measured {
+  color: var(--mr-color-saved);
+}

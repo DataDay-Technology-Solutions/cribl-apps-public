@@ -1,0 +1,77 @@
+{
+  "name": "meter-reader",
+  "private": true,
+  "version": "1.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build && apps build",
+    "build:ui": "tsc -b && vite build",
+    "lint": "oxlint",
+    "format": "prettier --check \"core/**/*.ts\" \"src/**/*.{ts,tsx}\" \"scripts/**/*.{ts,mjs}\"",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:coverage": "vitest run tests/unit --coverage",
+    "test:e2e": "playwright test",
+    "test:smoke": "playwright test --grep @smoke",
+    "test:all": "npm run typecheck && npm run lint && npm run test:coverage && npm run test:integration && npm run test:e2e",
+    "preview": "vite preview",
+    "package": "apps package",
+    "package:release": "node scripts/package.mjs --variant release",
+    "package:backend": "node scripts/package.mjs --variant backend",
+    "package:demo": "node scripts/package.mjs --variant demo",
+    "audit": "node scripts/audit.mjs",
+    "compliance": "vitest run tests/compliance.test.ts"
+  },
+  "dependencies": {
+    "@capra/core": "^1.16.0",
+    "@capra/dx-tokens-postcss-plugin": "^0.4.0",
+    "@capra/icons": "^1.10.1",
+    "@capra/theme": "^1.6.0",
+    "@tanstack/react-virtual": "^3.14.13",
+    "d3-sankey": "^0.12.3",
+    "d3-shape": "^3.2.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.18.4"
+  },
+  "devDependencies": {
+    "@cribl/apps": "1.1.0",
+    "@playwright/test": "^1.63.0",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/d3-sankey": "^0.12.5",
+    "@types/d3-shape": "^3.2.0",
+    "@types/node": "^24.13.3",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "@vitest/coverage-v8": "^5.0.2",
+    "fast-check": "^4.10.2",
+    "jsdom": "^30.1.1",
+    "msw": "^2.15.0",
+    "oxlint": "^1.81.0",
+    "prettier": "^3.9.9",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.2"
+  },
+  "displayName": "Meter Reader",
+  "description": "Meter Reader — Cribl App that prices every data flow at its destination, shows leadership what Cribl saved in dollars, and notifies when the money moves the wrong way.",
+  "author": "Steve Koelpin",
+  "license": "Apache-2.0",
+  "cribl": {
+    "type": "app",
+    "createAppScriptVersion": "1.1.0"
+  },
+  "tags": {
+    "product": [
+      "stream"
+    ]
+  }
+}

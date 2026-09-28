@@ -1,0 +1,38 @@
+/*
+ * src/components/common/Toasts.css — the toast's entrance and its phone offset (epic audit P1-A03). Tokens only.
+ *
+ * Capra's Toast takes no class of ours. The one deliberate exception to "no selectors on Capra internals" is
+ * the toast's own ARIA role (status / alert: its accessibility contract, not a class or a DOM depth) holding
+ * our marked body (`data-mr-toast`, Toasts.tsx). Capra removes a closed toast at once, so there is no exit
+ * fade to match.
+ */
+
+/* Our wrapper around the toast's content adds no box of its own. */
+.mr-toast-body {
+  display: contents;
+}
+
+/* Every toast fades in and rises 8 px; not at all under reduced motion (DESIGN_BRIEF 4). */
+@media (prefers-reduced-motion: no-preference) {
+  :is([role='status'], [role='alert']):has([data-mr-toast]) {
+    animation: mr-toast-in token('motion.duration.medium.1') token('motion.easing.standard') both;
+  }
+}
+
+@keyframes mr-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(token('spacing.md'));
+  }
+}
+
+/*
+ * Phones on the Demo Console: the payoff levers are pinned to the bottom edge (.mr-demo-bottombar, one xl
+ * button row with spacing.md above and below), so a lever's outcome rises above them instead of covering
+ * Break and Restore. `translate` is independent of the entrance's `transform`.
+ */
+@media (max-width: 640px) {
+  body:has(.mr-demo-bottombar) :is([role='status'], [role='alert']):has([data-mr-toast]) {
+    translate: 0 calc(-1 * (token('dimension.component.xl') + token('spacing.lg') + 1px));
+  }
+}

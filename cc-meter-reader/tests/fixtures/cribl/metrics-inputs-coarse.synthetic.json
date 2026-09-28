@@ -1,0 +1,169 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/system/metrics/query",
+    "body": {
+      "where": "__worker_group=='default'",
+      "earliest": 1790394000000,
+      "latest": 1790397600000,
+      "aggs": {
+        "aggregations": [
+          "sum(\"total.in_bytes\").as(\"inB\")",
+          "sum(\"total.in_events\").as(\"inE\")"
+        ],
+        "splitBys": [
+          "__worker_group",
+          "input"
+        ],
+        "timeWindowSeconds": 60
+      }
+    }
+  },
+  "status": 200,
+  "capturedAt": null,
+  "source": "synthetic",
+  "note": "SYNTHETIC: age-degraded resolution as inferred from the criblvision live capture (metrics.md §8): the oldest rows are 600 s apart but claim 300 s, then 300 s rows, then per-minute rows. Every minute carries 600 bytes / 6 events once spread.",
+  "body": {
+    "results": [
+      {
+        "starttime": 1790394000,
+        "endtime": 1790394300,
+        "__worker_group": "default",
+        "input": "datagen:mrd_payments_api",
+        "inB": 6000,
+        "inE": 60
+      },
+      {
+        "starttime": 1790394600,
+        "endtime": 1790394900,
+        "__worker_group": "default",
+        "input": "datagen:mrd_payments_api",
+        "inB": 6000,
+        "inE": 60
+      },
+      {
+        "starttime": 1790395200,
+        "endtime": 1790395500,
+        "__worker_group": "default",
+        "input": "datagen:mrd_payments_api",
+        "inB": 6000,
+        "inE": 60
+      },
+      {
+        "starttime": 1790395800,
+        "endtime": 1790396100,
+        "__worker_group": "default",
+        "input": "datagen:mrd_payments_api",
+        "inB": 6000,
+        "inE": 60
+      },
+      {
+        "starttime": 1790396400,
+        "endtime": 1790396700,
+        "__worker_group": "default",
+        "input": "datagen:mrd_payments_api",
+        "inB": 3000,
+        "inE": 30
+      },
+      {
+        "starttime": 1790396700,
+        "endtime": 1790397000,
+        "__worker_group": "default",
+        "input": "datagen:mrd_payments_api",
+        "inB": 3000,
+        "inE": 30
+      },
+      {
+        "starttime": 1790397000,
+        "endtime": 1790397060,
+        "__worker_group": "default",
+        "input": "datagen:mrd_payments_api",
+        "inB": 600,
+        "inE": 6
+      },
+      {
+        "starttime": 1790397060,
+        "endtime": 1790397120,
+        "__worker_group": "default",
+        "input": "datagen:mrd_payments_api",
+        "inB": 600,
+        "inE": 6
+      },
+      {
+        "starttime": 1790397120,
+        "endtime": 1790397180,
+        "__worker_group": "default",
+        "input": "datagen:mrd_payments_api",
+        "inB": 600,
+        "inE": 6
+      },
+      {
+        "starttime": 1790397180,
+        "endtime": 1790397240,
+        "__worker_group": "default",
+        "input": "datagen:mrd_payments_api",
+        "inB": 600,
+        "inE": 6
+      },
+      {
+        "starttime": 1790397240,
+        "endtime": 1790397300,
+        "__worker_group": "default",
+        "input": "datagen:mrd_payments_api",
+        "inB": 600,
+        "inE": 6
+      },
+      {
+        "starttime": 1790397300,
+        "endtime": 1790397360,
+        "__worker_group": "default",
+        "input": "datagen:mrd_payments_api",
+        "inB": 600,
+        "inE": 6
+      },
+      {
+        "starttime": 1790397360,
+        "endtime": 1790397420,
+        "__worker_group": "default",
+        "input": "datagen:mrd_payments_api",
+        "inB": 600,
+        "inE": 6
+      },
+      {
+        "starttime": 1790397420,
+        "endtime": 1790397480,
+        "__worker_group": "default",
+        "input": "datagen:mrd_payments_api",
+        "inB": 600,
+        "inE": 6
+      },
+      {
+        "starttime": 1790397480,
+        "endtime": 1790397540,
+        "__worker_group": "default",
+        "input": "datagen:mrd_payments_api",
+        "inB": 600,
+        "inE": 6
+      },
+      {
+        "starttime": 1790397540,
+        "endtime": 1790397600,
+        "__worker_group": "default",
+        "input": "datagen:mrd_payments_api",
+        "inB": 600,
+        "inE": 6
+      }
+    ],
+    "metrics": {
+      "metrics_aggregator.referenced_metrics": 3,
+      "metrics_reader.execution_time": 1,
+      "metrics_reader.matched": 12,
+      "metrics_reader.invalid_series": 0,
+      "metrics_aggregator.results": 0,
+      "metrics_aggregator.execution_time": 3
+    },
+    "info": {
+      "timeWindowSeconds": 60
+    }
+  }
+}

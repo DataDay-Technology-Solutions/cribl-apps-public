@@ -1,0 +1,58 @@
+# RELEASE (front-end runtime, DECISIONS D12b/D17). Grants the member exactly the Cribl API calls Meter Reader
+# makes: reads (the worker-group list, the four config collections the sweep walks, the change history), the
+# metrics query and the What-if preview (POSTs that change nothing, D16), and four create-only notification
+# POSTs (D27-D30: the bell, the Search relay a notification target needs, and the forward), which never
+# replace or delete anything. KV is app-scoped and granted automatically (AGENTS.md). No proxy host (D23, D57).
+policies:
+  # Stream worker groups (inventory refresh). /master/groups is deprecated in 4.20.1 (D17).
+  - object: '/products/stream/groups'
+    actions: ['GET']
+  # The configuration the sweep walks to build priced flows.
+  - object: '/m/:gid/system/inputs'
+    actions: ['GET']
+  - object: '/m/:gid/system/outputs'
+    actions: ['GET']
+  - object: '/m/:gid/pipelines'
+    actions: ['GET']
+  - object: '/m/:gid/routes'
+    actions: ['GET']
+  # Change timeline: group history, one commit's changed files (show, with files as the fallback).
+  - object: '/m/:gid/version'
+    actions: ['GET']
+  - object: '/m/:gid/version/show'
+    actions: ['GET']
+  - object: '/m/:gid/version/files'
+    actions: ['GET']
+  # Throughput per minute (Leader-level; scoped with __worker_group inside the query).
+  - object: '/system/metrics/query'
+    actions: ['POST']
+  # ── Alert delivery through Cribl (DECISIONS D23; docs/NOTIFICATIONS.md) ──────
+  # The documented notification writes, and the only writes besides the metrics query's verb. Each one
+  # creates; none replaces or deletes anything.
+  # The Cribl notification bell: one message per alert state.
+  - object: '/system/messages'
+    actions: ['POST']
+  # Notification targets an administrator configured (the App keeps only id, type and description).
+  - object: '/notification-targets'
+    actions: ['GET']
+  # The Search notification relay: read its state; create it on a confirmed Connect (never automatically);
+  # forward an alert to it (Leader-level path, measured). Literal segments, not :gid/:id (EPIC_AUDIT P1-N01):
+  # the relay lives only in the Search group `default_search` under the fixed id `meter_reader_alert_relay`
+  # (core/adapters/cribl-notify.ts), so the read covers that one saved search and a notification can be
+  # attached to that one saved search only, never to another saved search's results.
+  - object: '/m/default_search/search/saved/meter_reader_alert_relay'
+    actions: ['GET']
+  - object: '/m/default_search/search/saved'
+    actions: ['POST']
+  - object: '/m/default_search/search/saved/meter_reader_alert_relay/notifications'
+    actions: ['POST']
+  - object: '/search/notifications'
+    actions: ['POST']
+  # ── What-if dry run (DECISIONS D16; core/adapters/preview.ts) ─────────────
+  # Only when a member presses "Dry run on sample events": read the stream's Datagen sample, then run the
+  # treatment's pipeline over it with the documented preview API. The preview forks a throwaway process on
+  # the Leader and saves nothing, so it is a read despite its POST verb, like the metrics query.
+  - object: '/m/:gid/system/samples/:id/content'
+    actions: ['GET']
+  - object: '/m/:gid/preview'
+    actions: ['POST']

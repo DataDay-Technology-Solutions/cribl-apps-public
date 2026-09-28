@@ -1,0 +1,863 @@
+/*
+ * src/views/Settings/Settings.css — Settings (DESIGN_BRIEF 5.5). Tokens only.
+ * The page frame (1280 px, centred, the title rule) is the Shell's <Page> (BEAUTY-3a F7); here: a 216 px
+ * section rail on the left, one section card on the right. At ≤ 760 px the rail gives way to a section
+ * picker and everything is one column.
+ */
+
+/* Capra's Switch is a fixed-size input; never let a flex row squeeze it. */
+.mr-settings .mr-switch {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.mr-settings-notice {
+  min-width: 0;
+}
+
+/* ── Layout: rail + content ──────────────────────────────────────────────── */
+.mr-settings-layout {
+  display: grid;
+  grid-template-columns: 216px minmax(0, 1fr);
+  gap: token('spacing.xl');
+  align-items: start;
+}
+.mr-settings-rail {
+  position: sticky;
+  top: calc(var(--mr-shell-header-h, token('dimension.component.xl')) + token('spacing.xl'));
+  border-radius: token('radius.xl');
+  overflow: hidden;
+  border: 1px solid token('color.border.neutral.subtle');
+}
+/*
+ * The active section (BEAUTY-3a F4). Capra paints it brand.subtle, which is Cribl teal 2 (#edfbfb) in BOTH
+ * themes (the dark theme never redefines the teal scale): a near-white pill on the dark page. Use the
+ * neutral selected state instead, which each theme defines for itself, with the default text colour
+ * (≥ 11:1 in both themes); Capra's semibold label keeps it distinct from the neutral hover.
+ */
+.mr-settings .mr-settings-rail .mr-settings-nav-active {
+  background-color: token('color.background.neutral.selected');
+  color: token('color.foreground.default');
+}
+.mr-settings-picker {
+  display: none;
+}
+.mr-settings-content {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+  min-width: 0;
+}
+/* One slot per mounted section: the open one, plus any left with unsaved changes (hidden, kept alive). */
+.mr-settings-slot {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+  min-width: 0;
+}
+.mr-settings-slot[hidden] {
+  display: none;
+}
+/* A section with unsaved changes: a small accent dot at the end of its rail item (P1-G07); the words for
+   screen readers sit beside the dot, on the item's own background. */
+.mr-settings-nav-dirty-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+.mr-settings-nav-dirty {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: token('spacing.md');
+  height: token('spacing.md');
+  border-radius: token('radius.full');
+  background: token('color.background.accent.solid.default');
+}
+
+@media (max-width: 760px) {
+  .mr-settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: token('spacing.lg');
+  }
+  .mr-settings-rail {
+    display: none;
+  }
+  .mr-settings-picker {
+    display: block;
+  }
+}
+
+/* ── Section card ────────────────────────────────────────────────────────── */
+.mr-set-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--mr-surface-panel);
+  border: token('border.default');
+  border-radius: token('radius.xl');
+  box-shadow: token('shadow.low.down');
+}
+.mr-set-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: token('spacing.md') token('spacing.xl');
+  padding: token('spacing.xl') token('spacing.xl') token('spacing.lg');
+}
+.mr-set-card-heading {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+  flex: 1 1 360px;
+  max-width: 96ch;
+}
+.mr-set-card-title {
+  font: token('typography.heading.sm');
+  letter-spacing: token('typography.heading.sm.letterSpacing');
+  color: token('color.foreground.default');
+}
+.mr-set-card-desc {
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.subtle');
+  max-width: 96ch;
+}
+.mr-set-card-aside {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.md');
+  flex: 0 0 auto;
+  min-height: token('dimension.component.md');
+}
+.mr-set-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+  padding: 0 token('spacing.xl') token('spacing.xl');
+  min-width: 0;
+}
+.mr-set-card-foot {
+  padding: token('spacing.md') token('spacing.xl');
+  border-top: 1px solid token('color.border.neutral.subtle');
+}
+/*
+ * While the bar has something to say (unsaved changes, a failed save) the footer sticks to the bottom of the
+ * viewport, so a long section never hides its Save ~900 px below the field being edited (P1-G07). It stays
+ * inside its card: once the card's real bottom scrolls into view, the footer sits there as usual.
+ */
+.mr-set-card-foot:has(> .mr-set-savebar[data-dirty='true']),
+.mr-set-card-foot:has(> .mr-set-savebar[data-failure='true']) {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: var(--mr-surface-panel);
+  border-top-color: token('color.border.neutral.default');
+  border-end-start-radius: token('radius.xl');
+  border-end-end-radius: token('radius.xl');
+  box-shadow: token('shadow.low.up');
+}
+@media (max-width: 640px) {
+  .mr-set-card-head {
+    padding: token('spacing.lg') token('spacing.lg') token('spacing.md');
+  }
+  .mr-set-card-body {
+    padding: 0 token('spacing.lg') token('spacing.lg');
+  }
+  .mr-set-card-foot {
+    padding: token('spacing.md') token('spacing.lg');
+  }
+  .mr-set-card-heading {
+    flex-basis: 100%;
+  }
+}
+
+/* ── Save bar ────────────────────────────────────────────────────────────── */
+.mr-set-savebar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: token('spacing.md') token('spacing.lg');
+}
+.mr-set-savebar-status {
+  min-width: 0;
+  flex: 1 1 240px;
+}
+.mr-set-status {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-set-status--dirty {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+}
+.mr-set-status--error {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.danger.default');
+}
+.mr-set-savebar-actions {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.md');
+  margin-inline-start: auto;
+}
+
+/* ── Shared text ─────────────────────────────────────────────────────────── */
+.mr-set-muted {
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-set-caption {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-set-subhead {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+}
+.mr-set-error {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.danger.default');
+}
+.mr-set-unit {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  white-space: nowrap;
+}
+.mr-set-footnote {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  padding-inline: token('spacing.md');
+}
+
+/* ── Prices ──────────────────────────────────────────────────────────────── */
+.mr-set-counts {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+  white-space: nowrap;
+}
+.mr-set-dot {
+  color: token('color.foreground.subtle');
+}
+.mr-set-count-warn {
+  color: token('color.foreground.warning.default');
+}
+.mr-set-count-ok {
+  /* "All priced" is a count, not a celebration: neutral text (P1-G08; green is for money saved). */
+  color: token('color.foreground.default');
+}
+.mr-set-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: token('spacing.md') token('spacing.lg');
+  padding: token('spacing.md') token('spacing.lg');
+  border-radius: token('radius.lg');
+  background: token('color.background.neutral.subtle');
+}
+.mr-set-toolbar .mr-set-muted {
+  font: token('typography.body.sm.normal');
+}
+.mr-set-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: token('spacing.md');
+}
+.mr-set-waiting {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: token('spacing.lg');
+  padding: token('spacing.lg') 0;
+}
+.mr-set-waiting > :first-child {
+  align-self: stretch;
+}
+.mr-set-waiting-copy {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+}
+.mr-set-waiting-title {
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+
+/* ── Budgets ─────────────────────────────────────────────────────────────── */
+.mr-bud {
+  container-type: inline-size;
+  container-name: mr-bud;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.mr-bud-head,
+.mr-bud-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1.2fr) minmax(200px, 248px) minmax(220px, 1.5fr);
+  column-gap: token('spacing.xl');
+  align-items: start;
+  padding-inline: token('spacing.md');
+}
+.mr-bud-head {
+  padding-block: token('spacing.sm');
+  border-bottom: 1px solid token('color.border.neutral.default');
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+}
+.mr-bud-row {
+  padding-block: token('spacing.md');
+  border-bottom: 1px solid token('color.border.neutral.subtle');
+}
+.mr-bud-row:last-child {
+  border-bottom: none;
+}
+/* A changed budget carries the same leading-edge marker as a changed price row (P1-G07). */
+.mr-bud-row[data-dirty='true'] {
+  position: relative;
+}
+.mr-bud-row[data-dirty='true']::before {
+  content: '';
+  position: absolute;
+  inset-block: token('spacing.md');
+  inset-inline-start: 0;
+  width: 2px;
+  border-radius: token('radius.full');
+  background: token('color.background.accent.solid.default');
+}
+.mr-bud-dest,
+.mr-bud-field,
+.mr-bud-pace {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+}
+.mr-bud-dest {
+  justify-content: center;
+  min-height: token('dimension.component.md');
+}
+.mr-bud-pace {
+  justify-content: center;
+  min-height: token('dimension.component.md');
+}
+.mr-bud-pace-line {
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+.mr-bud-bar {
+  position: relative;
+  height: token('spacing.sm');
+  max-width: 320px;
+  border-radius: token('radius.full');
+  background: token('color.background.neutral.default');
+  overflow: hidden;
+}
+.mr-bud-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: token('radius.full');
+  background: var(--mr-fill-paid);
+  transition: inline-size var(--mr-duration-ribbon) var(--mr-easing);
+}
+.mr-bud-pace[data-level='warn'] .mr-bud-bar-fill {
+  background: var(--mr-fill-incident-medium);
+}
+.mr-bud-pace[data-level='alert'] .mr-bud-bar-fill {
+  background: var(--mr-fill-incident-high);
+}
+.mr-bud-pace[data-level='warn'] .mr-bud-pace-line {
+  color: var(--mr-color-incident-medium);
+}
+.mr-bud-pace[data-level='alert'] .mr-bud-pace-line {
+  color: var(--mr-color-incident-high);
+}
+@container mr-bud (max-width: 700px) {
+  .mr-bud-head {
+    display: none;
+  }
+  .mr-bud-row {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: token('spacing.md');
+    padding: token('spacing.lg') token('spacing.md');
+  }
+  .mr-bud-cell-label {
+    display: block;
+  }
+  .mr-bud-dest,
+  .mr-bud-pace {
+    min-height: 0;
+  }
+}
+
+/* ── Cribl cost ──────────────────────────────────────────────────────────── */
+.mr-cost {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 440px);
+  gap: token('spacing.2xl');
+  align-items: start;
+}
+.mr-cost-field {
+  position: relative;
+  min-width: 0;
+}
+.mr-cost-field[data-dirty='true']::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: calc(-1 * token('spacing.md'));
+  width: 2px;
+  border-radius: token('radius.full');
+  background: token('color.background.accent.solid.default');
+}
+.mr-cost-preview {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  padding: token('spacing.lg');
+  border-radius: token('radius.lg');
+  background: token('color.background.neutral.subtle');
+  min-width: 0;
+}
+.mr-cost-receipt {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+  font: token('typography.body.md.normal');
+  font-family: token('core.fontFamily.mono');
+  color: token('color.foreground.default');
+}
+.mr-cost-line {
+  display: flex;
+  align-items: baseline;
+  gap: token('spacing.sm');
+  min-width: 0;
+}
+.mr-cost-label {
+  white-space: nowrap;
+}
+.mr-cost-leader {
+  flex: 1 1 auto;
+  min-width: token('spacing.lg');
+  border-bottom: 1px dotted token('color.border.neutral.strong');
+  transform: translateY(-4px);
+}
+.mr-cost-value {
+  white-space: nowrap;
+}
+.mr-cost-line[data-tone='saved'] .mr-cost-value {
+  color: var(--mr-color-saved);
+}
+.mr-cost-line[data-tone='total'] {
+  font-weight: 600;
+}
+.mr-cost-rule {
+  border-top: 1px solid token('color.border.neutral.default');
+  margin-block: token('spacing.xs');
+}
+@media (max-width: 900px) {
+  .mr-cost {
+    grid-template-columns: minmax(0, 1fr);
+    gap: token('spacing.lg');
+  }
+}
+
+/* ── Alerts ──────────────────────────────────────────────────────────────── */
+.mr-al-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: token('spacing.lg');
+}
+.mr-al-group {
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  padding: token('spacing.lg');
+  border: 1px solid token('color.border.neutral.subtle');
+  border-radius: token('radius.lg');
+}
+/* Every group takes one column (P1-G09): Good news sits beside Budget pace instead of spanning a row for one
+   switch, and the excluded objects sit beside the baseline group, their chips wrapping. */
+.mr-al-legend {
+  float: left;
+  width: 100%;
+  padding: 0;
+  font: token('typography.heading.xs');
+  color: token('color.foreground.default');
+}
+.mr-al-legend + * {
+  clear: both;
+}
+.mr-al-hint {
+  margin-top: calc(-1 * token('spacing.sm'));
+}
+.mr-al-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: token('spacing.md') token('spacing.lg');
+  align-items: start;
+}
+.mr-al-field {
+  position: relative;
+  min-width: 0;
+}
+/* A changed field carries the same quiet leading-edge marker as a changed price row (P1-G07). */
+.mr-al-field[data-dirty='true']::before,
+.mr-al-toggle[data-dirty='true']::before,
+.mr-al-excluded[data-dirty='true']::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: calc(-1 * token('spacing.md'));
+  width: 2px;
+  border-radius: token('radius.full');
+  background: token('color.background.accent.solid.default');
+}
+.mr-al-excluded {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  min-width: 0;
+}
+.mr-al-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: token('spacing.sm');
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mr-al-exclude-picker {
+  max-width: 420px;
+  min-width: 0;
+}
+/* The excluded group's body is one column: the picker, then the chips (not the numeric fields' grid). */
+.mr-al-group[data-group='excluded'] .mr-al-fields,
+.mr-al-group[data-group='goodnews'] .mr-al-fields {
+  grid-template-columns: minmax(0, 1fr);
+}
+.mr-al-toggle {
+  grid-column: 1 / -1;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: token('spacing.md');
+}
+.mr-al-toggle-copy {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+}
+.mr-al-toggle-label {
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+@media (max-width: 1100px) {
+  .mr-al-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── Where to send alerts ────────────────────────────────────────────────── */
+.mr-nt-list {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+}
+/* No endpoints yet: one compact line in the shape of an endpoint card, under the bell (P1-G06). */
+.mr-nt-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: token('spacing.md');
+  padding: token('spacing.lg');
+  border: 1px dashed token('color.border.neutral.default');
+  border-radius: token('radius.xl');
+  min-width: 0;
+}
+.mr-nt-empty-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding-top: token('spacing.xs');
+  color: token('color.foreground.subtle');
+}
+.mr-nt-empty-copy {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+  max-width: 88ch;
+}
+.mr-nt-empty-title {
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+.mr-nt-loading {
+  padding: token('spacing.lg') 0;
+}
+
+/* Weekly receipt: a quiet sub-section under the endpoints (no second card inside the card). */
+/* D57: where direct webhooks live (the runner's .env), with the runner's own list by name and host. */
+.mr-nt-direct {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  padding-top: token('spacing.lg');
+  border-top: 1px solid token('color.border.neutral.subtle');
+  min-width: 0;
+}
+.mr-nt-direct > * {
+  margin: 0;
+}
+.mr-nt-direct-list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+}
+.mr-nt-direct-list li {
+  overflow-wrap: anywhere;
+}
+.mr-nt-weekly {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: token('spacing.md') token('spacing.xl');
+  align-items: start;
+  padding-top: token('spacing.lg');
+  border-top: 1px solid token('color.border.neutral.subtle');
+}
+.mr-nt-weekly-copy {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+  max-width: 80ch;
+}
+.mr-nt-weekly-title {
+  margin: 0;
+  font: token('typography.heading.xs');
+  color: token('color.foreground.default');
+}
+.mr-nt-weekly-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: token('spacing.xs');
+  max-width: 280px;
+  text-align: end;
+}
+.mr-nt-weekly-result {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+  min-width: 0;
+}
+/* A weekly receipt that went out: neutral text with a check glyph (P1-G08). */
+.mr-nt-weekly-ok {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  margin: 0;
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+.mr-nt-weekly-ok svg {
+  flex: 0 0 auto;
+  color: token('color.foreground.subtle');
+}
+.mr-nt-weekly-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.default');
+}
+/* Tabular figures, but a line wraps: an endpoint's name or the bell's sentence can outrun a phone's width. */
+.mr-nt-weekly-lines li {
+  white-space: normal;
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+@media (max-width: 640px) {
+  .mr-nt-weekly {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mr-nt-weekly-action {
+    align-items: flex-start;
+    text-align: start;
+    max-width: none;
+  }
+}
+
+/* ── Runtime ─────────────────────────────────────────────────────────────── */
+.mr-rt-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: token('spacing.lg');
+}
+.mr-rt-runtime {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+}
+.mr-rt-label {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-rt-runtime-value {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.md');
+  font: token('typography.heading.sm');
+  color: token('color.foreground.default');
+}
+.mr-rt-dot {
+  width: token('spacing.md');
+  height: token('spacing.md');
+  border-radius: token('radius.full');
+  background: token('color.background.neutral.solid.default');
+}
+.mr-rt-dot[data-on='true'] {
+  /* Metering is a state, not money: a solid neutral dot with a soft ring (P1-G08). */
+  background: token('color.foreground.default');
+  box-shadow: 0 0 0 token('spacing.xs') token('color.background.neutral.default');
+}
+.mr-rt-note {
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.subtle');
+  max-width: 72ch;
+}
+/* About: a quiet line under the stats, a hairline above it: the version and the builder's signature. */
+.mr-rt-about {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: token('spacing.xs') token('spacing.md');
+  margin: 0;
+  padding-top: token('spacing.md');
+  border-top: 1px solid var(--mr-border-subtle);
+}
+.mr-rt-about-text {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-rt-stats {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  border: 1px solid token('color.border.neutral.subtle');
+  border-radius: token('radius.lg');
+  overflow: hidden;
+}
+.mr-rt-stat {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  padding: token('spacing.lg');
+  /* hairlines on the leading and top edges; the container clips the outer ones */
+  box-shadow:
+    -1px 0 0 token('color.border.neutral.subtle'),
+    0 -1px 0 token('color.border.neutral.subtle');
+  min-width: 0;
+}
+.mr-rt-value {
+  margin: 0;
+  font: token('typography.metric.sm');
+  color: token('color.foreground.default');
+}
+.mr-rt-value[data-wrap='true'] {
+  white-space: normal;
+  text-wrap: balance;
+}
+.mr-sweep-now {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: token('spacing.sm') token('spacing.md');
+}
+.mr-sweep-now-status {
+  display: inline-flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  font: token('typography.body.sm.normal');
+}
+.mr-sweep-now-line {
+  color: token('color.foreground.default');
+}
+.mr-sweep-now-line[data-tone='warn'] {
+  color: token('color.foreground.warning.default');
+}
+.mr-sweep-now-line[data-tone='error'] {
+  color: token('color.foreground.danger.default');
+}
+
+/* ── Demo (demo build) ───────────────────────────────────────────────────── */
+.mr-demo-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+}
+.mr-demo-reset {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: token('spacing.md') token('spacing.lg');
+  padding-top: token('spacing.lg');
+  border-top: 1px solid token('color.border.neutral.subtle');
+}
+
+/* ── Slack preview of the test alert ─────────────────────────────────────── */
+.mr-set-slack {
+  max-width: 640px;
+  min-width: 0;
+}
+
+/* ── Prices, Budgets, Cribl cost and Runtime polish (EPIC_AUDIT P1-G03) ───────────────────────────── */
+/* The budget bar's track reads at 0 % in both themes (the neutral surface vanished on the dark panel). */
+.mr-bud-bar {
+  background: token('color.background.neutral.track');
+  box-shadow: inset 0 0 0 1px token('color.border.neutral.subtle');
+}
+/* The Cribl cost preview grows with the card instead of stopping at 440 px beside 320 px of nothing. */
+@media (min-width: 901px) {
+  .mr-cost {
+    grid-template-columns: minmax(220px, 320px) minmax(0, 640px);
+  }
+}
+/* Five stats on a two-column phone grid: the last one spans both columns instead of sitting alone. */
+@media (max-width: 640px) {
+  .mr-rt-stat:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Cribl cost: the list-price suggestion under the field (usefulness review, round 1). */
+.mr-cost-suggest {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: token('spacing.xs');
+  min-width: 0;
+  max-width: 100%;
+}
+/* The arithmetic wraps like prose at a phone's width (tabular figures, never one unbreakable line). */
+.mr-cost-suggest-line {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}

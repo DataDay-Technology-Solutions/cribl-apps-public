@@ -1,0 +1,74 @@
+# DEMO BUILD (SPEC 3.3, DECISIONS D17): the release grants plus exactly what the demo levers write.
+# Every lever also refuses, in code, any object whose description lacks [meter-reader-demo]: the platform
+# has no partial-id grants (`mrd_*`), so the demo tag is the enforced check (SPEC 2, 19.5).
+# That check lives in the App's code, not in Cribl: these grants reach EVERY pipeline, route and Source
+# in every worker group, plus commit and deploy, for anyone the demo build is shared with (README "Demo
+# rig"). Install this build only in a demo organization and share it only with the people running the demo.
+policies:
+  # ── Release (reads) ──────────────────────────────────────────────────────
+  - object: '/products/stream/groups'
+    actions: ['GET']
+  - object: '/m/:gid/system/inputs'
+    actions: ['GET']
+  - object: '/m/:gid/system/outputs'
+    actions: ['GET']
+  - object: '/m/:gid/pipelines'
+    actions: ['GET']
+  - object: '/m/:gid/routes'
+    actions: ['GET']
+  - object: '/m/:gid/version'
+    actions: ['GET']
+  - object: '/m/:gid/version/show'
+    actions: ['GET']
+  - object: '/m/:gid/version/files'
+    actions: ['GET']
+  - object: '/system/metrics/query'
+    actions: ['POST']
+  # ── Alert delivery through Cribl (release grants, DECISIONS D23) ─────────
+  # The Cribl notification bell: one message per alert state.
+  - object: '/system/messages'
+    actions: ['POST']
+  # Notification targets an administrator configured (the App keeps only id, type and description).
+  - object: '/notification-targets'
+    actions: ['GET']
+  # The Search notification relay: read its state; create it on a confirmed Connect (never automatically);
+  # forward an alert to it (Leader-level path, measured). Literal segments, not :gid/:id (EPIC_AUDIT P1-N01):
+  # the relay lives only in the Search group `default_search` under the fixed id `meter_reader_alert_relay`
+  # (core/adapters/cribl-notify.ts), so the read covers that one saved search and a notification can be
+  # attached to that one saved search only, never to another saved search's results.
+  - object: '/m/default_search/search/saved/meter_reader_alert_relay'
+    actions: ['GET']
+  - object: '/m/default_search/search/saved'
+    actions: ['POST']
+  - object: '/m/default_search/search/saved/meter_reader_alert_relay/notifications'
+    actions: ['POST']
+  - object: '/search/notifications'
+    actions: ['POST']
+  # ── What-if dry run (DECISIONS D16; core/adapters/preview.ts) ─────────────
+  # Only when a member presses "Dry run on sample events": read the stream's Datagen sample, then run the
+  # treatment's pipeline over it with the documented preview API. The preview forks a throwaway process on
+  # the Leader and saves nothing, so it is a read despite its POST verb, like the metrics query.
+  - object: '/m/:gid/system/samples/:id/content'
+    actions: ['GET']
+  - object: '/m/:gid/preview'
+    actions: ['POST']
+  # ── Demo levers ──────────────────────────────────────────────────────────
+  # Break / restore the trim: read and replace one demo pipeline.
+  - object: '/m/:gid/pipelines/:id'
+    actions: ['GET', 'PATCH']
+  # Apply / revert the pack: PATCH replaces the whole routing table (its id is 'default').
+  - object: '/m/:gid/routes/:id'
+    actions: ['GET', 'PATCH']
+  # Spike / calm: a demo Datagen source's rate.
+  - object: '/m/:gid/system/inputs/:id'
+    actions: ['GET', 'PATCH']
+  # Commit exactly the touched files, then deploy that commit.
+  - object: '/m/:gid/version/status'
+    actions: ['GET']
+  - object: '/m/:gid/version/commit'
+    actions: ['POST']
+  - object: '/products/stream/groups/:gid/deploy'
+    actions: ['PATCH']
+  # Deprecated deploy path, used only when the one above answers 404.
+  - object: '/master/groups/:gid/deploy'
+    actions: ['PATCH']

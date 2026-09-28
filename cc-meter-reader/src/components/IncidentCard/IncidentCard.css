@@ -1,0 +1,423 @@
+/*
+ * src/components/IncidentCard/IncidentCard.css — the incident card, compact and full. Tokens only.
+ * Hierarchy (PRD 8.8 item 1): ratio figures (metric.lg) › money line (heading.sm) › body › caption.
+ * Colour (item 3): the severity band and glyph are the incident red/amber; recovery is the saved green;
+ * everything else is neutral.
+ *
+ * One card rule (BEAUTY F8): the app's card values (--mr-card-*, src/styles/palette.css); severity is a
+ * full-bleed header band in the severity's tint — never a stripe clipped by the rounded corners. The compact
+ * card always sits inside another card (the Receipt's Alerts, the Ledger rail), so it is flat: no shadow on
+ * a shadow. The full card stands on its own (Demo Console) and carries the one card elevation.
+ */
+
+.mr-inc {
+  /* Tone: the band tint and its edge (neutral until a severity says otherwise). */
+  --mr-inc-band: token('color.background.neutral.subtle');
+  --mr-inc-band-edge: var(--mr-border-subtle);
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--mr-card-bg, var(--mr-surface-panel));
+  border: 1px solid var(--mr-card-border, var(--mr-border));
+  border-radius: var(--mr-card-radius, token('radius.xl'));
+  box-shadow: none;
+  color: token('color.foreground.default');
+  overflow: hidden;
+}
+.mr-inc--full {
+  box-shadow: var(--mr-card-shadow, token('shadow.low.down'));
+}
+.mr-inc--high {
+  --mr-inc-band: token('color.background.danger.default');
+  --mr-inc-band-edge: token('color.border.danger.subtle');
+}
+.mr-inc--medium {
+  --mr-inc-band: token('color.background.warning.default');
+  --mr-inc-band-edge: token('color.border.warning.subtle');
+}
+.mr-inc--info {
+  --mr-inc-band: token('color.background.info.default');
+  --mr-inc-band-edge: token('color.border.info.subtle');
+}
+.mr-inc--recovered {
+  --mr-inc-band: token('color.background.success.default');
+  --mr-inc-band-edge: token('color.border.success.subtle');
+}
+
+/* The header band: full-bleed, the severity's tint, the glyph and the title. */
+.mr-inc-head {
+  display: flex;
+  align-items: flex-start;
+  gap: token('spacing.md');
+  min-width: 0;
+  background: var(--mr-inc-band);
+  border-bottom: 1px solid var(--mr-inc-band-edge);
+}
+.mr-inc-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* ── Shared pieces ───────────────────────────────────────────────────────── */
+.mr-inc-title {
+  margin: 0;
+  min-width: 0;
+  text-wrap: balance;
+}
+.mr-inc-sep {
+  color: token('color.foreground.subtle');
+}
+.mr-inc-hash {
+  font-family: token('core.fontFamily.mono');
+  font-size: 0.92em;
+  padding: 0 token('spacing.xs');
+  border-radius: token('radius.lg');
+  background: token('color.background.neutral.subtle');
+  border: 1px solid var(--mr-border-subtle);
+  white-space: nowrap;
+}
+.mr-inc-message {
+  overflow-wrap: anywhere;
+}
+.mr-inc-author {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.mr-inc-delivery {
+  white-space: nowrap;
+}
+.mr-inc-delivery--retrying {
+  color: token('color.foreground.warning.default');
+}
+.mr-inc-delivery--failed,
+.mr-inc-delivery--blocked {
+  color: token('color.foreground.danger.default');
+  /* A failure is a sentence ("Not delivered: Cribl notification API unavailable (404).") and wraps on a phone. */
+  white-space: normal;
+}
+.mr-inc-recovered {
+  color: var(--mr-color-saved);
+  font-weight: 600;
+  /* "Recovered · savings back to 74% · closed itself." breaks as two even lines, never on a trailing "·". */
+  text-wrap: balance;
+}
+/* D47: where a closed incident recovered to — small and green after its drop; the figure at full size when
+   the drop was not kept (an incident closed before D47) and the recovery is all the row has. */
+.mr-inc-recovered-to {
+  font: token('typography.body.md.normal');
+  font-weight: 600;
+  color: var(--mr-color-saved);
+  letter-spacing: normal;
+  white-space: nowrap;
+}
+.mr-inc-ratio-row .mr-inc-recovered-to--only .mr-num {
+  font: token('typography.metric.lg');
+  letter-spacing: -0.02em;
+}
+.mr-inc-caught {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.mr-inc-note {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-inc-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: token('dimension.component.sm');
+  padding: 0 token('spacing.md');
+  border-radius: token('radius.full');
+  border: 1px solid var(--mr-border-subtle);
+  background: token('color.background.neutral.subtle');
+  color: token('color.foreground.subtle');
+  font: token('typography.body.sm.semibold');
+  white-space: nowrap;
+}
+.mr-inc-chip--nearby,
+.mr-inc-chip--table {
+  background: token('color.background.warning.subtle');
+  border-color: token('color.border.warning.subtle');
+  color: token('color.foreground.warning.strong');
+}
+.mr-inc-chip--muted {
+  font: token('typography.body.sm.normal');
+}
+
+/* ── Compact ─────────────────────────────────────────────────────────────── */
+.mr-inc--compact .mr-inc-head {
+  align-items: center;
+  padding: token('spacing.md') token('spacing.lg');
+}
+.mr-inc--compact .mr-inc-body {
+  gap: token('spacing.sm');
+  padding: token('spacing.md') token('spacing.lg') token('spacing.lg');
+}
+/* The kind and time above, the object as the title: the heading comes first in the DOM (it names the card). */
+.mr-inc-compact-titles {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.mr-inc--compact .mr-inc-title {
+  font: token('typography.heading.xs');
+}
+.mr-inc-eyebrow {
+  order: -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 token('spacing.xs');
+  font: token('typography.body.sm.semibold');
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  color: token('color.foreground.subtle');
+}
+.mr-inc-eyebrow .mr-inc-when {
+  font: inherit;
+}
+.mr-inc-when {
+  flex: 0 0 auto;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* A compact line: fragments in a wrapping row. The column gap is a whole separator's advance (the "·" and the
+   air on each side of it), because the separators hang in the gaps (see .mr-inc-tail) — so the spacing reads
+   the same whether or not a fragment carries one, and a hanging "·" that would start a line falls outside the
+   line's box, where the overflow clips it. */
+.mr-inc-line {
+  --mr-inc-sep-advance: calc(2 * token('spacing.sm') + 0.32em);
+
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: token('spacing.xs') var(--mr-inc-sep-advance);
+  margin: 0;
+  font: token('typography.body.md.normal');
+  min-width: 0;
+  overflow: hidden;
+}
+.mr-inc-ratio-inline {
+  font-weight: 600;
+}
+/* A separator and what it introduces wrap together, and the separator sits in the gap before the fragment
+   (its own width, pulled back by the same amount): after a wrap it hangs left of the line, clipped, so no line
+   starts or ends on a lone "·". */
+.mr-inc-tail {
+  display: inline-flex;
+  align-items: baseline;
+  min-width: 0;
+}
+.mr-inc-tail > .mr-inc-sep {
+  flex: 0 0 var(--mr-inc-sep-advance);
+  width: var(--mr-inc-sep-advance);
+  margin-inline-start: calc(-1 * var(--mr-inc-sep-advance));
+  text-align: center;
+}
+/* The change glyph and the commit stay one fragment at the ordinary inline gap. */
+.mr-inc-commit-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  min-width: 0;
+}
+.mr-inc-arrow-inline {
+  color: token('color.foreground.subtle');
+  font-weight: 400;
+}
+.mr-inc-sub {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  align-items: center;
+}
+.mr-inc-sub .mr-inc-author,
+.mr-inc-sub .mr-inc-caught {
+  color: token('color.foreground.default');
+}
+.mr-inc--compact .mr-inc-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: token('spacing.sm') token('spacing.md');
+  margin-top: token('spacing.xs');
+}
+
+/* ── Full ────────────────────────────────────────────────────────────────── */
+.mr-inc--full .mr-inc-head {
+  padding: token('spacing.lg') token('spacing.xl');
+}
+.mr-inc--full .mr-inc-body {
+  gap: token('spacing.lg');
+  padding: token('spacing.lg') token('spacing.xl');
+}
+.mr-inc-headtext {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+}
+.mr-inc--full .mr-inc-title {
+  font: token('typography.heading.sm');
+  letter-spacing: token('typography.heading.sm.letterSpacing');
+}
+.mr-inc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 token('spacing.sm');
+  margin: 0;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+
+.mr-inc-figures {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: token('spacing.md') token('spacing.xl');
+}
+.mr-inc-ratio {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+}
+.mr-inc-ratio-row {
+  display: flex;
+  align-items: baseline;
+  gap: token('spacing.md');
+  margin: 0;
+  font: token('typography.metric.lg');
+  letter-spacing: -0.02em;
+}
+.mr-inc-arrow {
+  color: token('color.foreground.subtle');
+  font-weight: 400;
+}
+.mr-inc-caption {
+  margin: 0;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-inc-money--full {
+  margin: 0;
+  font: token('typography.heading.sm');
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.mr-inc-section {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+  padding-top: token('spacing.lg');
+  border-top: 1px solid var(--mr-border-subtle);
+}
+.mr-inc-commit {
+  display: flex;
+  align-items: baseline;
+  gap: token('spacing.sm');
+  margin: 0;
+  font: token('typography.body.md.normal');
+  min-width: 0;
+}
+.mr-inc-commit > .mr-inc-commit-text {
+  min-width: 0;
+}
+.mr-inc-cause {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: token('spacing.sm') token('spacing.md');
+  margin: 0;
+}
+.mr-inc-cause-when {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  font-variant-numeric: tabular-nums;
+}
+.mr-inc-caveat {
+  margin: 0;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-inc-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: token('spacing.sm') token('spacing.lg');
+  margin: 0;
+  font: token('typography.body.md.normal');
+}
+.mr-inc-status-caught {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+}
+.mr-inc-status .mr-inc-recovered,
+.mr-inc-status .mr-inc-note {
+  margin: 0;
+}
+
+.mr-inc--full .mr-inc-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: token('spacing.sm') token('spacing.lg');
+  padding-top: token('spacing.md');
+  border-top: 1px solid var(--mr-border-subtle);
+}
+.mr-inc-foot-end {
+  margin-inline-start: auto;
+}
+.mr-inc-slack {
+  min-width: 0;
+}
+
+/* P1-F07: a member's close (accepted as the new normal, muted, left out) — closed, not recovered: neutral, never the
+   saved green. The actions menu sits at the footer's end; its note (a busy lock, a failed save) wraps above it. */
+.mr-inc-closed-by {
+  color: token('color.foreground.default');
+  font-weight: 600;
+  text-wrap: balance;
+}
+.mr-inc-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  min-width: 0;
+}
+.mr-inc-action-note {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  white-space: normal;
+}
+.mr-inc-action-note--error {
+  color: token('color.foreground.danger.default');
+}
+.mr-inc-confirm {
+  display: block;
+  margin: 0;
+  text-wrap: pretty;
+}
+/* The compact footer's end: the rail's "Show in table" beside the alert's actions menu (P1-F07). */
+.mr-inc-foot-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+}
+
+/* The actions menu (P1-F07) is portalled with Capra's 256 px panel and single-line items: the descriptions wrap
+   ("Nothing new opens on it until Sep 28, 1:24 AM" lost its "AM", review W2). */
+.mr-inc-actions-menu [class*='menuItemDescription'] {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

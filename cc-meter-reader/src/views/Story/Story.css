@@ -1,0 +1,1212 @@
+/*
+ * src/views/Story/Story.css — Story mode (PRD 8.9, 8.8 items 1–4 and 8; DESIGN_BRIEF §1–4, 5.2, §8).
+ *
+ * The frame is the presenter's: chrome hidden, ≥ 64 px margins at 1920, nothing within 40 px of an edge,
+ * one display size per screen, the one soft glow behind the Meter. Every size scales with the frame;
+ * the maxima are the 1920 × 1080 stage values, the minima the 390 px phone values. Tokens only.
+ *
+ * Captions: bottom-center, the UI face (Open Sans 600), ≤ 2 lines, one at a time — the burned-in
+ * captions of the video use the same face and position (SPEC 13). Callout labels share the face.
+ *
+ * Motion (DESIGN_BRIEF 4): the only things that move are the ones being talked about — a caption line
+ * fading in, a callout appearing, the strip lighting, the commit diamond landing, the ratio line drawing
+ * in, the incident card sliding up (its own 450 ms). All of it stops under prefers-reduced-motion.
+ */
+
+.mr-story {
+  /*
+   * One stage pixel, the presenter's (Presenter.css): the frame's binding extent over the 1920 × 1080 design
+   * stage, so a window wider than 16:9 (a browser with its toolbars) scales the frame down by its height
+   * instead of cutting the beat off. The story's own sizes are capped at their 1920 values; the presenter
+   * beats use the presenter's sizes exactly (P1-C02).
+   */
+  --mr-sp: calc(min(100vw, 100vh * 1920 / 1080) / 1920);
+  --mr-st-margin: max(16px, calc(64 * var(--mr-sp)));
+  --mr-st-gap: clamp(16px, calc(48 * var(--mr-sp)), 48px);
+  --mr-st-caption: clamp(18px, calc(38 * var(--mr-sp)), 38px);
+  --mr-st-label: clamp(13px, calc(20 * var(--mr-sp)), 20px);
+  --mr-st-kicker: clamp(15px, calc(28 * var(--mr-sp)), 28px);
+  --mr-st-h2: clamp(18px, calc(32 * var(--mr-sp)), 32px);
+  --mr-st-small: clamp(12px, calc(18 * var(--mr-sp)), 18px);
+  --mr-st-basis: max(16px, calc(28 * var(--mr-sp)));
+  /* The presenter's hero and list scale (Presenter.css --mr-hero-*, --mr-pv-*). */
+  --mr-hero-min: 56px;
+  --mr-hero-max: max(96px, calc(200 * var(--mr-sp)));
+  --mr-st-pv-gap: max(24px, calc(80 * var(--mr-sp)));
+  --mr-st-pv-label: max(16px, calc(28 * var(--mr-sp)));
+  --mr-st-pv-list: max(17px, calc(32 * var(--mr-sp)));
+  --mr-st-pv-small: max(13px, calc(20 * var(--mr-sp)));
+  --mr-st-panel-max: 1280px;
+  --mr-st-ink: token('color.neutral.12');
+  --mr-st-on-ink: token('color.neutral.1');
+
+  position: relative;
+  box-sizing: border-box;
+  /*
+   * A fixed frame (P0-24): the stage row absorbs whatever the beat needs and never grows the page, so the
+   * document never scrolls and the caption rail sits on the same line in every beat of the loop.
+   */
+  height: 100vh;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: 'top' 'stage' 'rail';
+  background: var(--mr-surface-app);
+  color: token('color.foreground.default');
+  font-family: token('core.fontFamily.sans');
+  overflow: clip;
+  /* A one-finger swipe down is ours (it exits, P1-C06), not the browser's pan; pinch zoom stays. */
+  touch-action: pinch-zoom;
+}
+
+/* ── Top bar ─────────────────────────────────────────────────────────────────
+ * Three columns, the outer two always equal, so the progress sits on the frame's centre line whatever the
+ * brand and the exit hint measure (P1-C05); on a phone or a tablet it takes its own full-width row under
+ * them, which keeps it centred there too and leaves room for the touch hint and a 44 px × (P1-C06).
+ */
+.mr-st-top {
+  grid-area: top;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-areas: 'brand progress exit';
+  align-items: center;
+  column-gap: clamp(12px, calc(32.1 * var(--mr-sp)), 32px);
+  row-gap: 10px;
+  padding: clamp(10px, calc(28 * var(--mr-sp)), 28px) var(--mr-st-margin) 0;
+  min-width: 0;
+}
+.mr-st-brand {
+  grid-area: brand;
+  justify-self: start;
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, calc(15.9 * var(--mr-sp)), 16px);
+  min-width: 0;
+}
+.mr-st-wordmark {
+  flex: 0 0 auto;
+  font-size: clamp(14px, calc(22.1 * var(--mr-sp)), 22px);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+/* The presenter's quiet source chip (P1-C02), warning-tinted like the band it replaces: says "sample", asks nothing. */
+.mr-st-chip {
+  display: inline-block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0.2em 0.8em;
+  border-radius: token('radius.full');
+  border: 1px solid token('color.border.warning.subtle');
+  background: token('color.background.warning.subtle');
+  color: token('color.foreground.warning.strong');
+  font-size: clamp(12px, calc(18 * var(--mr-sp)), 18px);
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.mr-st-progress {
+  grid-area: progress;
+  display: flex;
+  gap: clamp(3px, calc(5 * var(--mr-sp)), 5px);
+  width: clamp(240px, 36vw, 720px);
+  min-width: 0;
+}
+.mr-st-seg {
+  flex-basis: 0;
+  height: clamp(4px, calc(5 * var(--mr-sp)), 5px);
+  border-radius: token('radius.full');
+  /* The beats still to come read as a track (P1-C05: the old tint sat at 1.05:1 on the canvas). */
+  background: token('color.border.neutral.default');
+  overflow: hidden;
+}
+.mr-st-seg-fill {
+  display: block;
+  height: 100%;
+  background: token('color.foreground.subtle');
+  transform-origin: left center;
+  transition: transform 100ms linear;
+}
+.mr-story[data-reduced='true'] .mr-st-seg-fill {
+  transition: none;
+}
+.mr-st-exit {
+  grid-area: exit;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: token('spacing.md');
+  min-width: 0;
+}
+.mr-st-hint {
+  font-size: var(--mr-st-small);
+  color: token('color.foreground.subtle');
+  white-space: nowrap;
+}
+/* The keys at a desk, the tap on a touch screen (P1-C06): one hint, never both. */
+.mr-st-hint[data-input='touch'] {
+  display: none;
+}
+@media (hover: none) {
+  .mr-st-hint[data-input='keys'] {
+    display: none;
+  }
+  .mr-st-hint[data-input='touch'] {
+    display: inline;
+  }
+}
+/* A desk window as narrow as a phone has no room for the key hint beside the brand; Esc and the × still work. */
+@media (max-width: 480px) and (hover: hover) {
+  .mr-st-hint[data-input='keys'] {
+    display: none;
+  }
+}
+/* The ×: a 44 px target (P1-C06), drawn as quietly as the tertiary icon button it replaces. Its box overhangs the
+ * bar by 6 px so the bar keeps its height and the icon its place at the frame's margin. */
+.mr-st-close {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 44px;
+  height: 44px;
+  margin: -6px -6px -6px 0;
+  padding: 0;
+  border: 0;
+  border-radius: token('radius.full');
+  background: transparent;
+  color: token('color.foreground.subtle');
+  cursor: pointer;
+}
+.mr-st-close:hover {
+  background: token('color.background.neutral.subtle');
+  color: token('color.foreground.default');
+}
+@media (max-width: 900px) {
+  .mr-st-top {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'brand exit' 'progress progress';
+  }
+  .mr-st-progress {
+    width: auto;
+  }
+}
+
+/* ── Stage ───────────────────────────────────────────────────────────────── */
+.mr-st-stage {
+  /* The scene's block padding (its own, so a scene fading out keeps its frame while the next one lays out). */
+  --mr-st-stage-pad: var(--mr-st-gap);
+  grid-area: stage;
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 var(--mr-st-margin);
+  /* A beat that needs more than the frame has is cut at the stage, never allowed to push the rail down. */
+  overflow: clip;
+}
+.mr-st-scene {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 0;
+  padding-block: var(--mr-st-stage-pad);
+  /*
+   * Scenes crossfade (P1-C05): the next one fades in while the last one fades out over it, opacity only, so
+   * nothing on the stage changes place as a beat begins (P1-C01) and the frame never cuts to empty.
+   */
+  animation: mr-st-scene-in 320ms ease-out both;
+}
+@keyframes mr-st-scene-in {
+  from {
+    opacity: 0;
+  }
+}
+/* The scene it replaced: over the same box, fading out, never hit-tested (index.tsx drops it at 260 ms). */
+.mr-st-scene[data-leaving='true'] {
+  position: absolute;
+  inset: 0 var(--mr-st-margin);
+  pointer-events: none;
+  animation: mr-st-scene-out 260ms ease-in both;
+}
+@keyframes mr-st-scene-out {
+  to {
+    opacity: 0;
+  }
+}
+.mr-story[data-reduced='true'] .mr-st-scene {
+  animation: none;
+}
+
+.mr-st-panel {
+  width: 100%;
+  /* One width for every card beat (P1-C05): the meter's receipt and the change's chart share their edges. */
+  max-width: var(--mr-st-panel-max);
+  box-sizing: border-box;
+  padding: clamp(16px, calc(48 * var(--mr-sp)), 48px);
+  background: var(--mr-surface-panel);
+  border: token('border.default');
+  border-radius: token('radius.xl');
+  box-shadow: token('shadow.low.down');
+}
+.mr-st-kicker {
+  margin: 0;
+  font-size: var(--mr-st-kicker);
+  font-weight: 600;
+  line-height: 1.2;
+  color: token('color.foreground.subtle');
+}
+.mr-st-sub {
+  margin: 0;
+  font-size: clamp(14px, calc(24 * var(--mr-sp)), 24px);
+  line-height: 1.3;
+  color: token('color.foreground.subtle');
+}
+.mr-st-basis {
+  margin: 0;
+  font-size: var(--mr-st-basis);
+  line-height: 1.3;
+  color: token('color.foreground.subtle');
+}
+.mr-st-h2 {
+  margin: 0;
+  font-size: var(--mr-st-h2);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+/* ── Title card ──────────────────────────────────────────────────────────── */
+.mr-st-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(20px, calc(48 * var(--mr-sp)), 48px);
+  max-width: 1200px;
+  text-align: center;
+}
+.mr-st-emblem {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(64px, calc(111.4 * var(--mr-sp)), 112px);
+  height: clamp(64px, calc(111.4 * var(--mr-sp)), 112px);
+  border-radius: token('radius.full');
+  background: color-mix(in srgb, var(--mr-fill-saved) 14%, transparent);
+  color: var(--mr-color-saved);
+}
+.mr-st-emblem svg {
+  width: 50%;
+  height: 50%;
+}
+.mr-st-title-text {
+  margin: 0;
+  font-size: clamp(28px, calc(68 * var(--mr-sp)), 68px);
+  font-weight: 600;
+  line-height: 1.14;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+/* The builder's signature under the title: a byline, not a second headline. */
+.mr-st-title-credit {
+  margin: calc(-0.5 * clamp(20px, calc(48 * var(--mr-sp)), 48px)) 0 0;
+  font-size: var(--mr-st-kicker);
+  font-weight: 400;
+  color: token('color.foreground.subtle');
+}
+
+/* ── The presenter (hook / alert / restore) ─────────────────────────────────
+ * The presenter's composition at the presenter's sizes (Presenter.css): the hero in 7 of 12 columns, the
+ * top five savers in 5, the card below across both. A beat that brings the card in (data-card) sets the
+ * band at the top of the stage from its first frame, so the card slides into its own room and the Meter
+ * never moves (P1-C01); a beat without one centres the band.
+ */
+.mr-st-pv {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: max(16px, calc(40 * var(--mr-sp)));
+  min-width: 0;
+}
+.mr-st-pv[data-card='true'] {
+  justify-content: flex-start;
+}
+.mr-st-pv-band {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  align-items: start;
+  gap: max(12px, calc(48 * var(--mr-sp))) var(--mr-st-pv-gap);
+  min-width: 0;
+}
+.mr-st-pv-hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: max(8px, calc(16 * var(--mr-sp)));
+  min-width: 0;
+  container-type: inline-size;
+}
+/* The single soft glow (DESIGN_BRIEF 5.2): saved green at ~12 %, behind the number, nowhere else. */
+.mr-st-pv-hero::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  left: -5%;
+  top: 50%;
+  width: 92%;
+  aspect-ratio: 2 / 1;
+  transform: translateY(-50%);
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--mr-fill-saved) 12%, transparent), transparent);
+  pointer-events: none;
+}
+.mr-st-pv-hero > * {
+  position: relative;
+  z-index: 1;
+}
+.mr-st-pv-label {
+  margin: 0;
+  font-size: var(--mr-st-pv-label);
+  font-weight: 600;
+  line-height: 1.2;
+  color: token('color.foreground.subtle');
+}
+/* The presenter's fit, to the character: ~0.6 em per character of the figure, never past --mr-hero-max. */
+.mr-st-pv-hero .mr-meter-figure {
+  font-size: clamp(var(--mr-hero-min), min(calc(100cqi / (var(--mr-st-hero-chars, 8) * 0.6)), var(--mr-hero-max)), var(--mr-hero-max));
+  line-height: 1;
+}
+.mr-st-pv-basisrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.6em;
+  row-gap: token('spacing.xs');
+  min-width: 0;
+}
+/*
+ * P2-W12: the savings-rate chip beside the basis — red with the open alert's $ a day, green once it is back. It
+ * is always laid out (hidden before the alert) so the band never moves when it lands; it fades in once.
+ */
+.mr-st-pv-delta {
+  display: inline-block;
+  padding: 0.1em 0.55em;
+  border-radius: token('radius.full');
+  font-size: var(--mr-st-basis);
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  animation: mr-st-delta-in 320ms ease-out both;
+}
+.mr-st-pv-delta[data-tone='none'] {
+  visibility: hidden;
+  animation: none;
+}
+.mr-st-pv-delta[data-tone='loss'] {
+  background: var(--mr-fill-incident-high-subtle);
+  color: var(--mr-color-incident-high);
+}
+.mr-st-pv-delta[data-tone='back'] {
+  background: var(--mr-fill-saved-subtle);
+  color: var(--mr-color-saved);
+}
+@keyframes mr-st-delta-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.3em);
+  }
+}
+.mr-story[data-reduced='true'] .mr-st-pv-delta {
+  animation: none;
+}
+.mr-st-pv-basis {
+  margin: 0;
+  font-size: var(--mr-st-basis);
+  line-height: 1.3;
+  color: token('color.foreground.subtle');
+  text-wrap: balance;
+}
+.mr-st-pv-savers {
+  display: flex;
+  flex-direction: column;
+  gap: max(12px, calc(24 * var(--mr-sp)));
+  min-width: 0;
+}
+.mr-st-pv-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: max(6px, calc(12 * var(--mr-sp)));
+}
+/* With the card up the list tightens (the presenter's lines, closer), so the whole card fits under it. */
+.mr-st-pv[data-card='true'] .mr-st-pv-savers {
+  gap: max(8px, calc(12 * var(--mr-sp)));
+}
+.mr-st-pv[data-card='true'] .mr-st-pv-list {
+  gap: max(2px, calc(4 * var(--mr-sp)));
+}
+/* W3-STAGE-4: and its lines sit closer, so a name wrapped to two lines (W3-STAGE-2) still leaves the card whole
+   and clear of the caption at 1280x720. */
+.mr-st-pv[data-card='true'] .mr-st-pv-item {
+  line-height: 1.2;
+}
+/*
+ * W3-STAGE-2: a name too long for its line wraps to a second one (never an ellipsis); the row aligns on its LAST
+ * baseline, so the leader, the drop chip and the amount sit on the name's last line and every amount keeps the one
+ * right edge. Two lines at most (the stage label rule, stageSaverLabels, keeps the names short; tested).
+ */
+.mr-st-pv-item {
+  display: flex;
+  align-items: last baseline;
+  gap: 0.35em;
+  min-width: 0;
+  font-size: var(--mr-st-pv-list);
+  line-height: 1.35;
+}
+.mr-st-pv-item-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  /* A wrapped name's two lines read as one item: closer than the rows are to each other. */
+  line-height: 1.15;
+  overflow-wrap: break-word;
+  /* No clamp: a clamp needs overflow hidden, and at this line height that shaves the descenders. The stage label
+     rule keeps names to two lines (tested). */
+}
+/* The receipt leader: whole dots on the baseline, right up to each amount (the presenter's, BEAUTY F13). */
+.mr-st-pv-leader {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 1.5em;
+  align-self: last baseline;
+  height: 0.14em;
+  color: token('color.foreground.subtle');
+}
+/* The dots, reaching left past a wrapped name's empty box to where its last line ends (leaderReach.ts). */
+.mr-st-pv-leader::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 0 calc(-1 * var(--mr-lead-reach, 0px));
+  background-image: radial-gradient(circle, currentColor 0.05em, transparent 0.07em);
+  background-size: 0.36em 0.14em;
+  background-repeat: space no-repeat;
+  background-position: 0 100%;
+}
+.mr-st-pv-item-amount {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35em;
+}
+.mr-st-pv-item-amount .mr-num {
+  font-weight: 600;
+}
+.mr-st-pv-unit {
+  font-size: var(--mr-st-pv-small);
+  color: token('color.foreground.subtle');
+  white-space: nowrap;
+}
+/* W3-STAGE-1: the open regression's drop on the saver it names (the presenter's .mr-pv-drop, the hero chip's red). */
+.mr-st-pv-drop {
+  flex: 0 0 auto;
+  padding: 0.05em 0.5em;
+  border-radius: token('radius.full');
+  background: var(--mr-fill-incident-high-subtle);
+  color: var(--mr-color-incident-high);
+  /* a touch under the line's own size (23 px at 1920), never under the unit's */
+  font-size: max(var(--mr-st-pv-small), 0.72em);
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  animation: mr-st-delta-in 320ms ease-out both;
+}
+.mr-story[data-reduced='true'] .mr-st-pv-drop {
+  animation: none;
+}
+.mr-st-card {
+  width: 100%;
+  /* The presenter's card width (Presenter.css: the frame less its margins and the QR column), not the full
+   * stage: at full width the card's words ended two thirds of the way across (P1-C05, "left-heavy"). Never
+   * narrower than the stage on a phone (the stage pixel shrinks with the frame; the card must not). */
+  max-width: max(calc(1520 * var(--mr-sp)), min(100%, 640px));
+  min-width: 0;
+}
+/* The card's type scales with the same stage pixel as the presenter's (Presenter.css), so it fits any frame. */
+.mr-story .mr-takeover {
+  --mr-tk-pad: max(16px, calc(40 * var(--mr-sp)));
+  --mr-tk-band-pad: max(12px, calc(24 * var(--mr-sp)));
+  --mr-tk-gap: max(12px, calc(24 * var(--mr-sp)));
+  --mr-tk-title: max(20px, calc(36 * var(--mr-sp)));
+  --mr-tk-ratio: max(48px, calc(104 * var(--mr-sp)));
+  --mr-tk-money: max(20px, calc(36 * var(--mr-sp)));
+  --mr-tk-commit: max(14px, calc(24 * var(--mr-sp)));
+  --mr-tk-caught: max(22px, calc(44 * var(--mr-sp)));
+  --mr-tk-delivery: max(16px, calc(30 * var(--mr-sp)));
+  --mr-tk-small: max(12px, calc(22 * var(--mr-sp)));
+  --mr-tk-glyph: max(24px, calc(36 * var(--mr-sp)));
+}
+/* A card beat needs the stage's full height: its scene's padding tightens (the frame's margins stay). */
+.mr-st-scene:has(> .mr-st-pv[data-card='true']) {
+  padding-block: max(12px, calc(32 * var(--mr-sp)));
+}
+
+/* ── The Meter (the receipt beat) ────────────────────────────────────────── */
+.mr-st-figure {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(4px, calc(12 * var(--mr-sp)), 12px);
+  text-align: center;
+  min-width: 0;
+  container-type: inline-size;
+}
+.mr-st-figure::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  left: 50%;
+  top: 50%;
+  width: min(1100px, 90%);
+  aspect-ratio: 2.4 / 1;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--mr-fill-saved) 12%, transparent), transparent);
+  pointer-events: none;
+}
+.mr-st-figure > * {
+  position: relative;
+  z-index: 1;
+}
+
+/*
+ * The receipt is the Receipt's hero card (Receipt.css): a perforated bottom edge, 6 px teeth (DESIGN_BRIEF §1),
+ * and the card elevation on a frame layer under a drop-shadow filter, since the mask would clip a box-shadow.
+ * The mask also keeps the Meter's glow inside the card (P1-C05: it leaked above the top edge).
+ */
+.mr-st-receipt-frame {
+  --mr-perf: 6px;
+  --mr-perf-mask:
+    linear-gradient(#000 0 0) left 0 top 0 / 100% calc(100% - var(--mr-perf)) no-repeat,
+    conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) left 0 bottom 0 / calc(var(--mr-perf) * 2) var(--mr-perf) repeat-x;
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  max-width: var(--mr-st-panel-max);
+  min-width: 0;
+}
+.mr-st-receipt-shadow {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  filter: var(--mr-card-drop-shadow);
+}
+.mr-st-receipt-shadow::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--mr-card-radius) var(--mr-card-radius) 0 0;
+  background: var(--mr-card-bg);
+  -webkit-mask: var(--mr-perf-mask);
+  mask: var(--mr-perf-mask);
+}
+.mr-st-receipt {
+  --mr-perf-inset: 1.414px; /* 1 px measured across a 45° tooth edge */
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(20px, calc(63.4 * var(--mr-sp)), 64px);
+  max-width: none;
+  padding-bottom: calc(clamp(16px, calc(48 * var(--mr-sp)), 48px) + var(--mr-perf));
+  border: 0;
+  box-shadow: none;
+  background: var(--mr-card-border);
+  -webkit-mask: var(--mr-perf-mask);
+  mask: var(--mr-perf-mask);
+}
+/* The panel, 1 px inside the border colour and cut to the same teeth, so the outline follows every tooth. */
+.mr-st-receipt::before {
+  content: '';
+  position: absolute;
+  inset: 1px 1px 0;
+  z-index: -1;
+  border-radius: calc(var(--mr-card-radius) - 1px) calc(var(--mr-card-radius) - 1px) 0 0;
+  background: var(--mr-card-bg);
+  -webkit-mask:
+    linear-gradient(#000 0 0) left 0 top 0 / 100% calc(100% - var(--mr-perf) - var(--mr-perf-inset)) no-repeat,
+    conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) left -1px bottom var(--mr-perf-inset) / calc(var(--mr-perf) * 2) var(--mr-perf) repeat-x;
+  mask:
+    linear-gradient(#000 0 0) left 0 top 0 / 100% calc(100% - var(--mr-perf) - var(--mr-perf-inset)) no-repeat,
+    conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) left -1px bottom var(--mr-perf-inset) / calc(var(--mr-perf) * 2) var(--mr-perf) repeat-x;
+}
+.mr-st-rbar {
+  min-width: 0;
+}
+@media (min-width: 1200px) {
+  .mr-st-rbar {
+    zoom: 1.5;
+  }
+}
+@media (min-width: 1700px) {
+  .mr-st-rbar {
+    zoom: 1.75;
+  }
+}
+
+/* ── How it works ────────────────────────────────────────────────────────────
+ * The app's own strip (HowItWorks.css) at stage size by a type scale, not CSS zoom (P1-C05). Its columns are
+ * 14 em of the label's face, so the wraps land the same way on every screen and in every engine: the first and
+ * last steps on two balanced lines, the middle two on one (measured: 14.5, 12.1, 11.0 and 18.3 em).
+ */
+.mr-st-how {
+  --mr-st-how-icon: clamp(44px, calc(80 * var(--mr-sp)), 80px);
+  --mr-st-how-gap: clamp(16px, calc(40 * var(--mr-sp)), 40px);
+  width: 100%;
+  max-width: calc(4 * 14em + 3 * var(--mr-st-how-gap));
+  font-size: clamp(16px, calc(28 * var(--mr-sp)), 28px);
+}
+.mr-st-how .mr-how--strip {
+  gap: var(--mr-st-how-gap);
+}
+.mr-st-how .mr-how--strip::before {
+  top: calc(var(--mr-st-how-icon) / 2);
+  left: calc(var(--mr-st-how-icon) / 2);
+  right: calc((100% - 3 * var(--mr-st-how-gap)) / 4 - var(--mr-st-how-icon) / 2);
+}
+.mr-st-how .mr-how-step {
+  gap: 0.6em;
+}
+.mr-st-how .mr-how-icon {
+  width: var(--mr-st-how-icon);
+  height: var(--mr-st-how-icon);
+}
+.mr-st-how .mr-how-icon svg {
+  width: 42%;
+  height: 42%;
+}
+.mr-st-how .mr-how-text {
+  gap: 0.4em;
+}
+.mr-st-how .mr-how-num {
+  font-size: 0.8em;
+  line-height: 1.35;
+}
+.mr-st-how .mr-how-label {
+  font-size: 1em;
+  line-height: 1.35;
+  text-wrap: balance;
+}
+
+/* ── The dollar map (P2-W11) ─────────────────────────────────────────────────
+ * The Flow view's own map, filling the room the stage leaves: the panel stretches to the scene, the map's
+ * frame takes the rest under the header, and the SVG is drawn at the size stages.tsx laid it out for (up to
+ * 1.5 × its design width, so its labels read on a projector). Wider than the other cards: a map needs it.
+ */
+.mr-st-flow {
+  max-width: min(100%, 1600px);
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(12px, calc(24 * var(--mr-sp)), 24px);
+  min-height: 0;
+}
+.mr-st-flow-frame {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mr-st-flow-frame > svg {
+  width: var(--mr-st-flow-w);
+  height: var(--mr-st-flow-h);
+  max-width: 100%;
+  max-height: 100%;
+}
+.mr-st-flow-total {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45em;
+  margin: 0;
+  white-space: nowrap;
+}
+.mr-st-flow-total-label {
+  font-size: var(--mr-st-pv-small);
+  color: token('color.foreground.subtle');
+}
+.mr-st-flow-total-figure {
+  font-size: clamp(22px, calc(44 * var(--mr-sp)), 44px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--mr-color-saved);
+}
+
+/* ── A change ships · watching ───────────────────────────────────────────── */
+.mr-st-watch {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(12px, calc(32.1 * var(--mr-sp)), 32px);
+}
+.mr-st-watch-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: token('spacing.md') var(--mr-st-gap);
+  min-width: 0;
+}
+.mr-st-watch-title {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+}
+.mr-st-watch-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: token('spacing.sm');
+  min-width: 0;
+}
+/* P2-W12: the clock from the deploy to the alert, in the commit line's face; it holds its width as it runs. */
+.mr-st-watch-clock {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  margin: 0;
+  font-size: clamp(14px, calc(24 * var(--mr-sp)), 24px);
+  line-height: 1.2;
+  color: token('color.foreground.subtle');
+  white-space: nowrap;
+}
+.mr-st-watch-clock-time {
+  display: inline-block;
+  min-width: 2.4em;
+  text-align: right;
+  font-size: clamp(22px, calc(40 * var(--mr-sp)), 40px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: token('color.foreground.default');
+}
+.mr-st-commit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: token('spacing.sm') token('spacing.md');
+  margin: 0;
+  padding: 0.5em 0.9em;
+  border-radius: token('radius.xl');
+  border: token('border.default');
+  background: var(--mr-surface-app);
+  font-size: clamp(13px, calc(20 * var(--mr-sp)), 20px);
+  line-height: 1.35;
+  min-width: 0;
+  animation: mr-st-land 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.mr-st-commit svg {
+  flex: 0 0 auto;
+  color: token('color.foreground.subtle');
+}
+.mr-st-commit-text {
+  min-width: 0;
+}
+.mr-st-hash {
+  font-family: token('core.fontFamily.mono');
+  font-size: 0.92em;
+  padding: 0.05em 0.35em;
+  border-radius: token('radius.md');
+  background: token('color.background.neutral.subtle');
+}
+.mr-st-commit-author {
+  font-weight: 600;
+}
+.mr-st-commit-when {
+  color: token('color.foreground.subtle');
+  white-space: nowrap;
+}
+@keyframes mr-st-land {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+.mr-rw {
+  position: relative;
+  width: 100%;
+  height: clamp(220px, 40vh, 480px);
+  min-width: 0;
+}
+.mr-rw-svg {
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: visible;
+  font-family: token('core.fontFamily.sans');
+}
+.mr-rw-grid line {
+  stroke: var(--mr-chart-grid);
+  stroke-width: 1;
+}
+.mr-rw-grid text,
+.mr-rw-time {
+  fill: var(--mr-chart-axis);
+  font-size: var(--mr-st-small);
+  font-variant-numeric: tabular-nums;
+}
+.mr-rw-baseline {
+  stroke: var(--mr-fill-saved);
+  stroke-opacity: 0.55;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 6;
+}
+.mr-rw-line {
+  fill: none;
+  stroke-width: clamp(2.5px, calc(4 * var(--mr-sp)), 4px);
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.mr-rw-line--before {
+  stroke: var(--mr-fill-saved);
+}
+.mr-rw-line--after {
+  stroke: var(--mr-fill-incident-high);
+}
+.mr-rw-lost {
+  fill: var(--mr-fill-incident-high-subtle);
+}
+.mr-rw-reveal {
+  transform-box: view-box;
+  transition: transform 120ms linear;
+}
+.mr-story[data-reduced='true'] .mr-rw-reveal {
+  transition: none;
+}
+.mr-rw-value {
+  font-size: clamp(16px, calc(28 * var(--mr-sp)), 28px);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mr-rw-value--before {
+  fill: var(--mr-color-saved);
+}
+.mr-rw-value--after {
+  fill: var(--mr-color-incident-high);
+}
+/* What the shaded loss costs, written inside it (P1-C04). */
+.mr-rw-loss {
+  fill: var(--mr-color-incident-high);
+  font-size: clamp(14px, calc(26 * var(--mr-sp)), 26px);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  animation: mr-st-callout-in 220ms ease-out both;
+}
+.mr-story[data-reduced='true'] .mr-rw-loss {
+  animation: none;
+}
+.mr-rw-rule {
+  stroke: token('color.foreground.subtle');
+  stroke-width: 1.5;
+  stroke-dasharray: 3 5;
+}
+.mr-rw-diamond {
+  fill: var(--mr-chart-marker);
+  stroke: var(--mr-surface-panel);
+  stroke-width: 2;
+}
+.mr-rw-change {
+  animation: mr-st-land 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.mr-story[data-reduced='true'] .mr-rw-change,
+.mr-story[data-reduced='true'] .mr-st-commit {
+  animation: none;
+}
+
+/* ── Slack (the alert, Monday's receipt) ─────────────────────────────────── */
+/* P2-W12: Monday's receipt prints a line at a time (SlackPreview revealLines); each line fades in as it lands. */
+.mr-st-slack .mr-slack-pre-line[data-shown='true'] {
+  animation: mr-st-print 180ms ease-out both;
+}
+@keyframes mr-st-print {
+  from {
+    opacity: 0;
+  }
+}
+.mr-story[data-reduced='true'] .mr-st-slack .mr-slack-pre-line {
+  animation: none;
+}
+.mr-st-slack {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  width: 100%;
+  max-width: 640px;
+  min-width: 0;
+}
+.mr-st-slack-channel {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.xs');
+  margin: 0;
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.subtle');
+}
+@media (min-width: 1200px) {
+  .mr-st-slack {
+    zoom: 1.4;
+  }
+}
+@media (min-width: 1700px) {
+  .mr-st-slack {
+    zoom: 1.6;
+  }
+}
+/* Monday's receipt is the tallest message (its sign-off included): on a short wide frame (1280×720, 1366×768) it
+   steps down so the channel, the whole receipt and the caption all fit the fixed frame. */
+@media (min-width: 1200px) and (max-height: 820px) {
+  .mr-story[data-view='receipt-weekly'] .mr-st-slack {
+    zoom: 1.25;
+  }
+}
+
+/* ── Summary ─────────────────────────────────────────────────────────────── */
+.mr-st-summary {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(16px, calc(40.3 * var(--mr-sp)), 40px);
+  /* The block as wide as its longest line, so it sits centred on the stage (P1-C05), lines ragged-right inside. */
+  width: fit-content;
+  max-width: min(100%, 1080px);
+}
+.mr-st-summary-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(12px, calc(28 * var(--mr-sp)), 28px);
+}
+.mr-st-summary-line {
+  display: flex;
+  align-items: center;
+  gap: clamp(12px, calc(24 * var(--mr-sp)), 24px);
+  font-size: clamp(22px, calc(49.9 * var(--mr-sp)), 50px);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  transition: opacity 320ms ease-out, transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.mr-st-summary-line[data-shown='false'] {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.mr-story[data-reduced='true'] .mr-st-summary-line {
+  transition: none;
+}
+.mr-st-check {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.3em;
+  height: 1.3em;
+  border-radius: token('radius.full');
+  background: color-mix(in srgb, var(--mr-fill-saved) 16%, transparent);
+  color: var(--mr-color-saved);
+}
+.mr-st-check svg {
+  width: 60%;
+  height: 60%;
+}
+
+/* ── The ask ─────────────────────────────────────────────────────────────── */
+.mr-st-ask {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(16px, calc(40.3 * var(--mr-sp)), 40px);
+  text-align: center;
+}
+/* The payoff over the code: the hook's figure in saved green, at a size the QR still leads. */
+.mr-st-ask-payoff {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(4px, calc(10 * var(--mr-sp)), 10px);
+}
+.mr-st-ask-figure {
+  margin: 0;
+  font-size: clamp(40px, calc(96 * var(--mr-sp)), 96px);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--mr-color-saved);
+}
+.mr-st-ask-basis {
+  margin: 0;
+  font-size: clamp(14px, calc(24 * var(--mr-sp)), 24px);
+  line-height: 1.3;
+  color: token('color.foreground.subtle');
+  text-wrap: balance;
+}
+.mr-st-ask-qr .mr-qr {
+  --mr-qr-size: clamp(220px, calc(339.8 * var(--mr-sp)), 340px);
+  --mr-qr-url-size: var(--mr-st-small);
+  gap: token('spacing.lg');
+}
+
+/* ── Caption rail ────────────────────────────────────────────────────────── */
+.mr-st-rail {
+  grid-area: rail;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  box-sizing: border-box;
+  /* Room for two lines, so the stage never jumps when a caption wraps. */
+  min-height: calc(var(--mr-st-caption) * 1.3 * 2 + clamp(16px, calc(57.6 * var(--mr-sp)), 56px));
+  padding: 0 var(--mr-st-margin) clamp(16px, calc(57.6 * var(--mr-sp)), 56px);
+}
+.mr-st-caption {
+  margin: 0;
+  max-width: 30em;
+  font-size: var(--mr-st-caption);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.005em;
+  text-align: center;
+  text-wrap: balance;
+  font-variant-numeric: tabular-nums;
+  animation: mr-st-caption-in 240ms ease-out both;
+}
+@keyframes mr-st-caption-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.mr-story[data-reduced='true'] .mr-st-caption {
+  animation: none;
+}
+
+/* ── Callouts: label + leader line, in the caption face ─────────────────── */
+.mr-st-callouts {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+}
+.mr-st-leaders {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+.mr-st-leader {
+  animation: mr-st-callout-in 220ms ease-out both;
+}
+.mr-st-leader line,
+.mr-st-leader polyline {
+  fill: none;
+  stroke: var(--mr-st-ink);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.mr-st-leader circle {
+  fill: var(--mr-st-ink);
+  stroke: var(--mr-surface-app);
+  stroke-width: 2;
+}
+.mr-st-callout,
+.mr-st-callout-measure {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: inline-block;
+  padding: 0.38em 0.85em;
+  border-radius: token('radius.full');
+  background: var(--mr-st-ink);
+  color: var(--mr-st-on-ink);
+  font-size: var(--mr-st-label);
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-shadow: token('shadow.medium.down');
+}
+.mr-st-callout[data-placed='false'],
+.mr-st-callout-measure {
+  visibility: hidden;
+}
+.mr-st-callout[data-placed='true'] {
+  animation: mr-st-callout-in 220ms ease-out both;
+}
+@keyframes mr-st-callout-in {
+  from {
+    opacity: 0;
+  }
+}
+.mr-st-callouts[data-reduced='true'] .mr-st-callout,
+.mr-st-callouts[data-reduced='true'] .mr-st-leader {
+  animation: none;
+}
+
+/* ── Phone ───────────────────────────────────────────────────────────────── */
+
+/*
+  P1-C03 with P1-B02: the card's commit is two lines — the hash and the person, then the message under them. The
+  message starts where the hash's characters start (past the code box's border and padding), so the leader that
+  "the commit" draws to the box's corner never lands on the message's first word.
+*/
+@media (min-width: 721px) {
+  .mr-st-card .mr-tk-message {
+    padding-inline-start: calc(0.24 * var(--mr-tk-by) + 1px);
+  }
+}
+@media (max-width: 720px) {
+  .mr-st-stage {
+    --mr-st-stage-pad: token('spacing.lg');
+  }
+  /* Room above the code for its callout. */
+  .mr-st-ask {
+    gap: 64px;
+  }
+  /* The presenter stacks into one column on a phone; with the card up, the card is the story. */
+  .mr-st-pv-band {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mr-st-pv[data-card='true'] .mr-st-pv-savers {
+    display: none;
+  }
+  /*
+    P1-C03: on a phone the card's commit line wraps, and the hash sat boxed in by words on every side, so "the
+    commit" could only reach it through text. The hash takes its own row here: the room to its right is where its
+    label goes, with a short leader and nothing under it.
+  */
+  .mr-st-card .mr-tk-commit > svg {
+    align-self: flex-start;
+    margin-top: 0.2em;
+  }
+  .mr-st-card .mr-tk-hash {
+    display: block;
+    width: fit-content;
+    /* Room under the hash row for its label's air, so "who deployed it" fits beside the author on the next row
+       (D52 took the lost line out of Story's card, and the two labels had crowded into one another). */
+    margin: 0.15em 0 0.8em;
+  }
+  .mr-st-watch-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .mr-st-watch-meta {
+    align-items: flex-start;
+  }
+}

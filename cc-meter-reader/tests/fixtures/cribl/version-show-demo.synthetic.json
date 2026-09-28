@@ -1,0 +1,59 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/m/default/version/show?commit=a1f3c9e7b2d4f6a8c0e1a1f3c9e7b2d4f6a8c0e1&diffLineLimit=1"
+  },
+  "status": 200,
+  "capturedAt": null,
+  "source": "synthetic",
+  "note": "SYNTHETIC: DiffFiles shape (openapi.json) for a one-file demo commit, plus a rename and a delete to exercise oldName/newName.",
+  "body": {
+    "count": 1,
+    "items": [
+      {
+        "commitMessage": "commit%20a1f3c9e7b2d4f6a8c0e1a1f3c9e7b2d4f6a8c0e1%0A%0A%20%20%20%20demo%3A%20break%20the%20trim%20on%20mrd_pay_sample%0A",
+        "diffJson": [
+          {
+            "oldName": "groups/default/local/cribl/pipelines/mrd_pay_sample/conf.yml",
+            "newName": "groups/default/local/cribl/pipelines/mrd_pay_sample/conf.yml",
+            "addedLines": 1,
+            "deletedLines": 1,
+            "isCombined": false,
+            "isGitDiff": true,
+            "language": "yaml",
+            "blocks": [
+              {
+                "header": "@@ -12,1 +12,1 @@",
+                "lines": [],
+                "oldStartLine": 12,
+                "newStartLine": 12
+              }
+            ]
+          },
+          {
+            "oldName": "groups/default/local/cribl/pipelines/old_name/conf.yml",
+            "newName": "groups/default/local/cribl/pipelines/new_name/conf.yml",
+            "isRename": true,
+            "addedLines": 0,
+            "deletedLines": 0,
+            "isCombined": false,
+            "isGitDiff": true,
+            "language": "yaml",
+            "blocks": []
+          },
+          {
+            "oldName": "groups/default/local/cribl/pipelines/gone/conf.yml",
+            "newName": "/dev/null",
+            "isDeleted": true,
+            "addedLines": 0,
+            "deletedLines": 4,
+            "isCombined": false,
+            "isGitDiff": true,
+            "language": "yaml",
+            "blocks": []
+          }
+        ]
+      }
+    ]
+  }
+}

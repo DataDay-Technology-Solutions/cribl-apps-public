@@ -1,0 +1,1037 @@
+/*
+ * src/views/Receipt/Receipt.css — the Receipt view (DESIGN_BRIEF 5.1): the Shell's <Page> column (BEAUTY F7),
+ * a 12-column grid with spacing.lg gutters, one card style (.mr-panel, BEAUTY F8), one display size
+ * (the Meter), one title per card.
+ *
+ * The root is `.mr-receipt-view`, not `.mr-receipt`: the Flow view's hover card (FlowDiagram/ReceiptCard) owns
+ * `.mr-receipt`, and this sheet's rules for it leaked into that card once both chunks had loaded.
+ */
+
+.mr-page.mr-receipt-view {
+  /* The hero, the notice and the card grid share the grid's own 16 px rhythm. */
+  gap: token('spacing.lg');
+}
+
+/* ── Hero frame: the card elevation for a torn shape ─────────────────────────
+ * The perforated hero is masked, and a mask clips box-shadow. So the frame holds a static layer, masked to the
+ * same torn outline, under a drop-shadow filter (which follows the teeth); the ticking hero paints on top and
+ * never re-rasterizes the filter.
+ */
+.mr-hero-frame {
+  --mr-perf: 6px;
+  --mr-perf-mask:
+    linear-gradient(#000 0 0) left 0 top 0 / 100% calc(100% - var(--mr-perf)) no-repeat,
+    conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) left 0 bottom 0 / calc(var(--mr-perf) * 2) var(--mr-perf) repeat-x;
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+}
+.mr-hero-shadow {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  filter: var(--mr-card-drop-shadow);
+}
+.mr-hero-shadow::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--mr-card-radius) var(--mr-card-radius) 0 0;
+  background: var(--mr-card-bg);
+  -webkit-mask: var(--mr-perf-mask);
+  mask: var(--mr-perf-mask);
+}
+
+/*
+ * Copy receipt tears a strip off along the perforation (P2-W25): a slip of the receipt — its perforated top edge,
+ * the total line — drops from the hero's torn edge, tilts and fades in 300 ms. Rendered only when motion is
+ * allowed (HeroCard checks prefers-reduced-motion), so the reduced-motion path never sees it.
+ */
+.mr-hero-tear {
+  --mr-perf: 6px;
+  position: absolute;
+  left: token('spacing.xl');
+  right: token('spacing.xl');
+  top: calc(100% - var(--mr-perf));
+  z-index: 3;
+  display: flex;
+  align-items: baseline;
+  gap: 0.75ch;
+  padding: calc(token('spacing.md') + var(--mr-perf)) token('spacing.lg') token('spacing.md');
+  background: var(--mr-card-bg);
+  box-shadow: token('shadow.medium.down');
+  font: token('typography.code');
+  color: token('color.foreground.default');
+  pointer-events: none;
+  -webkit-mask:
+    conic-gradient(from 135deg at 50% 0, #000 90deg, #0000 0) left 0 top 0 / calc(var(--mr-perf) * 2) var(--mr-perf) repeat-x,
+    linear-gradient(#000 0 0) left 0 top var(--mr-perf) / 100% calc(100% - var(--mr-perf)) no-repeat;
+  mask:
+    conic-gradient(from 135deg at 50% 0, #000 90deg, #0000 0) left 0 top 0 / calc(var(--mr-perf) * 2) var(--mr-perf) repeat-x,
+    linear-gradient(#000 0 0) left 0 top var(--mr-perf) / 100% calc(100% - var(--mr-perf)) no-repeat;
+  transform-origin: 12% 0;
+  animation: mr-hero-tear 300ms var(--mr-easing) both;
+}
+.mr-hero-tear-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mr-hero-tear-leader {
+  flex: 1 1 3ch;
+  height: 0.2em;
+  color: token('color.foreground.subtle');
+  background: radial-gradient(circle closest-side, currentColor 0 70%, transparent 85%) 0 0 / 1ch 100% repeat-x;
+}
+.mr-hero-tear-amount {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: var(--mr-color-saved);
+}
+@keyframes mr-hero-tear {
+  0% {
+    transform: translateY(-8px);
+    opacity: 1;
+  }
+  35% {
+    transform: translateY(2px) rotate(-0.6deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(36px) rotate(-2.4deg);
+    opacity: 0;
+  }
+}
+
+/* ── Hero ────────────────────────────────────────────────────────────────── */
+.mr-hero {
+  --mr-perf: 6px;
+  box-shadow: none; /* the frame carries the elevation (a mask would clip a box-shadow anyway) */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'id actions'
+    'number number'
+    'words words'
+    'caption caption'
+    'pace pace'
+    'bar bar'
+    'how how';
+  column-gap: token('spacing.lg');
+  padding: token('spacing.xl') token('spacing.2xl') calc(token('spacing.xl') + var(--mr-perf));
+  /*
+   * The perforated bottom edge (DESIGN_BRIEF §1): the card is cut to a row of 6 px teeth. The element
+   * itself is painted in the border colour and masked to the torn shape; ::before is the panel, masked to
+   * the same shape 1 px inside it, so the outline follows every tooth in both themes (a CSS border can't).
+   */
+  --mr-perf-inset: 1.414px; /* 1 px measured across a 45° tooth edge */
+  position: relative;
+  isolation: isolate;
+  border: 0;
+  background: var(--mr-card-border);
+  -webkit-mask: var(--mr-perf-mask);
+  mask: var(--mr-perf-mask);
+}
+.mr-hero::before {
+  content: '';
+  position: absolute;
+  inset: 1px 1px 0;
+  z-index: -1;
+  border-radius: calc(var(--mr-card-radius) - 1px) calc(var(--mr-card-radius) - 1px) 0 0;
+  background: var(--mr-card-bg);
+  -webkit-mask:
+    linear-gradient(#000 0 0) left 0 top 0 / 100% calc(100% - var(--mr-perf) - var(--mr-perf-inset)) no-repeat,
+    conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) left -1px bottom var(--mr-perf-inset) / calc(var(--mr-perf) * 2) var(--mr-perf)
+      repeat-x;
+  mask:
+    linear-gradient(#000 0 0) left 0 top 0 / 100% calc(100% - var(--mr-perf) - var(--mr-perf-inset)) no-repeat,
+    conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) left -1px bottom var(--mr-perf-inset) / calc(var(--mr-perf) * 2) var(--mr-perf)
+      repeat-x;
+}
+
+.mr-hero-id {
+  grid-area: id;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: token('spacing.md') token('spacing.lg');
+  min-width: 0;
+}
+.mr-hero-label {
+  font: token('typography.heading.sm');
+  letter-spacing: token('typography.heading.sm.letterSpacing');
+  color: token('color.foreground.subtle');
+}
+/* The header: the label + toggle row, and under it the one-line hint while Custom is off (sample data). */
+.mr-hero-head {
+  grid-area: id;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+  /* The period toggle reflows against the header's own width (below), whatever the viewport or zoom. */
+  container: mr-hero-head / inline-size;
+}
+.mr-hero-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+/*
+ * Reflow (WCAG 1.4.10): the five items are ~329 px in one row. Where the header is narrower than that less most of
+ * the card's padding (a 320 px phone, or a 1280 px desktop at 400 % zoom), they wrap into a two-row segmented
+ * block the header's full width: MTD · Today · 30 days above Annualized · Custom, the outer corners rounded, the
+ * shared borders overlapping by 1 px like the single row's. `mr-hero-period-group` is the group's FORCE__className
+ * (RangePicker.tsx), Capra's sanctioned override; each item keeps its own Capra button styles.
+ */
+@container mr-hero-head (max-width: 317px) {
+  .mr-hero-toggle {
+    display: flex;
+    width: 100%;
+  }
+  .mr-hero-period-group {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    width: 100%;
+  }
+  .mr-hero-period-group > * {
+    grid-column: span 2;
+    min-width: 0;
+    border-radius: 0;
+  }
+  .mr-hero-period-group > :nth-child(n + 4) {
+    grid-column: span 3;
+    margin-top: -1px;
+  }
+  .mr-hero-period-group > :nth-child(4) {
+    margin-inline-start: 0;
+  }
+  .mr-hero-period-group > :nth-child(1) {
+    border-start-start-radius: token('radius.md');
+  }
+  .mr-hero-period-group > :nth-child(3) {
+    border-start-end-radius: token('radius.md');
+  }
+  .mr-hero-period-group > :nth-child(4) {
+    border-end-start-radius: token('radius.md');
+  }
+  .mr-hero-period-group > :nth-child(5) {
+    border-end-end-radius: token('radius.md');
+  }
+}
+.mr-hero-toggle-hint {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  text-wrap: pretty;
+}
+/*
+ * The picker's anchor (RangePicker.tsx): the Capra Popover opens against the Capra button inside its trigger,
+ * so a hidden one sits just past the group's right end, its bottom level with the group's (one row or, at
+ * 320 px, two): the popover drops from there into the card's empty half (P1-H09); on a phone a measured
+ * cross-axis offset moves it to the card's left edge. Never seen, never tabbed to, never clicked: Custom is the
+ * control.
+ */
+.mr-range-anchor {
+  position: absolute;
+  left: 100%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── The custom range picker (a Capra Popover; RangePicker.tsx) ──────────── */
+.mr-range-panel {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  /* The popover's content padding is the panel's own (removeContentPadding), so a phone can size it to the card. */
+  box-sizing: border-box;
+  padding: token('spacing.md');
+  width: min(376px, calc(100vw - 32px));
+}
+.mr-range-panel-title {
+  font: token('typography.heading.xs');
+  letter-spacing: token('typography.heading.xs.letterSpacing');
+  color: token('color.foreground.default');
+}
+.mr-range-panel-sub {
+  margin-top: token('spacing.sm');
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+}
+/* One field per row: a native datetime-local needs the full width to show every segment in every engine. */
+.mr-range-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: token('spacing.md');
+}
+.mr-range-panel-note {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  text-wrap: pretty;
+}
+.mr-range-panel-note[data-invalid='true'] {
+  color: token('color.foreground.danger.default');
+}
+/* What Apply will sum, for the draft as it stands, and how many history documents that reads. */
+.mr-range-panel-preview {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+  text-wrap: pretty;
+}
+.mr-range-panel-reads {
+  margin-top: calc(token('spacing.sm') * -1);
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  font-variant-numeric: tabular-nums;
+}
+.mr-range-panel-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: token('spacing.sm');
+  padding-top: token('spacing.sm');
+}
+
+/* The range's words sit between the number and its caption, in the caption's voice but darker. */
+.mr-hero-range-words {
+  grid-area: words;
+  margin-top: token('spacing.xs');
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+  text-wrap: pretty;
+}
+.mr-hero-range-words + .mr-hero-caption {
+  margin-top: 0;
+}
+.mr-hero-rate {
+  font-variant-numeric: tabular-nums;
+}
+/* The rate follows the exactness on one line; on a phone it takes a line of its own, without the separator. */
+.mr-hero-rate-wrap {
+  display: inline;
+}
+/* A 429 held the figures (api-budget F2): when they update, after the caption, in its voice. */
+.mr-hero-held {
+  display: inline;
+}
+.mr-hero-caption[data-state='range-error'] {
+  display: block;
+  /* A sentence and its Retry, not a full-width bar with the button a card away. */
+  max-width: 40rem;
+}
+
+/* While a range's rows are read: the finished layout's shape, so nothing moves when the figures land. */
+.mr-skel.mr-skel--range {
+  /* A solid neutral at low opacity reads on the card in both themes (the subtle tint .mr-skel uses vanishes in dark). */
+  background: token('color.background.neutral.solid.default');
+  opacity: 0.22;
+}
+.mr-skel--hero {
+  /* The Meter's hero line: its font size (Meter.css) × its line height. */
+  width: min(420px, 60%);
+  height: calc(clamp(56px, calc(24px + 4.5vw), 88px) * 1.12);
+}
+.mr-skel--line {
+  height: 14px;
+}
+.mr-skel--track {
+  width: 100%;
+  height: token('spacing.lg');
+  border-radius: token('radius.full');
+}
+.mr-hero-caption--skel {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 1lh;
+}
+.mr-hero-caption--skel > .mr-skel--line,
+.mr-hero-bar--skel > .mr-skel--line {
+  /* Each ghost line stands where a line of text would: centred in that line's height. */
+  margin: calc((1lh - 14px) / 2) 0;
+}
+.mr-skel.mr-skel--rate {
+  display: none;
+}
+/* The would-have-paid line is centred on the bar's dimension line (ReceiptBar.css), so its ghost is too. */
+.mr-skel.mr-skel--whp {
+  align-self: center;
+}
+
+.mr-hero-actions {
+  grid-area: actions;
+  display: flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  justify-self: end;
+}
+
+.mr-hero-number {
+  grid-area: number;
+  /* The Meter sizes its figure against this box, so it never overflows at 390 px. */
+  container-type: inline-size;
+  margin-top: token('spacing.xl');
+  min-width: 0;
+}
+
+.mr-hero-caption {
+  grid-area: caption;
+  margin-top: token('spacing.xs');
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.subtle');
+  text-wrap: pretty;
+}
+/* The caption's words crossfade in as the period changes (P1-H09); none under reduced motion (palette.css). */
+.mr-hero-caption {
+  animation: mr-hero-caption-in var(--mr-duration-fast) var(--mr-easing) both;
+}
+@keyframes mr-hero-caption-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.mr-hero-bar {
+  grid-area: bar;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+  margin-top: token('spacing.xl');
+  min-width: 0;
+}
+
+.mr-hero-how {
+  grid-area: how;
+  margin-top: token('spacing.lg');
+  padding-top: token('spacing.md');
+  /* A plain hairline: dashed means "projected" in this app (BEAUTY F8c). */
+  border-top: 1px solid var(--mr-border-subtle);
+}
+.mr-hero-how-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  /* A real target (P1-H04): body text and a 32 px row, not a 12 px caption in a 20 px box. */
+  min-height: 32px;
+  padding: token('spacing.xs') token('spacing.sm') token('spacing.xs') 0;
+  border: 0;
+  background: transparent;
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.subtle');
+  cursor: pointer;
+  border-radius: token('radius.lg');
+}
+.mr-hero-how-toggle:hover {
+  color: token('color.foreground.default');
+}
+.mr-hero-how-chevron {
+  display: inline-flex;
+  transition: transform var(--mr-duration-fast) var(--mr-easing);
+}
+.mr-hero-how-chevron[data-open='true'] {
+  transform: rotate(90deg);
+}
+/*
+ * The reveal (P1-H09): the panel's one row eases from 0fr to its content's height while the content fades in,
+ * over the ribbon duration (0 ms under reduced motion, palette.css). Shut, it is hidden from sight and from
+ * assistive tech once the row has closed.
+ */
+.mr-hero-how-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    grid-template-rows var(--mr-duration-ribbon) var(--mr-easing),
+    opacity var(--mr-duration-ribbon) var(--mr-easing),
+    visibility 0s linear var(--mr-duration-ribbon);
+}
+.mr-hero-how-panel[data-open='true'] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
+}
+.mr-hero-how-clip {
+  min-height: 0;
+  overflow: hidden;
+}
+.mr-hero-how-content {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+  padding-top: token('spacing.lg');
+}
+.mr-hero-how-notes {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+  max-width: 92ch;
+}
+.mr-hero-how-note {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  text-wrap: pretty;
+}
+.mr-hero-how-note-title {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+}
+.mr-receipt-card-foot {
+  margin-top: auto;
+  padding-top: token('spacing.md');
+  font: token('typography.body.sm.normal');
+}
+
+/*
+ * ── The hero's right column (P1-H01) ────────────────────────────────────────
+ * At 1024 px and up the number, its words and its caption take the left column and every period stands beside
+ * them as receipt lines, so the right half of the card holds figures instead of air. A trailing flexible row
+ * absorbs the aside's height, so the number and its caption never spread apart to match it.
+ */
+.mr-hero-aside {
+  display: none;
+}
+@media (min-width: 1024px) {
+  .mr-hero {
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 44%);
+    grid-template-areas:
+      'id actions'
+      'number aside'
+      'words aside'
+      'caption aside'
+      'pace aside'
+      'rest aside'
+      'bar bar'
+      'how how';
+    grid-template-rows: auto auto auto auto auto 1fr auto auto;
+  }
+  .mr-hero-aside {
+    grid-area: aside;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: token('spacing.sm');
+    margin-top: token('spacing.xl');
+    padding-left: token('spacing.xl');
+    border-left: 1px solid var(--mr-border-subtle);
+    min-width: 0;
+  }
+}
+.mr-hero-aside--ghost {
+  gap: token('spacing.md');
+}
+.mr-hero-aside-skel {
+  width: 100%;
+  height: 14px;
+}
+.mr-receipt-view--ghost .mr-hero-aside-skel {
+  opacity: 0.4;
+}
+.mr-hero-aside-skel--now {
+  width: 70%;
+  margin-top: token('spacing.sm');
+}
+.mr-hero-aside .mr-rlist-line {
+  padding-block: token('spacing.xs');
+}
+/* A day at current rates: under a dotted rule, like a receipt's footnote line. */
+.mr-hero-aside-now {
+  padding-top: token('spacing.sm');
+  border-top: 1px dotted var(--mr-border);
+}
+.mr-hero-aside-now .mr-rlist-line {
+  padding-inline: token('spacing.sm');
+}
+
+/*
+ * ── Which prices (P2-W20) ───────────────────────────────────────────────────
+ * A quiet outline pill after the caption: typical list prices until every priced destination has a rate an
+ * admin entered. Neutral, never a status colour.
+ */
+.mr-hero-caption-row {
+  grid-area: caption;
+  margin-top: token('spacing.xs');
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: token('spacing.xs') token('spacing.sm');
+  min-width: 0;
+}
+.mr-hero-caption-row > .mr-hero-caption {
+  margin-top: 0;
+  min-width: 0;
+}
+.mr-hero-range-words + .mr-hero-caption-row {
+  margin-top: 0;
+}
+
+/*
+ * ── The goal's pace (P2-W20) ─────────────────────────────────────────────────
+ * One thin strip on one scale: saved so far filled in the money green, the rest of the month at this rate
+ * dashed (dashed means projected in this app), a rule at the goal; the words under it.
+ */
+.mr-hero-goal {
+  grid-area: pace;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+  margin-top: token('spacing.lg');
+  max-width: 560px;
+  min-width: 0;
+}
+.mr-hero-goal[data-reserved='true'] {
+  visibility: hidden;
+}
+.mr-hero-goal-track {
+  position: relative;
+  height: 6px;
+  margin-top: token('spacing.lg');
+  border-radius: token('radius.full');
+  background: var(--mr-fill-whp);
+}
+.mr-hero-goal-saved,
+.mr-hero-goal-proj {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+}
+.mr-hero-goal-saved {
+  border-radius: token('radius.full');
+  background: var(--mr-fill-saved);
+}
+.mr-hero-goal-proj {
+  background: repeating-linear-gradient(90deg, var(--mr-fill-saved) 0 6px, transparent 6px 10px);
+  opacity: 0.55;
+}
+.mr-hero-goal-rule {
+  position: absolute;
+  top: -5px;
+  bottom: -5px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: token('color.foreground.default');
+}
+.mr-hero-goal-tick {
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  font: token('typography.body.sm.normal');
+  font-size: 12px;
+  line-height: 1;
+  color: token('color.foreground.subtle');
+  white-space: nowrap;
+}
+.mr-hero-goal-words {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+  text-wrap: pretty;
+}
+.mr-hero-goal[data-state='ahead'] .mr-hero-goal-words {
+  color: var(--mr-color-saved);
+}
+.mr-hero-goal[data-state='behind'] .mr-hero-goal-words {
+  color: token('color.foreground.warning.default');
+}
+@media (forced-colors: active) {
+  .mr-hero-goal-track,
+  .mr-hero-goal-saved,
+  .mr-hero-goal-proj {
+    forced-color-adjust: none;
+  }
+}
+
+/* ── Cards ───────────────────────────────────────────────────────────────── */
+.mr-receipt-eyebrow {
+  font: token('typography.body.sm.semibold');
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  color: token('color.foreground.subtle');
+}
+/*
+ * This week so far (P2-W20): the total and its comparison, what saved it, and the message it would send — three
+ * columns on a desktop, one on a phone (where the message opens from a button instead).
+ */
+.mr-week {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: token('spacing.xl');
+}
+.mr-week-sum {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+}
+.mr-week-total {
+  display: flex;
+}
+.mr-week-amount {
+  font: token('typography.metric.lg');
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--mr-color-saved);
+}
+.mr-week-change {
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-week-sentinel {
+  height: 0;
+}
+.mr-week-ghost {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+}
+.mr-week-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: token('spacing.sm') token('spacing.lg');
+  margin-top: token('spacing.md');
+  font: token('typography.body.sm.normal');
+}
+.mr-week-message {
+  display: none;
+}
+@media (min-width: 1024px) {
+  .mr-week {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 4fr) minmax(0, 5fr);
+    align-items: start;
+  }
+  /* Sample data has no line items to list: the total and the message share the row. */
+  .mr-week[data-sample='true'] {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  }
+  .mr-week-open {
+    display: none;
+  }
+  .mr-week-message {
+    display: flex;
+    flex-direction: column;
+    gap: token('spacing.sm');
+    min-width: 0;
+  }
+}
+.mr-week-preview {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+}
+
+.mr-receipt-grid {
+  align-items: stretch;
+}
+/* W3-RECEIPT-3 (P1-H04): the destinations and the alerts share a row whose heights follow the data (eight
+   destinations beside a calm card, or three open alerts beside two destinations): each ends at its content, so the
+   shorter never stretches into an empty band. */
+.mr-receipt-grid > .mr-receipt-card--fit {
+  align-self: start;
+}
+.mr-receipt-card {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+  min-width: 0;
+  padding: token('spacing.xl');
+}
+.mr-receipt-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: token('spacing.md');
+}
+.mr-receipt-card-titles {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+}
+.mr-receipt-card-title {
+  font: token('typography.heading.sm');
+  letter-spacing: token('typography.heading.sm.letterSpacing');
+  color: token('color.foreground.default');
+}
+.mr-receipt-card-caption {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-receipt-card-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.mr-receipt-card-action {
+  flex: 0 0 auto;
+}
+
+.mr-receipt-legend {
+  display: inline-flex;
+  gap: token('spacing.md');
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-receipt-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+}
+.mr-receipt-legend-swatch {
+  width: token('spacing.md');
+  height: token('spacing.md');
+  border-radius: token('radius.full');
+}
+.mr-receipt-legend-swatch--paid {
+  background: var(--mr-fill-paid);
+}
+.mr-receipt-legend-swatch--saved {
+  background: var(--mr-fill-saved);
+}
+@media (forced-colors: active) {
+  /* The legend keeps its two fills, like the bars it names (P1-H05). */
+  .mr-receipt-legend-swatch {
+    forced-color-adjust: none;
+    border: 1px solid CanvasText;
+  }
+}
+
+.mr-receipt-empty {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  padding: token('spacing.sm') 0;
+}
+.mr-receipt-empty .mr-ghost {
+  margin-bottom: token('spacing.md');
+}
+.mr-receipt-empty-title {
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+/* "No open alerts", then what is being watched and what closed today (P1-H04), as quiet receipt blocks. */
+.mr-receipt-calm-stack {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xl');
+}
+.mr-receipt-calm-block {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+}
+.mr-receipt-calm-block .mr-rlist-line {
+  padding-block: token('spacing.xs');
+}
+/* "No open alerts": one calm line with a neutral check — no box, no green (BEAUTY F10 / F14). */
+.mr-receipt-calm {
+  display: flex;
+  align-items: flex-start;
+  gap: token('spacing.md');
+}
+.mr-receipt-calm-mark {
+  flex: 0 0 auto;
+  display: inline-flex;
+  margin-top: 2px;
+  color: token('color.foreground.subtle');
+}
+
+.mr-receipt-alerts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+}
+.mr-receipt-alerts-more {
+  margin-top: token('spacing.md');
+  font: token('typography.body.sm.normal');
+}
+
+.mr-receipt-notice--top {
+  margin-bottom: token('spacing.lg');
+}
+
+/* ── Ghost (waiting for the first sweep / snapshot unreadable, BEAUTY F14) ── */
+.mr-hero-dash {
+  display: block;
+  font: 600 clamp(56px, calc(24px + 4.5vw), 88px) / 1.12 token('core.fontFamily.sans');
+  letter-spacing: -0.02em;
+  color: token('color.foreground.subtle');
+  opacity: 0.4;
+}
+.mr-hero--ghost .mr-hero-caption {
+  color: token('color.foreground.default');
+}
+.mr-hero-ghostbar {
+  display: block;
+  height: 16px;
+  border-radius: token('radius.full');
+  background: token('color.background.neutral.default');
+  opacity: 0.4;
+}
+.mr-receipt-card-title--ghost {
+  font: token('typography.heading.sm');
+  color: token('color.foreground.subtle');
+}
+.mr-receipt-view--ghost .mr-receipt-card {
+  justify-content: flex-start;
+}
+/* Nothing will load (craft review, round 2): one still line where the outlines were. */
+.mr-receipt-card-stopped {
+  margin: token('spacing.sm') 0 0;
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.subtle');
+}
+
+/* ── Skeleton (static blocks; no shimmer) ────────────────────────────────── */
+.mr-skel {
+  display: block;
+  /* A solid neutral at low opacity reads on the card in both themes; the subtle tint vanished in dark (review W2: the
+     week card's placeholder, (23,24,26) on the panel's (24,25,27), read as an empty box). */
+  background: token('color.background.neutral.solid.default');
+  opacity: 0.22;
+  border-radius: token('radius.lg');
+  max-width: 100%;
+}
+.mr-skel--number {
+  width: min(420px, 80%);
+  height: 72px;
+}
+.mr-skel--block {
+  width: 100%;
+  height: 160px;
+}
+.mr-hero--skeleton {
+  row-gap: token('spacing.md');
+}
+.mr-hero--skeleton .mr-hero-caption,
+.mr-hero--skeleton > .mr-skel {
+  /* The caption's ghost stands where the caption will (under the number, beside the aside at 1024 px and up). */
+  grid-area: caption;
+}
+
+/* ── Narrow ──────────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .mr-hero {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'id'
+      'number'
+      'words'
+      'caption'
+      'pace'
+      'bar'
+      'actions'
+      'how';
+  }
+  .mr-hero-actions {
+    justify-self: start;
+    margin-top: token('spacing.lg');
+    /* Show the math, Copy receipt and Report card: the third wraps on a phone rather than widen the page. */
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 640px) {
+  /* The price pill under the caption, whatever the caption's length, so the hero keeps its height (P1-F12). */
+  .mr-hero-caption-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .mr-hero {
+    padding: token('spacing.lg') token('spacing.lg') calc(token('spacing.lg') + var(--mr-perf));
+  }
+  /* On a phone: Show the math on a row of its own, then Copy receipt and Report card as an equal pair. */
+  .mr-hero-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-self: stretch;
+  }
+  .mr-hero-actions > :first-child {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+  .mr-hero-actions > :not(:first-child) {
+    width: 100%;
+  }
+  .mr-hero-actions > :last-child:nth-child(2) {
+    grid-column: 1 / -1;
+  }
+  .mr-hero-rate-wrap {
+    display: block;
+  }
+  .mr-hero-rate-sep,
+  .mr-hero-held-sep {
+    display: none;
+  }
+  .mr-hero-held {
+    display: block;
+  }
+  .mr-skel.mr-skel--rate {
+    display: block;
+  }
+  .mr-hero-number {
+    margin-top: token('spacing.lg');
+  }
+  .mr-hero-bar {
+    margin-top: token('spacing.lg');
+  }
+  .mr-receipt-card {
+    padding: token('spacing.lg');
+  }
+  .mr-receipt-card-head {
+    flex-direction: column;
+  }
+}
+
+/* P1-F10: what the hero's dollars are priced at — a quiet pill beside "Saved by Cribl", neutral in both states (the
+   only green is money saved); the hover says how many destinations are at the member's own rates. */
+.mr-hero-price-basis {
+  display: inline-block;
+  margin-inline-start: calc(-1 * token('spacing.md'));
+  padding: 0 token('spacing.sm');
+  border: 1px solid var(--mr-border);
+  border-radius: token('radius.full');
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  white-space: nowrap;
+  vertical-align: baseline;
+  cursor: help;
+}
+.mr-hero-price-basis[data-basis='contract'] {
+  color: token('color.foreground.default');
+}
+
+/* P1-F11: the entitlement line under the receipt bar — a caption, never a warning. */
+.mr-hero-entitlement {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: token('color.foreground.subtle');
+  text-wrap: pretty;
+}
+
+/* The first day's run rate is a projection (craft review, round 1): the What-if's dashed pill, the same word, before
+   the caption that says how few minutes it rests on. */
+.mr-hero-projection {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  padding: 0 token('spacing.md');
+  border: 1px dashed token('color.border.neutral.strong');
+  border-radius: token('radius.full');
+  font: token('typography.body.sm.semibold');
+  line-height: 22px;
+  color: token('color.foreground.default');
+  white-space: nowrap;
+}

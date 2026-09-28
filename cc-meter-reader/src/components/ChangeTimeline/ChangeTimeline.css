@@ -1,0 +1,549 @@
+/*
+ * src/components/ChangeTimeline/ChangeTimeline.css — the change timeline card. Tokens only. The ratio line is
+ * the saved green (it IS the savings ratio); commits use the chart-marker accent; a commit an open alert
+ * names uses the incident red. Nothing else on the chart has a hue.
+ */
+
+.mr-ct {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  min-width: 0;
+}
+
+.mr-ct-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: token('spacing.lg');
+  flex-wrap: wrap;
+}
+.mr-ct-titles {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+  flex: 1 1 240px;
+}
+.mr-ct-title {
+  font: token('typography.heading.sm');
+  color: token('color.foreground.default');
+}
+.mr-ct-caption {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  text-wrap: pretty;
+}
+.mr-ct-toggle {
+  flex: 0 0 auto;
+}
+
+.mr-ct-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: token('spacing.sm') token('spacing.lg');
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-ct-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+}
+.mr-ct-swatch {
+  display: inline-block;
+  flex: 0 0 auto;
+}
+.mr-ct-swatch--line {
+  width: 16px;
+  height: 2px;
+  border-radius: token('radius.full');
+  background: var(--mr-fill-saved);
+}
+.mr-ct-swatch--commit,
+.mr-ct-swatch--cause {
+  width: 8px;
+  height: 8px;
+  transform: rotate(45deg);
+  background: var(--mr-chart-marker);
+}
+.mr-ct-swatch--cause {
+  background: var(--mr-fill-incident-high);
+}
+.mr-ct-readout {
+  margin-left: auto;
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+}
+
+/* ── Chart ── */
+/* The chart box fills what the card leaves (its floor is an inline min-height); beside the alerts rail the card
+   stretches and the chart grows with it (P1-K02). The SVG sits on top of the box, out of flow, so the box's
+   height never comes from the drawing sized to it. */
+.mr-ct-chart {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+}
+.mr-ct-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  overflow: visible;
+  font-family: token('core.fontFamily.sans');
+}
+.mr-ct-grid {
+  stroke: var(--mr-chart-grid);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+.mr-ct-axis {
+  stroke: var(--mr-border);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+.mr-ct-axis-label {
+  fill: var(--mr-chart-axis);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.mr-ct-area {
+  fill: var(--mr-fill-saved-subtle);
+  opacity: 0.7;
+}
+.mr-ct-line {
+  fill: none;
+  stroke: var(--mr-fill-saved);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.mr-ct-now {
+  fill: var(--mr-fill-saved);
+  stroke: var(--mr-surface-panel);
+  stroke-width: 2;
+}
+.mr-ct-hover line {
+  stroke: token('color.foreground.subtle');
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+.mr-ct-hover circle {
+  fill: var(--mr-surface-panel);
+  stroke: var(--mr-fill-saved);
+  stroke-width: 2;
+}
+.mr-ct-hit {
+  fill: transparent;
+  cursor: crosshair;
+}
+.mr-ct-guide {
+  stroke: var(--mr-chart-marker);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+  opacity: 0.45;
+}
+.mr-ct-guide.is-cause {
+  stroke: var(--mr-fill-incident-high);
+  opacity: 0.6;
+}
+.mr-ct-guide.is-selected {
+  opacity: 1;
+  stroke-dasharray: none;
+}
+/* A marker the strip fanned out sideways, joined to its true time on the axis (P1-K03). */
+.mr-ct-leader {
+  stroke: var(--mr-chart-marker);
+  stroke-width: 1;
+  opacity: 0.6;
+}
+.mr-ct-leader.is-cause {
+  stroke: var(--mr-fill-incident-high);
+}
+.mr-ct-leader.is-selected {
+  opacity: 1;
+}
+
+.mr-ct-marker {
+  cursor: pointer;
+  outline: none;
+}
+.mr-ct-marker-hit {
+  fill: transparent;
+}
+.mr-ct-marker-diamond {
+  fill: var(--mr-chart-marker);
+  stroke: var(--mr-surface-panel);
+  stroke-width: 1.5;
+  transition: transform var(--mr-duration-fast) var(--mr-easing);
+}
+.mr-ct-marker.is-cause .mr-ct-marker-diamond {
+  fill: var(--mr-fill-incident-high);
+}
+.mr-ct-marker-ring {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 2;
+}
+.mr-ct-marker:hover .mr-ct-marker-ring,
+.mr-ct-marker.is-selected .mr-ct-marker-ring {
+  stroke: var(--mr-chart-marker);
+  opacity: 0.5;
+}
+.mr-ct-marker.is-cause:hover .mr-ct-marker-ring,
+.mr-ct-marker.is-cause.is-selected .mr-ct-marker-ring {
+  stroke: var(--mr-fill-incident-high);
+}
+/* A Ledger row's pointer is on this commit's flow (P2-W17): the ring shows, steady (nothing pulses). */
+.mr-ct-marker.is-linked .mr-ct-marker-ring {
+  stroke: var(--mr-chart-marker);
+  opacity: 1;
+}
+.mr-ct-marker.is-cause.is-linked .mr-ct-marker-ring {
+  stroke: var(--mr-fill-incident-high);
+}
+.mr-ct-link-band {
+  fill: token('color.background.accent.subtle');
+  opacity: 0.6;
+  pointer-events: none;
+}
+.mr-ct-marker:focus-visible .mr-ct-marker-ring {
+  stroke: token('color.border.focus');
+  opacity: 1;
+}
+
+/* Empty: a 40 % ghost of this chart with one sentence over it — no dashed box (BEAUTY F8c / F14). */
+.mr-ct-empty {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: token('spacing.xs');
+  text-align: center;
+  padding: token('spacing.lg');
+}
+.mr-ct-empty-ghost {
+  position: absolute;
+  inset: 0 0 token('spacing.lg');
+}
+.mr-ct-empty-ghost .mr-ghost-svg {
+  height: 100%;
+}
+.mr-ct-empty-title,
+.mr-ct-empty-body {
+  position: relative;
+}
+.mr-ct-empty-title {
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+.mr-ct-empty-body,
+.mr-ct-note,
+.mr-ct-foot {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-ct-note {
+  position: absolute;
+  top: token('spacing.md');
+  left: 50%;
+  transform: translateX(-50%);
+  padding: token('spacing.xs') token('spacing.md');
+  background: var(--mr-surface-panel);
+  border: 1px solid var(--mr-border-subtle);
+  border-radius: token('radius.full');
+  white-space: nowrap;
+}
+
+/* ── Hover card ── */
+.mr-ct-card {
+  position: absolute;
+  z-index: 5;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  padding: token('spacing.lg');
+  background: var(--mr-surface-panel);
+  border: token('border.default');
+  border-radius: token('radius.xl');
+  box-shadow: token('shadow.medium.down');
+  color: token('color.foreground.default');
+  outline: none;
+  /* A floating card is capped at the chart's height (inline max-height); a long "what moved" list scrolls inside. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* Docked under the chart (phones, short charts — P1-K03): in the timeline card's own flow, so it never covers the
+   title or the plot, and never leaves the card. */
+.mr-ct-card--docked {
+  position: relative;
+  z-index: auto;
+  width: auto;
+  overflow: visible;
+  box-shadow: none;
+}
+.mr-ct-card:focus-visible {
+  box-shadow:
+    token('shadow.medium.down'),
+    0 0 0 2px token('color.border.focus');
+}
+.mr-ct-card-head {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.md');
+  min-width: 0;
+}
+.mr-ct-card-hash {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  font: token('typography.body.md.normal');
+  font-family: token('core.fontFamily.mono');
+}
+.mr-ct-card-glyph {
+  width: 8px;
+  height: 8px;
+  transform: rotate(45deg);
+  background: var(--mr-chart-marker);
+}
+.mr-ct-card.is-cause .mr-ct-card-glyph {
+  background: var(--mr-fill-incident-high);
+}
+.mr-ct-card-when {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mr-ct-card-close {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: token('dimension.component.sm');
+  height: token('dimension.component.sm');
+  border-radius: token('radius.md');
+  color: token('color.foreground.subtle');
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.mr-ct-card-close:hover {
+  background: token('color.background.neutral.subtle');
+  color: token('color.foreground.default');
+}
+.mr-ct-card-close:focus-visible {
+  outline: token('border.focus');
+  outline-offset: 1px;
+}
+.mr-ct-card-message {
+  font: token('typography.body.md.semibold');
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+.mr-ct-card-author {
+  margin-top: calc(-1 * token('spacing.sm'));
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-ct-card-section {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+  padding-top: token('spacing.md');
+  border-top: 1px solid var(--mr-border-subtle);
+}
+.mr-ct-card-label {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+}
+.mr-ct-card-empty {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-ct-card-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  font: token('typography.body.sm.normal');
+  font-family: token('core.fontFamily.mono');
+  color: token('color.foreground.default');
+}
+.mr-ct-card-more {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-ct-card-moved {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+}
+.mr-ct-moved-row {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: token('spacing.md');
+  width: 100%;
+  min-width: 0;
+  padding: token('spacing.xs') token('spacing.sm');
+  margin: 0 calc(-1 * token('spacing.sm'));
+  border-radius: token('radius.md');
+  font: token('typography.body.sm.normal');
+  cursor: default;
+}
+button.mr-ct-moved-row {
+  cursor: pointer;
+  width: calc(100% + 2 * token('spacing.sm'));
+}
+button.mr-ct-moved-row:hover {
+  background: token('color.background.neutral.subtle');
+}
+button.mr-ct-moved-row:focus-visible {
+  outline: token('border.focus');
+}
+.mr-ct-moved-label {
+  flex: 1 1 auto;
+}
+.mr-ct-moved-figs {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.xs');
+  font: token('typography.body.sm.semibold');
+}
+.mr-ct-moved-figs.is-down {
+  color: var(--mr-color-incident-high);
+}
+.mr-ct-moved-figs.is-up,
+.mr-ct-moved-figs.is-new {
+  color: var(--mr-color-saved);
+}
+.mr-ct-moved-arrow {
+  display: inline-flex;
+}
+.mr-ct-moved-arrow svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* ── Every commit priced (P2-W07) ── */
+.mr-ct-card-impact {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  padding: token('spacing.sm') token('spacing.md');
+  border-radius: token('radius.md');
+  background: token('color.background.neutral.subtle');
+}
+.mr-ct-card-impact.is-up {
+  background: var(--mr-fill-saved-subtle);
+}
+.mr-ct-card-impact.is-down {
+  background: var(--mr-fill-incident-high-subtle);
+}
+.mr-ct-card-impact-line {
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+.mr-ct-card-impact.is-up .mr-ct-card-impact-line {
+  color: var(--mr-color-saved);
+}
+.mr-ct-card-impact.is-down .mr-ct-card-impact-line {
+  color: var(--mr-color-incident-high);
+}
+.mr-ct-card-impact-detail {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.default');
+}
+.mr-ct-card-impact-basis {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-ct-moved-money {
+  flex: 0 0 auto;
+  font: token('typography.body.sm.semibold');
+  white-space: nowrap;
+}
+.mr-ct-moved-money.is-down {
+  color: var(--mr-color-incident-high);
+}
+.mr-ct-moved-money.is-up {
+  color: var(--mr-color-saved);
+}
+/* The largest priced change in view: the time after it, tinted in its direction, and its dollars on a plate. */
+.mr-ct-shade {
+  pointer-events: none;
+  opacity: 0.55;
+}
+.mr-ct-shade.is-up {
+  fill: var(--mr-fill-saved-subtle);
+}
+.mr-ct-shade.is-down {
+  fill: var(--mr-fill-incident-high-subtle);
+}
+.mr-ct-annotation {
+  pointer-events: none;
+}
+.mr-ct-annotation-plate {
+  fill: var(--mr-surface-panel);
+  opacity: 0.92;
+}
+.mr-ct-annotation-text {
+  font-family: token('core.fontFamily.sans');
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mr-ct-annotation.is-up .mr-ct-annotation-text {
+  fill: var(--mr-color-saved);
+}
+.mr-ct-annotation.is-down .mr-ct-annotation-text {
+  fill: var(--mr-color-incident-high);
+}
+
+.mr-ct-annotation-note {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  font: token('typography.body.sm.semibold');
+}
+.mr-ct-annotation-note.is-up {
+  color: var(--mr-color-saved);
+}
+.mr-ct-annotation-note.is-down {
+  color: var(--mr-color-incident-high);
+}
+.mr-ct-annotation-swatch {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid currentColor;
+  background: var(--mr-fill-saved-subtle);
+}
+.mr-ct-annotation-note.is-down .mr-ct-annotation-swatch {
+  background: var(--mr-fill-incident-high-subtle);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mr-ct-marker-diamond {
+    transition: none;
+  }
+}
