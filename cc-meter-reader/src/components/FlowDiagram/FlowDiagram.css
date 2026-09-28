@@ -1,0 +1,974 @@
+/*
+ * src/components/FlowDiagram/FlowDiagram.css — the Flow map (PRD 8.2, 8.8 item 5; DESIGN_BRIEF 5.3, 5.9).
+ * Tokens only. Ribbons and source nodes take their Source's hue (--mr-src-1..5, sourceColors.ts; past five sources the
+ * neutral --mr-src-tail); destination and pipeline nodes are ink, so no source shares its destination's colour (D55);
+ * the saved wedge is the ONE green, hatched;
+ * a projection is dashed and ghosted, never a new hue. One card elevation (shadow.low.down), one radius.
+ * Band width is dollars (P1-I01), so every band draws at --mr-band-hi; only the optional byte map (weightBy
+ * 'bytes') runs its opacity from --mr-band-lo to --mr-band-hi by each ribbon's price weight (--mr-band-w).
+ */
+
+/* ── Module grid: map + receipt card ─────────────────────────────────────── */
+.mr-flowmap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(288px, 332px);
+  gap: token('spacing.lg');
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .mr-flowmap {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.mr-flowmap-diagram,
+.mr-receipt {
+  position: relative;
+  min-width: 0;
+  background: var(--mr-surface-panel);
+  border: token('border.default');
+  border-radius: token('radius.xl');
+  box-shadow: token('shadow.low.down');
+}
+.mr-flowmap-diagram {
+  padding: token('spacing.xl') token('spacing.xl') token('spacing.lg');
+}
+@media (max-width: 640px) {
+  .mr-flowmap-diagram {
+    padding: token('spacing.lg') token('spacing.lg') token('spacing.md');
+  }
+}
+
+.mr-flowmap-frame {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+.mr-flowmap-frame.is-measuring {
+  min-height: 420px;
+}
+
+/* The Projection chip (and, on phones, the list ↔ map toggle): top right of the card. */
+.mr-flowmap-top {
+  position: absolute;
+  top: token('spacing.md');
+  right: token('spacing.md');
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: token('spacing.sm');
+}
+@media (max-width: 640px) {
+  /* the phone's legend (P1-I05): short items, start-aligned, never five caption lines */
+  .mr-flowmap-foot {
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+  .mr-flowmap-top {
+    position: static;
+    justify-content: space-between;
+    margin: calc(-1 * token('spacing.xs')) 0 token('spacing.md');
+  }
+  .mr-flowmap-toggle {
+    margin-left: auto;
+  }
+}
+/* With the width toggle (P2-W02) the top is a row of the card, above the map, so it never sits over a label. */
+.mr-flowmap-top.has-toggle {
+  position: static;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin: calc(-1 * token('spacing.md')) 0 token('spacing.sm');
+}
+/* the destination chips take the row's left, the width toggle its right (P2-W16) */
+.mr-flowmap-top .mr-flowmap-chips {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+@media (max-width: 640px) {
+  .mr-flowmap-top.has-toggle {
+    justify-content: space-between;
+  }
+}
+.mr-flowmap-weight {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+}
+.mr-flowmap-weight-label {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+}
+.mr-flowmap-chip {
+  padding: token('spacing.xs') token('spacing.md');
+  border: 1px dashed token('color.border.neutral.strong');
+  border-radius: token('radius.full');
+  background: var(--mr-surface-panel);
+  color: token('color.foreground.default');
+  font: token('typography.body.xs.semibold');
+}
+
+/* The legend, then the note on a line of its own: the footer is as tall in both widths (P2-W02), so the toggle never
+   moves the map's frame. */
+.mr-flowmap-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: token('spacing.sm');
+  margin-top: token('spacing.md');
+  padding-top: token('spacing.md');
+  border-top: 1px solid var(--mr-border-subtle);
+}
+.mr-flowmap-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: token('spacing.sm') token('spacing.lg');
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-flowmap-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  /* On a phone the first item breaks as two even lines, not "(paler = cheaper per" / "GB)". */
+  text-wrap: balance;
+}
+.mr-flowmap-swatch {
+  display: inline-block;
+  width: token('spacing.xl');
+  height: token('spacing.md');
+  border-radius: token('radius.md');
+}
+.mr-flowmap-swatch--band {
+  /* the shape, in the sources' own hues (D55): three bands stacked as they leave their sources */
+  background: linear-gradient(
+    to bottom,
+    var(--mr-src-1) 0 30%,
+    transparent 30% 35%,
+    var(--mr-src-2) 35% 65%,
+    transparent 65% 70%,
+    var(--mr-src-5) 70% 100%
+  );
+  opacity: 0.9;
+}
+
+.mr-flowmap-swatch--wedge {
+  /* the map's wedge (P1-I03): the saved green at 18 % under lines at 70 % */
+  background-color: color-mix(in srgb, var(--mr-fill-saved) 18%, transparent);
+  background-image: repeating-linear-gradient(45deg, color-mix(in srgb, var(--mr-fill-saved) 70%, transparent) 0 1.5px, transparent 1.5px 5px);
+}
+.mr-flowmap-swatch--projected {
+  border: 1.5px dashed token('color.foreground.subtle');
+}
+.mr-flowmap-note {
+  margin: 0;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-flowmap-note a {
+  color: token('color.foreground.link');
+}
+
+/* ── SVG ──────────────────────────────────────────────────────────────────── */
+.mr-flow-svg {
+  display: block;
+  max-width: 100%;
+  overflow: visible;
+  font-family: token('core.fontFamily.sans');
+  -webkit-tap-highlight-color: transparent;
+  /* Light theme (P1-I03): with the deep light ramp (palette.css) a band at 0.9 is ≥ 3:1 on the panel, a projector
+     keeps its hue, and crossings still show through. The byte map's cheapest flow sits at 0.35. */
+  --mr-band-lo: 0.35;
+  --mr-band-hi: 0.9;
+  --mr-band-active: 1;
+  /* the saved wedge: the one green, a tint under lines strong enough to read in both themes */
+  --mr-wedge-fill: 0.18;
+  --mr-wedge-line: 0.7;
+}
+body.dark .mr-flow-svg {
+  --mr-band-lo: 0.2;
+  /* 0.88 (was 0.62 for the destination pastels): blending a hue into the near-black panel pulls every band toward it,
+     so at 0.62 the source hues crowd together; at 0.88 every pair keeps ≥ 14 ΔE and ≥ 8 under CVD (D55) and crossings
+     still show through */
+  --mr-band-hi: 0.88;
+  --mr-band-active: 0.97;
+  --mr-wedge-fill: 0.2;
+}
+
+/* Source hues → one custom property per ribbon, source node and phone-list row (D55). */
+.mr-flow-s1 {
+  --mr-flow-color: var(--mr-src-1);
+}
+.mr-flow-s2 {
+  --mr-flow-color: var(--mr-src-2);
+}
+.mr-flow-s3 {
+  --mr-flow-color: var(--mr-src-3);
+}
+.mr-flow-s4 {
+  --mr-flow-color: var(--mr-src-4);
+}
+.mr-flow-s5 {
+  --mr-flow-color: var(--mr-src-5);
+}
+/* Past the coloured sources: one neutral (color.neutral.10) at the band's own opacity, never a repeated hue; the fold
+   stays the lighter grey at 0.2, so a named source never reads as the smaller flows. */
+.mr-flow-tail {
+  --mr-flow-color: var(--mr-src-tail);
+}
+
+/* Destination ramp → one custom property per element that colours a destination (none on the map since D55). */
+.mr-flow-c1 {
+  --mr-flow-color: var(--mr-dest-1);
+}
+.mr-flow-c2 {
+  --mr-flow-color: var(--mr-dest-2);
+}
+.mr-flow-c3 {
+  --mr-flow-color: var(--mr-dest-3);
+}
+.mr-flow-c4 {
+  --mr-flow-color: var(--mr-dest-4);
+}
+.mr-flow-c5 {
+  --mr-flow-color: var(--mr-dest-5);
+}
+.mr-flow-c6 {
+  --mr-flow-color: var(--mr-dest-6);
+}
+
+.mr-flow-ribbon {
+  cursor: pointer;
+}
+.mr-flow-band {
+  fill: var(--mr-flow-color);
+  fill-opacity: calc(var(--mr-band-lo) + (var(--mr-band-hi) - var(--mr-band-lo)) * var(--mr-band-w, 1));
+  transition: fill-opacity var(--mr-duration-fast) var(--mr-easing);
+}
+.mr-flow-wedge {
+  transition: opacity var(--mr-duration-fast) var(--mr-easing);
+}
+.mr-flow-hatch-bg {
+  /* success.subtle was 1.00:1 on the dark panel: only the lines carried the wedge (P1-I03) */
+  fill: var(--mr-fill-saved);
+  fill-opacity: var(--mr-wedge-fill);
+}
+.mr-flow-hatch-line {
+  stroke: var(--mr-fill-saved);
+  stroke-opacity: var(--mr-wedge-line);
+  stroke-width: 1.5;
+}
+
+/* "n smaller flows": the rest of the workspace, in the neutral, so it never outshouts a named flow. */
+.mr-flow-ribbon.is-other .mr-flow-band {
+  fill: token('color.foreground.subtle');
+  fill-opacity: 0.2;
+}
+.mr-flow-ribbon.is-active .mr-flow-band {
+  fill-opacity: var(--mr-band-active);
+}
+/* A highlighted fold stays a quiet grey, not a solid slab (P1-I03). */
+.mr-flow-ribbon.is-other.is-active .mr-flow-band {
+  fill-opacity: 0.45;
+}
+/* Hover recedes the rest without erasing it (was 0.08): the path reads first, the map stays a map. */
+.mr-flow-ribbon.is-dim .mr-flow-band {
+  fill-opacity: 0.22;
+}
+.mr-flow-ribbon.is-dim .mr-flow-wedge {
+  opacity: 0.35;
+}
+
+/* A slow drift of dots along the highlighted path's centre line (only there, P1-I08): one cycle is 12 s (≥ 8 s,
+   PRD 8.8 item 4). */
+.mr-flow-drift {
+  fill: none;
+  stroke: var(--mr-surface-panel);
+  stroke-opacity: 0.6;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 0.5 11.5;
+  pointer-events: none;
+  animation: mr-flow-drift 12s linear infinite;
+}
+.mr-flow-ribbon.is-dim .mr-flow-drift {
+  stroke-opacity: 0.2;
+}
+/* On the dark panel full-strength dots read as perforations (P1-I03). */
+body.dark .mr-flow-drift {
+  stroke-opacity: 0.3;
+}
+@keyframes mr-flow-drift {
+  to {
+    stroke-dashoffset: -48;
+  }
+}
+/* Off screen or in a hidden tab the one drifting path stops (P1-I08). */
+.mr-flow-svg.is-paused .mr-flow-drift {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mr-flow-drift {
+    animation: none;
+  }
+}
+
+/* Projection (What-if): ghosted fill, dashed outline — never a new hue. */
+.mr-flow-ribbon.is-projected .mr-flow-band {
+  fill-opacity: 0.18;
+}
+.mr-flow-ribbon.is-projected.is-active .mr-flow-band {
+  fill-opacity: 0.3;
+}
+.mr-flow-outline {
+  fill: none;
+  stroke: var(--mr-flow-color);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  pointer-events: none;
+}
+
+/* ── Nodes ────────────────────────────────────────────────────────────────── */
+.mr-flow-node {
+  cursor: pointer;
+  outline: none;
+}
+.mr-flow-node:focus,
+.mr-flow-node:focus-visible {
+  outline: none;
+}
+.mr-flow-node-hit {
+  fill: transparent;
+}
+.mr-flow-node-bar {
+  fill: token('color.foreground.subtle');
+  transition: opacity var(--mr-duration-fast) var(--mr-easing);
+}
+.mr-flow-node--pipe .mr-flow-node-bar {
+  fill: token('color.foreground.default');
+}
+.mr-flow-node--in .mr-flow-node-bar {
+  fill: var(--mr-flow-color);
+}
+/* A destination is ink, like a pipeline: the colour on the map is the sources' (D55). */
+.mr-flow-node--out .mr-flow-node-bar {
+  fill: token('color.foreground.default');
+}
+/* The shared "n smaller flows" source and its pipelines: present, but quieter than a named node. */
+.mr-flow-node.is-other .mr-flow-node-bar {
+  fill: token('color.foreground.subtle');
+  opacity: 0.55;
+}
+.mr-flow-node.is-dim .mr-flow-node-bar {
+  opacity: 0.4;
+}
+.mr-flow-node.is-projected .mr-flow-node-bar {
+  fill: var(--mr-surface-panel);
+  stroke: token('color.foreground.default');
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+}
+.mr-flow-focus {
+  fill: none;
+  stroke: token('color.border.focus');
+  stroke-width: 2;
+  pointer-events: none;
+}
+/* A ribbon's keyboard target (P1-I05): invisible to the pointer, outlined while it has focus. */
+.mr-flow-ribbon-key {
+  fill: none;
+  stroke: none;
+  pointer-events: none;
+  outline: none;
+}
+.mr-flow-ribbon-key:focus {
+  stroke: token('color.border.focus');
+  stroke-width: 2;
+}
+
+/* ── Labels ───────────────────────────────────────────────────────────────── */
+.mr-flow-label {
+  pointer-events: none;
+  transition: opacity var(--mr-duration-fast) var(--mr-easing);
+}
+/* On hover the path's own labels stay at full strength and the rest step back (P1-I03: 30 bold labels at full
+   strength inverted the hierarchy); at rest every label keeps its 4.5:1 contrast (PRD 8.8 item 3). */
+.mr-flow-label.is-dim {
+  opacity: 0.6;
+}
+/* A node name over a ribbon end keeps a halo in the panel colour, legible in both themes; one on open panel draws
+   none, so no name notches a band it does not cross (P1-I02). */
+.mr-flow-label.has-halo .mr-flow-text {
+  paint-order: stroke;
+  stroke: var(--mr-surface-panel);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+/* A saved plate moved off its band points back to its wedge: 1 px, in the ribbon's own colour (P1-I02). */
+.mr-flow-leader {
+  stroke: var(--mr-fill-saved);
+  stroke-width: 1;
+  stroke-opacity: 0.9;
+}
+.mr-flow-text {
+  fill: token('color.foreground.default');
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.mr-flow-text--name {
+  font: token('typography.body.md.semibold');
+}
+.mr-flow-text--caption {
+  font: token('typography.body.sm.normal');
+  fill: token('color.foreground.subtle');
+}
+.mr-flow-text--money {
+  font: token('typography.body.sm.semibold');
+}
+.mr-flow-label--saved .mr-flow-text--money {
+  fill: var(--mr-color-saved);
+}
+/* A scaled map (the stage, P2-W10): the same type at the layout's scale, measured as it will be drawn. */
+.mr-flow-svg.is-scaled .mr-flow-text--name {
+  font-size: calc(14px * var(--mr-flow-scale));
+}
+.mr-flow-svg.is-scaled .mr-flow-text--caption,
+.mr-flow-svg.is-scaled .mr-flow-text--money {
+  font-size: calc(12px * var(--mr-flow-scale));
+}
+.mr-flow-svg.is-scaled .mr-flow-label.has-halo .mr-flow-text {
+  stroke-width: calc(4px * var(--mr-flow-scale));
+}
+.mr-flow-plate {
+  fill: var(--mr-surface-panel);
+  fill-opacity: 0.94;
+  stroke: var(--mr-border-subtle);
+  stroke-width: 1;
+}
+.mr-flow-label--saved .mr-flow-plate {
+  stroke: token('color.border.success.subtle');
+}
+/* A name over a band: a borderless pill in the panel colour behind it, so it never reads as drawn over the ribbons. */
+.mr-flow-pill {
+  fill: var(--mr-surface-panel);
+  fill-opacity: 0.88;
+}
+
+/* ── The receipt card ─────────────────────────────────────────────────────── */
+.mr-receipt {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+  padding: token('spacing.xl');
+}
+@media (max-width: 640px) {
+  .mr-receipt {
+    padding: token('spacing.lg');
+  }
+}
+@media (min-width: 1101px) {
+  .mr-flowmap-card {
+    position: sticky;
+    top: calc(var(--mr-shell-header-h, token('dimension.component.xl')) + token('spacing.lg'));
+  }
+}
+.mr-receipt-head {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+}
+.mr-receipt-eyebrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: token('spacing.md');
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+}
+.mr-receipt-chip {
+  padding: 0 token('spacing.md');
+  border: 1px dashed token('color.border.neutral.strong');
+  border-radius: token('radius.full');
+  font: token('typography.body.xs.semibold');
+  color: token('color.foreground.default');
+}
+.mr-receipt-title {
+  font: token('typography.heading.sm');
+  color: token('color.foreground.default');
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mr-receipt-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: token('spacing.xs') token('spacing.sm');
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  min-width: 0;
+}
+.mr-receipt-step {
+  display: inline-flex;
+  align-items: baseline;
+  gap: token('spacing.sm');
+  min-width: 0;
+  max-width: 100%;
+}
+.mr-receipt-arrow {
+  color: token('color.foreground.subtle');
+}
+.mr-receipt-caption {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+
+.mr-receipt-lines {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+  margin: 0;
+  font: token('typography.code');
+}
+.mr-receipt-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5ch;
+  min-width: 0;
+  color: token('color.foreground.default');
+}
+.mr-receipt-label {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+/* Dot leaders (DESIGN_BRIEF 1: the receipt motif). */
+.mr-receipt-line::before {
+  content: '';
+  order: 1;
+  flex: 1 1 2ch;
+  min-width: 2ch;
+  align-self: baseline;
+  height: 0.8em;
+  background-image: radial-gradient(circle, token('color.foreground.subtle') 0.9px, transparent 1.1px);
+  background-size: 0.5em 0.5em;
+  background-repeat: repeat-x;
+  background-position: left bottom;
+  opacity: 0.55;
+}
+.mr-receipt-label {
+  order: 0;
+}
+.mr-receipt-value {
+  order: 2;
+  flex: 0 0 auto;
+  margin: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: token('spacing.sm');
+  white-space: nowrap;
+}
+.mr-receipt-unit {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-receipt-line--saved .mr-receipt-label,
+.mr-receipt-line--saved .mr-num {
+  color: var(--mr-color-saved);
+  font-weight: 600;
+}
+.mr-receipt-rule {
+  height: 0;
+  border-top: 1px dashed var(--mr-border-subtle);
+  margin: token('spacing.xs') 0;
+}
+.mr-receipt-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: token('spacing.sm');
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-receipt-pinned {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-receipt-link {
+  align-self: flex-start;
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.link');
+  text-decoration: none;
+}
+.mr-receipt-link:hover {
+  text-decoration: underline;
+}
+.mr-receipt.is-projected {
+  border-style: dashed;
+}
+/* A tap on the phone's list answers once on the card it pinned (P1-I05): the accent border, fading back. */
+.mr-receipt {
+  transition: border-color 600ms var(--mr-easing);
+}
+.mr-flowmap-card.is-flash .mr-receipt {
+  border-color: token('color.border.accent.strong');
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mr-receipt {
+    transition: none;
+  }
+}
+
+/* ── Phones: the ranked list (BEAUTY F9) ─────────────────────────────────── */
+.mr-flowlist {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mr-flowlist-item + .mr-flowlist-item {
+  border-top: 1px solid var(--mr-border-subtle);
+}
+.mr-flowlist-row {
+  --mr-band-lo: 0.24;
+  --mr-band-hi: 0.8;
+  display: grid;
+  gap: token('spacing.xs');
+  width: 100%;
+  margin: 0;
+  padding: token('spacing.md') token('spacing.sm');
+  border: 1px solid transparent;
+  border-radius: token('radius.md');
+  background: none;
+  color: token('color.foreground.default');
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+body.dark .mr-flowlist-row {
+  --mr-band-lo: 0.2;
+  --mr-band-hi: 0.88;
+}
+.mr-flowlist-row:focus-visible {
+  outline: 2px solid token('color.border.focus');
+  outline-offset: 1px;
+}
+.mr-flowlist-row.is-selected {
+  background: token('color.background.neutral.subtle');
+}
+.mr-flowlist-row.is-projected {
+  border: 1.5px dashed var(--mr-flow-color);
+}
+.mr-flowlist-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: token('spacing.md');
+  min-width: 0;
+}
+.mr-flowlist-name {
+  min-width: 0;
+  font: token('typography.body.md.semibold');
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mr-flowlist-row.is-other .mr-flowlist-name {
+  color: token('color.foreground.subtle');
+}
+.mr-flowlist-row.is-other .mr-flowlist-bar-paid {
+  background: token('color.foreground.subtle');
+  opacity: var(--mr-band-lo);
+}
+.mr-flowlist-whp {
+  flex: none;
+  font: token('typography.body.md.semibold');
+  white-space: nowrap;
+}
+.mr-flowlist-unit {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-flowlist-path {
+  min-width: 0;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mr-flowlist-foot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: token('spacing.md');
+  margin-top: token('spacing.xs');
+}
+.mr-flowlist-track {
+  display: block;
+  min-width: 0;
+}
+.mr-flowlist-bar {
+  display: flex;
+  height: token('spacing.md');
+  min-width: 4px;
+  border-radius: token('radius.md');
+  overflow: hidden;
+}
+.mr-flowlist-bar-paid {
+  flex-basis: 0;
+  background: var(--mr-flow-color);
+  opacity: calc(var(--mr-band-lo) + (var(--mr-band-hi) - var(--mr-band-lo)) * var(--mr-band-w, 1));
+}
+.mr-flowlist-bar-saved {
+  flex-basis: 0;
+  background-color: color-mix(in srgb, var(--mr-fill-saved) 18%, transparent);
+  background-image: repeating-linear-gradient(45deg, color-mix(in srgb, var(--mr-fill-saved) 70%, transparent) 0 1.5px, transparent 1.5px 5px);
+}
+.mr-flowlist-saved {
+  font: token('typography.body.sm.semibold');
+  color: var(--mr-color-saved);
+  white-space: nowrap;
+}
+.mr-flowlist-saved.is-none {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+/* A flow with an open alert (P2-W16): the row outlined, dashed, in the alert's tone, and the plate's words under its
+   path; green and solid while it recovers, as on the map. */
+.mr-flowlist-row.is-incident {
+  border: 1.5px dashed var(--mr-fill-incident-high);
+}
+.mr-flowlist-row.is-incident--medium {
+  border-color: var(--mr-fill-incident-medium);
+}
+.mr-flowlist-row.is-incident--recovered {
+  border-style: solid;
+  border-color: var(--mr-fill-saved);
+}
+.mr-flowlist-incident {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.danger.default');
+}
+.mr-flowlist-row.is-incident--medium .mr-flowlist-incident {
+  color: token('color.foreground.warning.default');
+}
+.mr-flowlist-row.is-incident--recovered .mr-flowlist-incident {
+  color: var(--mr-color-saved);
+}
+
+/* ── The map on stage (P2-W10) ─────────────────────────────────────────────── */
+/* The map takes the frame, bare on the canvas; the receipt, the width toggle and the legend are a 340 px strip. */
+.mr-flowmap.is-stage {
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: token('spacing.xl');
+  align-items: stretch;
+}
+.mr-flowmap.is-stage .mr-flowmap-diagram {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.mr-flowstage-strip {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+  min-height: 0;
+  position: static;
+}
+.mr-flowmap.is-stage .mr-flowmap-weight {
+  align-self: flex-start;
+}
+.mr-flowmap.is-stage .mr-flowmap-weight-label {
+  font: token('typography.body.lg.semibold');
+}
+.mr-flowmap.is-stage .mr-receipt {
+  padding: token('spacing.lg');
+}
+.mr-flowmap.is-stage .mr-receipt-eyebrow {
+  font-size: 18px;
+}
+.mr-flowmap.is-stage .mr-receipt-title {
+  font-size: 30px;
+  line-height: 1.2;
+  white-space: normal;
+}
+.mr-flowmap.is-stage .mr-receipt-path,
+.mr-flowmap.is-stage .mr-receipt-caption,
+.mr-flowmap.is-stage .mr-receipt-foot,
+.mr-flowmap.is-stage .mr-receipt-pinned {
+  font-size: 18px;
+}
+/* Stage size, not body size: the strip is read from the back of the room (review W2). */
+.mr-flowmap.is-stage .mr-receipt-lines {
+  font-size: 20px;
+}
+.mr-flowmap.is-stage .mr-receipt-unit {
+  font-size: 15px;
+}
+.mr-flowmap.is-stage .mr-flowmap-foot {
+  flex-direction: column;
+  align-items: flex-start;
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+.mr-flowmap.is-stage .mr-flowmap-legend {
+  flex-direction: column;
+  font-size: 18px;
+}
+.mr-flowmap.is-stage .mr-flowmap-note {
+  font-size: 14px;
+}
+
+/* The cursor tip on stage: the hovered flow's three numbers beside the pointer. */
+.mr-flowstage-tip {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  gap: token('spacing.xs');
+  padding: token('spacing.sm') token('spacing.md');
+  transform: translate(20px, 20px);
+  background: var(--mr-surface-panel);
+  border: token('border.default');
+  border-radius: token('radius.md');
+  box-shadow: token('shadow.low.down');
+  font: token('typography.body.lg.normal');
+  white-space: nowrap;
+  pointer-events: none;
+}
+.mr-flowstage-tip.is-left {
+  transform: translate(calc(-100% - 20px), 20px);
+}
+.mr-flowstage-tip-title {
+  font-weight: 600;
+}
+.mr-flowstage-tip-line {
+  display: flex;
+  justify-content: space-between;
+  gap: token('spacing.lg');
+  color: token('color.foreground.subtle');
+}
+.mr-flowstage-tip-line b {
+  color: token('color.foreground.default');
+  font-weight: 600;
+}
+.mr-flowstage-tip-line.is-saved,
+.mr-flowstage-tip-line.is-saved b {
+  color: var(--mr-color-saved);
+}
+/* A 720-row projector: the same strip, tighter, so the legend and the way back stay on screen. */
+@media (max-height: 800px) {
+  .mr-flowstage-strip {
+    gap: token('spacing.md');
+  }
+  .mr-flowmap.is-stage .mr-receipt {
+    gap: token('spacing.md');
+  }
+  .mr-flowmap.is-stage .mr-receipt-title {
+    font-size: 22px;
+  }
+  .mr-flowmap.is-stage .mr-receipt-lines {
+    font-size: 14px;
+  }
+  .mr-flowmap.is-stage .mr-receipt-caption {
+    display: none;
+  }
+}
+
+/* ── Savings as a place, incidents on the map (P2-W16) ─────────────────────── */
+/* The sink: the hatched green its wedges are made of, edged in the one green. */
+.mr-flow-node--sink .mr-flow-node-bar {
+  fill-opacity: 1;
+  stroke: var(--mr-fill-saved);
+  stroke-width: 1.5;
+}
+.mr-flow-node--sink.is-dim .mr-flow-node-bar {
+  opacity: 0.45;
+}
+/* A flow with an open alert: the whole ribbon outlined, dashed, in the alert's tone; green while it recovers. */
+.mr-flow-incident {
+  fill: none;
+  stroke: var(--mr-fill-incident-high);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  pointer-events: none;
+}
+.mr-flow-ribbon.is-incident--medium .mr-flow-incident {
+  stroke: var(--mr-fill-incident-medium);
+}
+.mr-flow-ribbon.is-incident--recovered .mr-flow-incident {
+  stroke: var(--mr-fill-saved);
+  stroke-dasharray: none;
+}
+.mr-flow-label--incident .mr-flow-plate {
+  stroke: var(--mr-fill-incident-high);
+  stroke-width: 1.5;
+}
+.mr-flow-label--incident .mr-flow-text--money {
+  fill: token('color.foreground.danger.default');
+}
+.mr-flow-label--incident.is-medium .mr-flow-plate {
+  stroke: var(--mr-fill-incident-medium);
+}
+.mr-flow-label--incident.is-medium .mr-flow-text--money {
+  fill: token('color.foreground.warning.default');
+}
+.mr-flow-label--incident.is-recovered .mr-flow-plate {
+  stroke: var(--mr-fill-saved);
+}
+.mr-flow-label--incident.is-recovered .mr-flow-text--money {
+  fill: var(--mr-color-saved);
+}
+
+/* Destination chips (P2-W16): the destinations as a legend that filters — a press isolates that destination's paths. */
+.mr-flowmap-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: token('spacing.sm');
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mr-flowmap-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  padding: token('spacing.xs') token('spacing.md');
+  border: 1px solid var(--mr-border-subtle);
+  border-radius: token('radius.full');
+  background: var(--mr-surface-panel);
+  color: token('color.foreground.default');
+  font: token('typography.body.sm.normal');
+  cursor: pointer;
+}
+.mr-flowmap-chip-btn:hover {
+  border-color: token('color.border.neutral.strong');
+}
+.mr-flowmap-chip-btn:focus-visible {
+  outline: 2px solid token('color.border.focus');
+  outline-offset: 1px;
+}
+.mr-flowmap-chip-btn[aria-pressed='true'] {
+  border-color: token('color.border.accent.strong');
+  background: token('color.background.accent.subtle');
+}
+.mr-flowmap-chip-dot {
+  /* the destination's node in miniature: an ink bar, as on the map (D55) */
+  width: 4px;
+  height: 12px;
+  border-radius: 1px;
+  background: token('color.foreground.default');
+}
+.mr-flowmap-chip-name {
+  font-weight: 600;
+}
+.mr-flowmap-chip-money {
+  color: token('color.foreground.subtle');
+  font-variant-numeric: tabular-nums;
+}

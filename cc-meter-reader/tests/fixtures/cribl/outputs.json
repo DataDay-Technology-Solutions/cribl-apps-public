@@ -1,0 +1,29 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/m/default/system/outputs"
+  },
+  "status": 200,
+  "capturedAt": "2026-09-26T04:40:00.000Z",
+  "source": "live",
+  "body": {
+    "items": [
+      {
+        "id": "default",
+        "type": "default",
+        "defaultId": "devnull",
+        "status": {}
+      },
+      {
+        "id": "devnull",
+        "type": "devnull",
+        "status": {
+          "health": "Green",
+          "timestamp": 1790395503771,
+          "metrics": {}
+        }
+      }
+    ],
+    "count": 2
+  }
+}

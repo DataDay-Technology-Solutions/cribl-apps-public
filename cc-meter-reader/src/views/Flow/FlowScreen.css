@@ -1,0 +1,204 @@
+/* src/views/Flow/FlowScreen.css — the Flow / What-if screen inside the Shell Page frame. Tokens only. */
+
+/* The frame (width, title, rhythm) is the Shell Page's (.mr-page, BEAUTY F7); only the actions are ours. */
+.mr-flowview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: token('spacing.md') token('spacing.lg');
+}
+.mr-flowview-group {
+  min-width: 220px;
+}
+/* The What-if toggle (P1-I06): pressed reads as a held key, in the accent, with the same label and size. */
+.mr-flowview-whatif button[aria-pressed='true'] {
+  background: token('color.background.accent.subtle');
+  border-color: token('color.border.accent.strong');
+  color: token('color.foreground.accent.strong');
+}
+.mr-flowview-group-static {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+
+/* Flow uses the stage (P1-I07): at 1600 px and wider the page frame is 1600, not 1280, so a projector's 1920 draws a
+   wider map instead of 640 px of empty canvas beside it. */
+@media (min-width: 1600px) {
+  .mr-page.mr-flowview[data-width='default'] {
+    max-width: 1600px;
+  }
+}
+
+/* ── Every other state in the map's own frame (P1-I07) ───────────────────── */
+.mr-flowview-statecard {
+  display: grid;
+  min-height: clamp(420px, calc(100vh - 300px), 780px);
+}
+/* the grey Sankey fills the card; the notice or the empty state sits over its middle */
+.mr-flowview-statecard > * {
+  grid-area: 1 / 1;
+}
+.mr-flowview-ghost {
+  display: flex;
+  min-height: 0;
+}
+.mr-flowview-ghost svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 360px;
+}
+/* A skeleton breathes once (≤ 1.2 s, DESIGN_BRIEF 4) and then holds still. */
+.mr-flowview-ghost.is-loading svg {
+  animation: mr-flowview-breathe 1.2s var(--mr-easing) 1;
+}
+@keyframes mr-flowview-breathe {
+  50% {
+    opacity: 0.55;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mr-flowview-ghost.is-loading svg {
+    animation: none;
+  }
+}
+.mr-flowview-statebody {
+  align-self: center;
+  justify-self: center;
+  z-index: 1;
+  width: min(100%, 560px);
+  padding: token('spacing.xl');
+  background: var(--mr-surface-panel);
+  border-radius: token('radius.xl');
+  box-shadow: token('shadow.low.down');
+}
+.mr-flowview-cardghost-lines {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+}
+.mr-flowview-cardghost-title {
+  height: token('spacing.lg');
+  margin-bottom: token('spacing.sm');
+}
+
+/* ── The map on stage (P2-W10) ─────────────────────────────────────────────── */
+/* The whole viewport, over the app (which is inert beneath it); nothing within 40 px of an edge (DESIGN_BRIEF 5.2). */
+.mr-flowstage {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  overflow: hidden;
+  padding: 40px;
+  background: var(--mr-surface-app);
+  color: token('color.foreground.default');
+  outline: none;
+}
+.mr-flowstage > .mr-flowmap,
+.mr-flowstage > .mr-flowview-state {
+  height: 100%;
+}
+.mr-flowstage-head {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+}
+.mr-flowstage-eyebrow {
+  margin: 0;
+  font: token('typography.body.lg.semibold');
+  color: token('color.foreground.subtle');
+}
+.mr-flowstage-subtitle {
+  margin: 0;
+  font: token('typography.heading.sm');
+  font-size: 20px;
+  line-height: 1.35;
+  color: token('color.foreground.default');
+  text-wrap: balance;
+}
+.mr-flowstage-leave {
+  margin-top: auto;
+}
+/* A stage is a projector's; on a narrow window it stacks the strip under the map and scrolls. The phone keeps F and
+   the deep link but not the button. */
+@media (max-width: 900px) {
+  .mr-flowstage {
+    overflow: auto;
+  }
+  .mr-flowstage > .mr-flowmap.is-stage {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+}
+@media (max-width: 640px) {
+  .mr-flowview-present {
+    display: none;
+  }
+}
+@media (max-height: 800px) {
+  .mr-flowstage-subtitle {
+    font-size: 17px;
+  }
+}
+
+/* ── The What-if on the Flow view (P1-I06 slice 2): one compact bar, ≤ 120 px, over the same map ──────────── */
+.mr-whatifbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: token('spacing.md') token('spacing.xl');
+  padding: token('spacing.md') token('spacing.lg');
+  background: var(--mr-surface-panel);
+  border: 1px dashed token('color.border.neutral.strong');
+  border-radius: token('radius.xl');
+}
+.mr-whatifbar-field {
+  min-width: 220px;
+}
+.mr-whatifbar-figures {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: token('spacing.sm');
+  margin: 0;
+  font: token('typography.body.md.normal');
+}
+.mr-whatifbar-figures.is-none {
+  color: token('color.foreground.subtle');
+}
+.mr-whatifbar-label,
+.mr-whatifbar-arrow {
+  color: token('color.foreground.subtle');
+}
+.mr-whatifbar-after {
+  font-weight: 600;
+  color: var(--mr-color-saved);
+}
+.mr-whatifbar-delta {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+}
+.mr-whatifbar-delta.is-up {
+  color: var(--mr-color-saved);
+}
+.mr-whatifbar-basis {
+  padding: 0 token('spacing.md');
+  border: 1px dashed token('color.border.neutral.strong');
+  border-radius: token('radius.full');
+  font: token('typography.body.xs.semibold');
+  color: token('color.foreground.default');
+}
+.mr-whatifbar-open {
+  margin-left: auto;
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.link');
+}
+@media (max-width: 640px) {
+  .mr-whatifbar-field {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+  .mr-whatifbar-open {
+    margin-left: 0;
+  }
+}

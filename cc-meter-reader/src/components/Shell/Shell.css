@@ -1,0 +1,635 @@
+/*
+ * src/components/Shell/Shell.css — app chrome that sits INSIDE the Cribl shell: no product header of our
+ * own, a compact tab bar, a quiet footer. Content is capped for readability at 1920 px and keeps a
+ * spacing.lg gutter at 390 px.
+ */
+
+.mr-shell {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--mr-surface-app);
+}
+
+/* ── Header / tab bar ────────────────────────────────────────────────────── */
+/*
+ * Sticky, and it carries the SAMPLE DATA band under the tabs while sample or replay data is on screen, so
+ * the band never scrolls away (DESIGN_BRIEF 5.6 "band pinned top", epic audit P1-A06). Its height is
+ * published as --mr-shell-header-h (Shell.tsx) for anything else that pins under it.
+ */
+.mr-shell-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--mr-surface-app);
+  /* Capra's horizontal TabNav draws no bar divider; one hairline separates chrome from content. */
+  border-bottom: 1px solid var(--mr-border-subtle);
+}
+/* The band's own warning hairline is the header's bottom edge: one line, not two. */
+.mr-shell-header:has(> .mr-sample-band) {
+  border-bottom: 0;
+}
+/* Scrolled content slides under the header: one step of elevation says so (P1-A05). */
+.mr-shell-header[data-scrolled='true'] {
+  box-shadow: token('shadow.low.down');
+}
+
+/* The skip link: off screen until it has keyboard focus, then a chip over the tab row's first tab. */
+.mr-skip-link {
+  position: absolute;
+  top: token('spacing.sm');
+  left: max(token('spacing.xl'), calc((100% - 1280px) / 2));
+  z-index: 20;
+  padding: token('spacing.sm') token('spacing.md');
+  border-radius: token('radius.md');
+  background: token('color.background.panel.solid');
+  color: token('color.foreground.accent.default');
+  font: token('typography.body.md.semibold');
+  text-decoration: underline;
+  transform: translateY(calc(-100% - 2 * token('spacing.sm')));
+  /* No shadow while it is off screen: 8 px above the viewport, shadow.medium.down reached below the edge and smeared
+     a grey blob over the first tabs in the light theme (review W2). */
+  box-shadow: none;
+}
+.mr-skip-link:focus {
+  transform: none;
+  box-shadow: token('shadow.medium.down');
+  outline: token('border.focus');
+  outline-offset: 2px;
+}
+.mr-shell-main:focus,
+.mr-presenter-main:focus {
+  outline: none;
+}
+.mr-topnav {
+  --mr-topnav-fade: 24px; /* topnavScroll.ts TAB_FADE_PX */
+  /* The chrome's inner edges are the page frame's (P1-A05): the first tab starts where the view's cards do
+     (x = 80 at 1440, 320 at 1920) and the status ends where they end. Page.css: a 1280 px frame centred,
+     never closer than the main gutter. */
+  --mr-frame-inset: max(token('spacing.xl'), calc((100% - 1280px) / 2));
+  display: flex;
+  align-items: center;
+  gap: token('spacing.xl');
+  padding: token('spacing.sm') var(--mr-frame-inset) 0;
+  min-width: 0;
+}
+/*
+ * The tabs scroll on their own (never the page) when they don't fit; the status cluster stays put. The
+ * edge that hides more tabs fades out over --mr-topnav-fade instead of cutting a label mid-word (F6); the
+ * mask is alpha only, so its colour is irrelevant in both themes.
+ */
+.mr-topnav-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.mr-topnav-tabs::-webkit-scrollbar {
+  display: none;
+}
+.mr-topnav-tabs[data-fade-end='true'] {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - var(--mr-topnav-fade)), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - var(--mr-topnav-fade)), transparent);
+}
+.mr-topnav-tabs[data-fade-start='true'] {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 var(--mr-topnav-fade));
+  mask-image: linear-gradient(90deg, transparent, #000 var(--mr-topnav-fade));
+}
+.mr-topnav-tabs[data-fade-start='true'][data-fade-end='true'] {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 var(--mr-topnav-fade), #000 calc(100% - var(--mr-topnav-fade)), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 var(--mr-topnav-fade), #000 calc(100% - var(--mr-topnav-fade)), transparent);
+}
+.mr-topnav-status {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  min-height: token('dimension.component.md');
+}
+@media (max-width: 640px) {
+  .mr-topnav {
+    gap: token('spacing.md');
+    padding: token('spacing.sm') token('spacing.lg') 0;
+  }
+  .mr-skip-link {
+    left: token('spacing.lg');
+  }
+}
+
+/* ── Status cluster (right of the tab row, outside its scroller) ────────── */
+.mr-status {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  white-space: nowrap;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-status-label {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+}
+.mr-status-dot {
+  width: token('spacing.md');
+  height: token('spacing.md');
+  border-radius: token('radius.full');
+  background: token('color.background.neutral.solid.default');
+  flex: 0 0 auto;
+}
+.mr-status[data-status='live'] .mr-status-dot {
+  background: var(--mr-fill-saved);
+  box-shadow: 0 0 0 token('spacing.xs') token('color.background.success.subtle');
+}
+.mr-status[data-status='stale'] .mr-status-dot,
+.mr-status[data-status='rate-limited'] .mr-status-dot {
+  background: var(--mr-fill-incident-medium);
+}
+.mr-status[data-status='offline'] .mr-status-dot {
+  background: var(--mr-fill-incident-high);
+}
+.mr-status[data-status='sample'] .mr-status-dot,
+.mr-status[data-status='replay'] .mr-status-dot {
+  background: token('color.background.highlight.solid.default');
+}
+.mr-status-label--short {
+  display: none;
+}
+@media (max-width: 640px) {
+  /* Phones: dot + one-word label, no caption, so the tab row fits 390 px. */
+  .mr-status-sep,
+  .mr-status-caption {
+    display: none;
+  }
+  /* Visually hidden, still announced (the short label is aria-hidden). */
+  .mr-status-label--full {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .mr-status-label--short {
+    display: inline;
+  }
+}
+@media (max-width: 439px) {
+  /* Five tabs (What if joined the row) plus dot + word need ~438 px. When all is well the status is the green
+     dot alone (the full label stays announced, visually hidden above, and the footer states the last sweep
+     in words). Every other state keeps its one word next to the dot — a colour alone means nothing to a judge
+     on a phone (epic audit P1-A04) — and the tab row scrolls on its own, fading its hidden edge. Capra's tab
+     gaps are its own (no internal-class or --cds2 overrides, capra.md 8.7). */
+  .mr-status[data-status='live'] .mr-status-label--short,
+  /* Sample and replay: the band pinned under the tabs says it in words, so the dot is enough and the Settings tab
+     stays in view (OQ-17: '● Sample' covered it at 390 px on the tour). */
+  .mr-status[data-status='sample'] .mr-status-label--short,
+  .mr-status[data-status='replay'] .mr-status-label--short,
+  /* Before the first sweep (craft review, round 1: '● Unpriced' cut the Settings tab to 'S' on /first-run, the one
+     screen whose job is to send the member there): nothing is wrong, the page itself says what to do next, and the
+     label stays announced and in the dot's tooltip. A failing state keeps its word (P1-A04). */
+  .mr-status[data-status='not-metering'] .mr-status-label--short,
+  .mr-status[data-status='waiting'] .mr-status-label--short,
+  .mr-status[data-status='connecting'] .mr-status-label--short {
+    display: none;
+  }
+  /* The five release tabs take 326 px at 390; the status gives them the room (leftovers: the row was 14 px too
+     wide). It is its dot on a 24 px target with no chevron (the live pulse, below), 4 px from the tabs, and the
+     row's right padding is 8 px because the target's own 8 px beside the dot puts the dot on the 16 px gutter. */
+  .mr-topnav {
+    gap: token('spacing.sm');
+    padding-top: 0;
+    padding-right: token('spacing.md');
+  }
+  /* The row's 4 px top padding moves inside the scroller (and the status beside it), so nothing moves but the
+     Ledger's raised count (the tab badges, below) has room above the labels instead of being cut by the
+     scroller's edge. */
+  .mr-topnav-tabs,
+  .mr-topnav-status {
+    padding-top: token('spacing.sm');
+  }
+}
+
+/* ── Main ────────────────────────────────────────────────────────────────── */
+.mr-shell-main {
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: token('spacing.xl') token('spacing.xl') token('spacing.2xl');
+  min-width: 0;
+}
+@media (max-width: 640px) {
+  .mr-shell-main {
+    padding: token('spacing.lg') token('spacing.lg') token('spacing.xl');
+  }
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+.mr-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: token('spacing.sm') token('spacing.lg');
+  /* Inner edges on the page frame, like the tab row (P1-A05). */
+  padding: token('spacing.md') max(token('spacing.xl'), calc((100% - 1280px) / 2));
+  border-top: 1px solid var(--mr-border-subtle);
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+/* The version and the builder's signature, one group at the left edge, a hairline between them. */
+.mr-footer-id {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: token('spacing.md');
+  row-gap: 2px;
+  min-width: 0;
+}
+.mr-footer-credit {
+  padding-left: token('spacing.md');
+  border-left: 1px solid var(--mr-border-subtle);
+}
+.mr-footer-runtime {
+  flex: 1 1 auto;
+  text-align: center;
+}
+@media (max-width: 640px) {
+  .mr-footer {
+    padding: token('spacing.md') token('spacing.lg');
+  }
+  .mr-footer-runtime {
+    display: none;
+  }
+  /* A phone keeps the version, the sweep and its strip on one row, as before, and gives the signature a row of
+     its own under them (the group dissolves so the signature can wrap as a footer item; no hairline to start it). */
+  .mr-footer-id {
+    display: contents;
+  }
+  .mr-footer-credit {
+    order: 1;
+    flex-basis: 100%;
+    padding-left: 0;
+    border-left: 0;
+  }
+}
+
+/* ── Presenter / story: no chrome, the view owns the frame ───────────────── */
+.mr-shell--presenter,
+.mr-shell--story {
+  min-height: 100vh;
+}
+/* The stage is dark on every account (P1-A07): the wrapper carries Capra's `dark` class, so these tokens
+   resolve dark here; native scrollbars and form controls follow. */
+.mr-shell--presenter {
+  color-scheme: dark;
+  color: token('color.foreground.default');
+}
+/* The stage while its chunk loads (normally never: it is preloaded): an empty frame, no skeleton. */
+.mr-stage-fallback {
+  flex: 1 1 auto;
+  min-height: 100vh;
+}
+.mr-presenter-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* ── Shortcut confirmation chip ──────────────────────────────────────────── */
+/* Bottom centre: the toasts own the bottom-right corner (P1-A03), the stage keeps its QR there and its scene
+   indicator bottom-left. */
+.mr-chip-region {
+  position: fixed;
+  left: 50%;
+  bottom: token('spacing.xl');
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100vw - 2 * token('spacing.lg'));
+  z-index: 1000;
+  pointer-events: none;
+}
+.mr-chip {
+  padding: token('spacing.sm') token('spacing.lg');
+  border-radius: token('radius.full');
+  /* Inverse surface (like a tooltip) for maximum contrast in both themes. */
+  background: token('color.neutral.12');
+  color: token('color.neutral.1');
+  font: token('typography.body.sm.semibold');
+  box-shadow: token('shadow.medium.up');
+  animation: mr-chip-in var(--mr-duration-fast) var(--mr-easing);
+}
+@keyframes mr-chip-in {
+  from {
+    opacity: 0;
+    transform: translateY(token('spacing.sm'));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── Boot error (no store, no router) ────────────────────────────────────── */
+.mr-boot-error {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: token('spacing.2xl') token('spacing.lg');
+}
+.mr-boot-error-detail {
+  display: block;
+  margin-top: token('spacing.sm');
+  font: token('typography.body.sm.normal');
+  font-family: token('core.fontFamily.mono');
+  color: token('color.foreground.subtle');
+  overflow-wrap: anywhere;
+}
+
+/* Diagnostics overlay (?diag=1 / Shift+D): read-only, for support screenshots (P1-A08: its own scroll, a
+   bottom sheet on phones, the last-sweep row flagged when it is over 3 minutes old). */
+.mr-diag {
+  position: fixed;
+  right: token('spacing.lg');
+  bottom: token('spacing.lg');
+  z-index: 10000;
+  width: min(640px, calc(100vw - 2 * token('spacing.lg')));
+  max-height: calc(100vh - 2 * token('spacing.lg'));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  padding: token('spacing.md') token('spacing.lg');
+  border: token('border.default');
+  border-radius: token('radius.xl');
+  background: token('color.background.panel.solid');
+  box-shadow: token('shadow.high.down');
+  font: 12px/1.45 'Source Code Pro', ui-monospace, monospace;
+  color: token('color.foreground.default');
+}
+.mr-diag:focus-visible {
+  outline: token('border.focus');
+  outline-offset: 2px;
+}
+.mr-diag-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: token('spacing.md');
+  margin-bottom: token('spacing.sm');
+}
+.mr-diag-title {
+  min-width: 0;
+  color: token('color.foreground.subtle');
+}
+.mr-diag-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: token('spacing.xs');
+}
+.mr-diag dl { margin: 0; }
+.mr-diag-row { display: grid; grid-template-columns: 112px 1fr; gap: token('spacing.md'); }
+.mr-diag-row dt { color: token('color.foreground.subtle'); }
+.mr-diag-row dd { margin: 0; overflow-wrap: anywhere; }
+.mr-diag-row[data-state='stale'] {
+  margin: 0 calc(-1 * token('spacing.xs'));
+  padding: 0 token('spacing.xs');
+  border-radius: token('radius.md');
+  background: token('color.background.warning.subtle');
+}
+.mr-diag-row[data-state='stale'] dd {
+  color: token('color.foreground.warning.default');
+}
+@media (max-width: 640px) {
+  /* A bottom sheet: full width, half the screen at most, its own scroll. */
+  .mr-diag {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-height: 55vh;
+    border-radius: token('radius.xl') token('radius.xl') 0 0;
+    border-bottom: 0;
+    padding: token('spacing.md');
+  }
+  .mr-diag-head {
+    align-items: flex-start;
+  }
+  .mr-diag-row { grid-template-columns: 1fr; gap: 0; margin-bottom: token('spacing.xs'); }
+}
+
+/* ── The live pulse (P2-W21) ─────────────────────────────────────────────── */
+/* The status cluster is the way in: a click or tap anywhere on it opens the pulse; the chevron is the
+   keyboard's (and the Popover's) trigger. */
+.mr-status-pulse {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.xs');
+  padding-left: token('spacing.sm');
+  border-radius: token('radius.md');
+  cursor: pointer;
+}
+.mr-status-pulse:hover,
+.mr-status-pulse[data-open='true'] {
+  background: token('color.background.neutral.subtle');
+}
+@media (max-width: 439px) {
+  /* Phones: no chevron, so the five tabs fit 390 px (leftovers). The status is a 24 px target that a tap opens
+     (the cluster's click); the chevron's button stays for the keyboard and screen readers, see-through, over the
+     whole cluster so the pulse still opens under it, and passing taps to the cluster. Its focus ring is the
+     cluster's. */
+  .mr-status-pulse {
+    position: relative;
+    justify-content: center;
+    min-width: 24px;
+    min-height: 24px;
+    padding-left: 0;
+  }
+  /* A word beside the dot (every state but live, sample and replay) ends on the 16 px gutter, as the dot does. */
+  .mr-status-pulse .mr-status:not([data-status='live'], [data-status='sample'], [data-status='replay'], [data-status='not-metering'], [data-status='waiting'], [data-status='connecting']) {
+    padding-inline: token('spacing.md');
+  }
+  /* The trigger alone (never a button in the pulse), scoped under the tab row: Capra's icon-button size rule
+     would otherwise keep it 24 px wide. */
+  .mr-topnav-status .mr-status-pulse button[aria-expanded] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .mr-status-pulse:has(button[aria-expanded]:focus-visible) {
+    outline: token('border.focus');
+    outline-offset: 2px;
+  }
+}
+/* One ring when a sweep lands: a single 600 ms scale of the dot, never a loop, none under reduced motion. */
+.mr-status-pulse[data-tick='a'] .mr-status-dot {
+  animation: mr-sweep-tick-a 600ms token('motion.easing.standard');
+}
+.mr-status-pulse[data-tick='b'] .mr-status-dot {
+  animation: mr-sweep-tick-b 600ms token('motion.easing.standard');
+}
+@keyframes mr-sweep-tick-a {
+  40% {
+    transform: scale(1.6);
+  }
+}
+@keyframes mr-sweep-tick-b {
+  40% {
+    transform: scale(1.6);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mr-status-pulse[data-tick] .mr-status-dot {
+    animation: none;
+  }
+}
+
+.mr-pulse {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  width: min(320px, calc(100vw - 2 * token('spacing.xl')));
+  box-sizing: border-box;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.mr-pulse-next {
+  margin: 0;
+  font: token('typography.heading.sm');
+  color: token('color.foreground.default');
+}
+.mr-pulse-who,
+.mr-pulse-caption {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-pulse-title {
+  margin: 0 0 token('spacing.xs');
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+}
+.mr-pulse-chart .mr-spark {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.mr-pulse-axis {
+  display: flex;
+  justify-content: space-between;
+  margin: token('spacing.xs') 0;
+  font: token('typography.body.xs.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-pulse-actions {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  padding-top: token('spacing.sm');
+  border-top: 1px solid var(--mr-border-subtle);
+}
+
+/* The sweep strip: one neutral hue (the paid grey), failures in the incident red; the unseen part hatched. */
+.mr-spark-bar {
+  fill: var(--mr-fill-paid);
+}
+.mr-spark-fail {
+  fill: var(--mr-fill-incident-high);
+}
+.mr-spark-base {
+  stroke: var(--mr-border-subtle);
+  stroke-width: 1;
+}
+.mr-spark-hatch {
+  stroke: var(--mr-border-subtle);
+  stroke-width: 1;
+}
+
+/* The footer's stub: the hour's sweeps at 96 px and the countdown. */
+.mr-footer-pulse {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+}
+.mr-footer-spark {
+  flex: 0 0 auto;
+}
+.mr-footer-next {
+  white-space: nowrap;
+}
+
+/* ── Tab badges (P2-W21) ─────────────────────────────────────────────────── */
+.mr-tab-name {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.xs');
+}
+.mr-tab-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: token('radius.full');
+  background: var(--mr-fill-incident-high);
+  color: token('color.foreground.danger.contrast');
+  font: token('typography.body.xs.semibold');
+  line-height: 18px;
+}
+.mr-tab-dot {
+  width: token('spacing.sm');
+  height: token('spacing.sm');
+  border-radius: token('radius.full');
+  background: var(--mr-fill-incident-medium);
+}
+@media (max-width: 439px) {
+  /* Phones: the count and the dot sit on the label's top-right corner, in the 24 px Capra leaves between tabs,
+     so an open alert does not push the five tabs past 390 px (leftovers). The tab's name says them in words. */
+  .mr-tab-name {
+    position: relative;
+  }
+  .mr-tab-badge,
+  .mr-tab-dot {
+    position: absolute;
+    left: calc(100% + 1px);
+  }
+  .mr-tab-badge {
+    top: -7px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    line-height: 16px;
+  }
+  .mr-tab-dot {
+    top: -2px;
+  }
+}
+
+/* ── The lights going down (P2-W22) ──────────────────────────────────────── */
+/* Entering the stage or Story: a 400 ms crossfade, the hero figure flying from the Receipt card to the stage
+   (view-transition-name set for the duration by useShellEffects.ts). Reduced motion: a cut (no transition). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 400ms;
+  animation-timing-function: token('motion.easing.standard');
+}
+::view-transition-group(mr-hero) {
+  animation-duration: 400ms;
+  animation-timing-function: token('motion.easing.standard');
+}
+
+/* The booth loop: Story on the dark stage, the cursor gone once it rests. */
+.mr-shell--booth {
+  color-scheme: dark;
+  color: token('color.foreground.default');
+}
+.mr-shell--story[data-cursor='hidden'],
+.mr-shell--story[data-cursor='hidden'] * {
+  cursor: none !important;
+}

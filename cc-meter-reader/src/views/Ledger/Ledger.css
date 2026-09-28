@@ -1,0 +1,368 @@
+/*
+ * src/views/Ledger/Ledger.css — the Ledger page layout. Tokens only.
+ *   desktop  header · flows card (toolbar + table, full width) · [change timeline 2fr | alerts rail 1fr]
+ *   ≤ 1100   header · flows card · change timeline · alerts rail
+ *   390 px   the same single column; the table switches to cards on its own (LedgerTable.css)
+ */
+
+/* The page column, title row and gaps come from the Shell's <Page> (BEAUTY F7). From 1600 px the Ledger alone
+   widens to 1440 px (P1-K01): its table is the one screen that needs the room, and at 1920 the 1280 px frame left
+   640 px of empty canvas beside a truncating table. The shell's main column (max 1600 px) holds it. */
+@media (min-width: 1600px) {
+  .mr-page.mr-ledger {
+    max-width: 1440px;
+  }
+}
+
+.mr-ledger-notice {
+  min-width: 0;
+}
+
+/* ── Flows card: toolbar on top, the table flush to the card's edges ── */
+.mr-ledger-flows {
+  padding: 0;
+  overflow: hidden;
+  min-width: 0;
+}
+.mr-ledger-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: token('spacing.md');
+  padding: token('spacing.lg');
+  border-bottom: 1px solid var(--mr-border-subtle);
+}
+.mr-ledger-search {
+  flex: 1 1 280px;
+  max-width: 400px;
+  min-width: 0;
+}
+.mr-ledger-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(token('spacing.lg') + token('spacing.sm'));
+  height: calc(token('spacing.lg') + token('spacing.sm'));
+  padding: 0 token('spacing.sm');
+  font: token('typography.body.sm.normal');
+  font-family: token('core.fontFamily.mono');
+  color: token('color.foreground.subtle');
+  background: token('color.background.neutral.subtle');
+  border: 1px solid var(--mr-border-subtle);
+  border-radius: token('radius.lg');
+}
+.mr-ledger-filters {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.md');
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.mr-ledger-filter {
+  width: 184px;
+  min-width: 0;
+}
+.mr-ledger-toolbar-end {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: token('spacing.md');
+  margin-left: auto;
+  min-width: 0;
+}
+.mr-ledger-count {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  white-space: nowrap;
+}
+
+/* ── The money strip (P2-W17): three figures at metric size over the table, one receipt row of them ── */
+.mr-ledger-strip {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  min-width: 0;
+}
+.mr-ledger-strip-basis {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+/* The count lives in the toolbar on wider screens; on a phone (toolbar count hidden) the strip says it. */
+.mr-ledger-strip-count {
+  display: none;
+}
+.mr-ledger-strip-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+.mr-ledger-tile {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+  padding-inline: token('spacing.lg');
+  border-left: 1px dotted var(--mr-border);
+}
+.mr-ledger-tile:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+.mr-ledger-tile-label {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+}
+.mr-ledger-tile-figure {
+  margin: 0;
+}
+.mr-ledger-tile-figure .mr-num {
+  font: token('typography.metric.md');
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.mr-ledger-tile-figure .mr-figure-unit {
+  margin-left: token('spacing.xs');
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-ledger-tile-caption {
+  margin: 0;
+  font: token('typography.body.sm.normal');
+  font-variant-numeric: tabular-nums;
+  color: token('color.foreground.subtle');
+}
+
+.mr-ledger-inline-notice {
+  padding: token('spacing.md') token('spacing.lg') 0;
+}
+
+.mr-ledger-filtered-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: token('spacing.sm');
+  padding: token('spacing.lg') 0;
+}
+
+/* ── The folded quiet flows: one summary row under the table (BEAUTY F11) ── */
+.mr-ledger-quiet {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  min-height: token('dimension.component.xl');
+  padding: token('spacing.xs') token('spacing.lg');
+  border-top: 1px solid var(--mr-border-subtle);
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-ledger-quiet-text {
+  min-width: 0;
+}
+.mr-ledger-filtered-title {
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+.mr-ledger-filtered-body {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  margin-bottom: token('spacing.sm');
+}
+
+.mr-ledger-empty {
+  padding: token('spacing.lg');
+}
+.mr-ledger-skeleton {
+  padding: token('spacing.lg');
+}
+/* The skeleton is the loaded page's frame (P1-K06): toolbar, a table at the loaded table's floor, and the lower row's
+   two cards at the change timeline's loaded height, so the page does not jump when the first rows land. */
+.mr-ledger-skeleton-toolbar {
+  display: flex;
+  align-items: center;
+  min-height: calc(token('dimension.component.md') + 2 * token('spacing.lg'));
+  padding: 0 token('spacing.lg');
+  border-bottom: 1px solid var(--mr-border-subtle);
+  box-sizing: border-box;
+}
+.mr-ledger-skeleton--table {
+  display: flex;
+  flex-direction: column;
+  min-height: 436px;
+  padding-block: 0;
+  box-sizing: border-box;
+}
+.mr-ledger-skeleton-row {
+  display: flex;
+  align-items: center;
+  height: 48px;
+  border-bottom: 1px solid var(--mr-border-subtle);
+}
+.mr-ledger-skeleton-row--head {
+  height: 52px;
+  border-bottom-color: var(--mr-border);
+}
+.mr-ledger-skeleton-row > * {
+  flex: 1 1 auto;
+}
+.mr-ledger-skeleton-card {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+  flex: 1 1 auto;
+  min-height: 520px;
+  box-sizing: border-box;
+}
+.mr-ledger-skeleton-strip {
+  min-height: 134px;
+  box-sizing: border-box;
+}
+.mr-ledger-skeleton-changes {
+  min-height: 252px;
+  box-sizing: border-box;
+}
+.mr-ledger-skeleton-chart {
+  flex: 1 1 auto;
+  min-height: 184px;
+  border-radius: token('radius.md');
+  background: token('color.background.neutral.subtle');
+}
+@media (max-width: 1100px) {
+  .mr-ledger-skeleton-card--timeline {
+    min-height: 400px;
+  }
+}
+@media (max-width: 640px) {
+  .mr-ledger-skeleton--table {
+    min-height: 736px;
+  }
+  .mr-ledger-skeleton-row {
+    height: 96px;
+  }
+  .mr-ledger-skeleton-row--head {
+    height: 48px;
+  }
+  .mr-ledger-skeleton-changes {
+    min-height: 620px;
+  }
+  .mr-ledger-skeleton-strip {
+    min-height: 220px;
+  }
+  /* Stacked on a phone the rail is as tall as its cards: three at the demo profile's floor (an open alert, a
+     recovery and the good news an applied pack brings, P2-W06). */
+  .mr-ledger-rail .mr-ledger-skeleton-card {
+    min-height: 680px;
+  }
+}
+
+/* ── Lower row: timeline + alerts rail ──
+   Both cards end on one line (P1-K02): the row stretches them, the timeline's chart takes the extra height, and
+   the rail is capped so a long list of alerts scrolls inside it instead of stretching the chart without end. */
+.mr-ledger-lower {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: token('spacing.lg');
+  align-items: stretch;
+}
+.mr-ledger-timeline,
+.mr-ledger-rail {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.mr-ledger-timeline > .mr-ct,
+.mr-ledger-rail > .mr-rail {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.mr-ledger-rail > .mr-rail {
+  max-height: 640px;
+}
+.mr-ledger-rail .mr-rail-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  /* room for the cards' focus rings inside the scroll box */
+  margin: calc(-1 * token('spacing.xs'));
+  padding: token('spacing.xs');
+}
+
+@media (max-width: 1100px) {
+  .mr-ledger-lower {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mr-ledger-rail > .mr-rail {
+    max-height: none;
+  }
+  .mr-ledger-rail .mr-rail-body {
+    overflow: visible;
+  }
+}
+
+@media (max-width: 900px) {
+  .mr-ledger-search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+  .mr-ledger-filters {
+    flex: 1 1 100%;
+  }
+  .mr-ledger-filter {
+    flex: 1 1 0;
+    width: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .mr-ledger-toolbar {
+    gap: token('spacing.sm');
+  }
+  .mr-ledger-filters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: token('spacing.sm');
+  }
+  .mr-ledger-filter {
+    width: auto;
+  }
+  .mr-ledger-filter[data-filter='state'] {
+    grid-column: span 2;
+  }
+  /* The count moves into the money strip above the table; only "Clear filters" stays here. */
+  .mr-ledger-strip-count {
+    display: inline;
+  }
+  /* On a phone the three figures are three receipt lines: the label left, the figure right, the caption under. */
+  .mr-ledger-strip-tiles {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mr-ledger-tile {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: baseline;
+    column-gap: token('spacing.md');
+    padding: token('spacing.sm') 0;
+    border-left: 0;
+    border-top: 1px dotted var(--mr-border);
+  }
+  .mr-ledger-tile:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+  .mr-ledger-tile-caption {
+    grid-column: 1 / -1;
+  }
+  .mr-ledger-tile-figure .mr-num {
+    font: token('typography.metric.sm');
+  }
+  .mr-ledger-count {
+    display: none;
+  }
+  .mr-ledger-toolbar-end {
+    margin-left: 0;
+  }
+  .mr-ledger-toolbar-end[data-filtered='false'] {
+    display: none;
+  }
+}

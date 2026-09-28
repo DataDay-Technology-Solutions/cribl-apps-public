@@ -1,0 +1,163 @@
+/*
+ * src/components/ReceiptList/ReceiptList.css — receipt lines: Source Code Pro, dot leaders on the baseline,
+ * right-aligned whole dollars in tabular figures, the unit as a secondary suffix.
+ *
+ * Leaders read like a printed receipt (BEAUTY F13): the dots are anchored on the AMOUNT's side, so every row's
+ * leader ends the same distance from its figure; the partial dot the clip leaves by the label is masked away;
+ * lines are separated by space, never by solid rules. A total line sits under a dotted rule of its own.
+ */
+
+.mr-rlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  font: token('typography.code');
+  line-height: 1.5;
+}
+.mr-rlist--lg {
+  font-size: clamp(20px, 1.8vw, 36px);
+  gap: token('spacing.md');
+}
+
+.mr-rlist-item {
+  min-width: 0;
+}
+.mr-rlist-item--total {
+  margin-top: token('spacing.sm');
+  padding-top: token('spacing.sm');
+  border-top: 1px dotted var(--mr-border);
+  font-weight: 600;
+}
+
+.mr-rlist-line {
+  display: flex;
+  /* A wrapped label's amount sits on its last line, beside the leader. */
+  align-items: last baseline;
+  gap: 0.5ch;
+  min-width: 0;
+  padding: token('spacing.sm') 0;
+  color: token('color.foreground.default');
+  text-decoration: none;
+  border-radius: token('radius.md');
+}
+.mr-rlist--lg .mr-rlist-line {
+  padding: 0;
+}
+
+/*
+ * The label wraps rather than ellipsise (P1-H02). Its box takes the room the amount leaves and clips what
+ * overflows it — only the leader ever does.
+ */
+.mr-rlist-labelbox {
+  flex: 1 1 auto;
+  min-width: 6ch;
+  overflow: hidden;
+  /*
+   * The leader's dots sit on a one-character grid from the box's left edge (the face is monospace, so the words
+   * end on that grid too); the box is cut at its last WHOLE character cell, so no row ends on a sliced dot.
+   */
+  -webkit-mask: linear-gradient(to right, #000 round(down, 100%, 1ch), transparent 0);
+  mask: linear-gradient(to right, #000 round(down, 100%, 1ch), transparent 0);
+}
+.mr-rlist-label {
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+/*
+ * Dot leaders: round dots on the baseline of the label's last line. The anchor is a zero-width inline box right
+ * after the last character (its bottom edge is the baseline); its ::after runs the dots from one character after
+ * the words to far past the box, and the label box clips them at the last whole cell before the amount. One dot
+ * per character cell, so every row reads like the same printed receipt.
+ */
+.mr-rlist-leader {
+  position: relative;
+  display: inline-block;
+  width: 0;
+  height: 0.2em;
+  vertical-align: baseline;
+  color: token('color.foreground.subtle');
+}
+.mr-rlist-leader::after {
+  content: '';
+  position: absolute;
+  left: 1ch;
+  bottom: 0;
+  width: 400ch;
+  height: 100%;
+  background: radial-gradient(circle closest-side, currentColor 0 70%, transparent 85%) 0 0 / 1ch 100% repeat-x;
+}
+
+.mr-rlist-amount {
+  flex: 0 0 auto;
+  color: var(--mr-color-saved);
+}
+.mr-rlist-amount--neutral {
+  color: token('color.foreground.default');
+}
+.mr-rlist-per {
+  flex: 0 0 auto;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  white-space: nowrap;
+}
+.mr-rlist--lg .mr-rlist-per {
+  font-family: token('core.fontFamily.sans');
+  font-size: 0.6em;
+}
+
+.mr-rlist-go {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-self: center;
+  width: token('dimension.icon.sm');
+  justify-content: flex-end;
+  color: token('color.foreground.subtle');
+  opacity: 0;
+  transition: opacity var(--mr-duration-fast) var(--mr-easing);
+}
+
+.mr-rlist-line--link:hover .mr-rlist-label,
+.mr-rlist-line--link:focus-visible .mr-rlist-label,
+.mr-rlist-line--button:hover .mr-rlist-label,
+.mr-rlist-line--button:focus-visible .mr-rlist-label {
+  text-decoration: underline;
+  text-decoration-color: token('color.border.neutral.strong');
+  text-underline-offset: 3px;
+}
+.mr-rlist-line--link:hover .mr-rlist-go,
+.mr-rlist-line--link:focus-visible .mr-rlist-go {
+  opacity: 1;
+}
+@media (hover: none) {
+  .mr-rlist-go {
+    opacity: 1;
+  }
+}
+
+/* A line that is a control (the hero's periods): the receipt line itself is the button. */
+.mr-rlist-line--button {
+  width: 100%;
+  margin: 0;
+  padding-inline: token('spacing.sm');
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.mr-rlist-line--button:focus-visible {
+  outline: token('border.focus');
+  outline-offset: 1px;
+}
+/* A secondary line ("4 other flows"): the words step back; the amount keeps its colour. */
+.mr-rlist-item--muted .mr-rlist-label {
+  color: token('color.foreground.subtle');
+}
+
+/* A totals list right under the list it sums (Top savers): the dotted rule of its total line is the seam. */
+.mr-rlist--totals {
+  margin-top: calc(token('spacing.xs') * -1);
+}

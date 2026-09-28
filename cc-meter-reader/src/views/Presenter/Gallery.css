@@ -1,0 +1,47 @@
+/* src/views/Presenter/Gallery.css — layout of the dev-only incident gallery (the beauty grid's canvas). */
+
+.mr-gallery {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: token('spacing.2xl') token('spacing.xl');
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: token('spacing.lg');
+  align-items: start;
+  background: var(--mr-surface-app);
+}
+.mr-gallery-full {
+  grid-column: span 7;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+}
+.mr-gallery-compact {
+  grid-column: span 5;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+}
+.mr-gallery-slack {
+  grid-column: span 12;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: token('spacing.lg');
+  align-items: start;
+}
+@media (max-width: 1024px) {
+  .mr-gallery-full,
+  .mr-gallery-compact {
+    grid-column: span 12;
+  }
+  .mr-gallery-slack {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .mr-gallery {
+    padding: token('spacing.lg');
+  }
+}

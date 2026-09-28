@@ -1,0 +1,93 @@
+/*
+ * src/components/QrBlock/QrBlock.css — a QR on a light plate (scannable in both themes) with a caption.
+ * The plate and modules use the two theme-independent neutrals: `color.neutral.contrast` (white in light
+ * and dark) and `core.color.black.A12`.
+ */
+
+.mr-qr {
+  --mr-qr-size: 240px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: token('spacing.xl');
+  min-width: 0;
+}
+.mr-qr--side {
+  flex-direction: row-reverse;
+}
+.mr-qr--stack {
+  flex-direction: column;
+  text-align: center;
+}
+/* Caption lines above the code, right-aligned, never wider than the code's own column (BEAUTY F1). */
+.mr-qr--over {
+  flex-direction: column-reverse;
+  align-items: flex-end;
+  gap: token('spacing.lg');
+  width: var(--mr-qr-size);
+  max-width: 100%;
+}
+
+.mr-qr-plate {
+  flex: 0 0 auto;
+  width: var(--mr-qr-size);
+  height: var(--mr-qr-size);
+  padding: calc(var(--mr-qr-size) * 0.04);
+  background: token('color.neutral.contrast');
+  border-radius: token('radius.xl');
+  border: token('border.default');
+  box-sizing: border-box;
+}
+.mr-qr-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.mr-qr-modules {
+  fill: token('core.color.black.A12');
+}
+
+.mr-qr-caption {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+  min-width: 0;
+}
+.mr-qr--side .mr-qr-caption,
+.mr-qr--over .mr-qr-caption {
+  align-items: flex-end;
+  text-align: right;
+}
+.mr-qr--over .mr-qr-caption {
+  width: 100%;
+}
+.mr-qr--over .mr-qr-caption-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1em;
+}
+.mr-qr-line {
+  display: block;
+}
+.mr-qr-url-part {
+  white-space: nowrap;
+}
+/* The ask is the last line; the first names the entry; the track sits between them, quieter. */
+.mr-qr--over .mr-qr-line:not(:first-of-type):not(:last-of-type) {
+  font-weight: 400;
+  color: token('color.foreground.subtle');
+}
+.mr-qr-caption-main {
+  font-size: var(--mr-qr-caption-size, 16px);
+  font-weight: 600;
+  line-height: 1.3;
+  color: token('color.foreground.default');
+  text-wrap: balance;
+}
+.mr-qr-url {
+  font-family: token('core.fontFamily.mono');
+  font-size: var(--mr-qr-url-size, 12px);
+  color: token('color.foreground.subtle');
+  overflow-wrap: anywhere;
+}

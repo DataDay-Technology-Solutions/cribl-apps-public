@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "generator": "testdata/samples.ts",
+  "seed": 20260926,
+  "note": "Synthetic data only. Each file is one JSON array of {_raw,_time} events (sample-library format).",
+  "expectedRatios": {
+    "payments_api": 0.7781605587381307,
+    "payments_api_trim_broken": 0.5,
+    "k8s_prod": 0.7240276551030975
+  },
+  "samples": [
+    {
+      "key": "windows_security_xml",
+      "file": "windows-security-xml.log",
+      "sampleId": "mrd_windows_security_xml",
+      "sampleName": "mrd_windows_security_xml",
+      "description": "[meter-reader-demo] Synthetic Windows Security events (4624/4688/4663), Splunk forwarder XML with RenderingInfo",
+      "events": 33,
+      "totalBytes": 83452,
+      "avgEventBytes": 2529,
+      "minEventBytes": 1984,
+      "maxEventBytes": 3047,
+      "uploadBodyBytes": 88878,
+      "composition": {
+        "eventIds": {
+          "4624": 15,
+          "4663": 9,
+          "4688": 9
+        }
+      }
+    },
+    {
+      "key": "pan_traffic",
+      "file": "pan-traffic.log",
+      "sampleId": "mrd_pan_traffic",
+      "sampleName": "mrd_pan_traffic",
+      "description": "[meter-reader-demo] Synthetic Palo Alto PAN-OS 11 TRAFFIC logs over RFC 3164 syslog",
+      "events": 64,
+      "totalBytes": 52854,
+      "avgEventBytes": 826,
+      "minEventBytes": 725,
+      "maxEventBytes": 912,
+      "uploadBodyBytes": 55179,
+      "composition": {}
+    },
+    {
+      "key": "vpc_flow_v2",
+      "file": "vpc-flow-v2.log",
+      "sampleId": "mrd_vpc_flow_v2",
+      "sampleName": "mrd_vpc_flow_v2",
+      "description": "[meter-reader-demo] Synthetic AWS VPC Flow Logs v2 (default format) with repeating conversations",
+      "events": 420,
+      "totalBytes": 47157,
+      "avgEventBytes": 112,
+      "minEventBytes": 106,
+      "maxEventBytes": 116,
+      "uploadBodyBytes": 60386,
+      "composition": {
+        "distinctKeys": 28
+      }
+    },
+    {
+      "key": "api_access",
+      "file": "api-access.json",
+      "sampleId": "mrd_api_access",
+      "sampleName": "mrd_api_access",
+      "description": "[meter-reader-demo] Synthetic payments API access logs (JSON) with fat headers, user_agent and request_body",
+      "events": 56,
+      "totalBytes": 63715,
+      "avgEventBytes": 1138,
+      "minEventBytes": 924,
+      "maxEventBytes": 1293,
+      "uploadBodyBytes": 73669,
+      "composition": {
+        "trimFraction": 0.5563211174762615
+      }
+    },
+    {
+      "key": "k8s_container",
+      "file": "k8s-container.log",
+      "sampleId": "mrd_k8s_container",
+      "sampleName": "mrd_k8s_container",
+      "description": "[meter-reader-demo] Synthetic Kubernetes container logs (JSON), ~40% debug, with pod labels",
+      "events": 84,
+      "totalBytes": 65666,
+      "avgEventBytes": 782,
+      "minEventBytes": 747,
+      "maxEventBytes": 810,
+      "uploadBodyBytes": 76218,
+      "composition": {
+        "dropFraction": 0.40884171412907744,
+        "dropEventFraction": 0.40476190476190477,
+        "trimFraction": 0.5331667482418403
+      }
+    }
+  ]
+}

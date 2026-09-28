@@ -1,0 +1,19 @@
+/* src/components/IncidentCard/SeverityGlyph.css — severity glyph colours (shared by the card and the takeover). */
+
+.mr-inc-glyph {
+  display: inline-flex;
+  flex: 0 0 auto;
+  line-height: 0;
+}
+.mr-inc-glyph--high {
+  color: var(--mr-color-incident-high);
+}
+.mr-inc-glyph--medium {
+  color: var(--mr-color-incident-medium);
+}
+.mr-inc-glyph--info {
+  color: var(--mr-color-info);
+}
+.mr-inc-glyph--recovered {
+  color: var(--mr-color-saved);
+}

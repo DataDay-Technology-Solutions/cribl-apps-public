@@ -1,0 +1,592 @@
+/*
+ * src/components/LedgerTable/LedgerTable.css — the virtualized flow table. Tokens only; money colours from
+ * src/styles/palette.css. One grid template per layout, shared by the header, every row and the totals row,
+ * so columns line up to the pixel. Row heights are fixed per layout (LedgerTable.tsx ROW_HEIGHT) — change
+ * them together.
+ */
+
+.mr-lt {
+  --mr-lt-gap: token('spacing.md');
+  --mr-lt-pad: token('spacing.lg');
+  --mr-lt-max-h: clamp(360px, calc(100vh - 260px), 720px);
+  /* The grid template comes from the column plan (layout.ts planColumns, set inline as --mr-lt-cols): which
+     columns the rows need (Route only where it differs from Source, Worker group across groups, Would have paid in
+     a medium table from ~960 px) and how the names share the room (BEAUTY F11, P1-K01: "Windows workstation events"
+     and "Passthrough (no reduction)" read whole at 1440). Each figure column is exactly as wide as its widest value
+     and its header need; the column minimums sum to the plan's minWidth, so no layout scrolls sideways. */
+  min-width: 0;
+  position: relative;
+}
+
+/* ── Scroll container: sticky header on top, sticky totals at the bottom ── */
+.mr-lt-scroll {
+  position: relative;
+  max-height: var(--mr-lt-max-h);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  contain: layout paint;
+}
+.mr-lt--narrow .mr-lt-scroll {
+  --mr-lt-max-h: min(72vh, 720px);
+  scrollbar-gutter: auto;
+}
+
+.mr-lt-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--mr-surface-panel);
+}
+
+.mr-lt-header,
+.mr-lt-row--wide,
+.mr-lt-row--medium,
+.mr-lt-totals {
+  display: grid;
+  align-items: center;
+  column-gap: var(--mr-lt-gap);
+  padding-inline: var(--mr-lt-pad);
+}
+.mr-lt-header--wide,
+.mr-lt-row--wide,
+.mr-lt-totals--wide,
+.mr-lt-header--medium,
+.mr-lt-row--medium,
+.mr-lt-totals--medium {
+  grid-template-columns: var(--mr-lt-cols);
+}
+
+/* ── Header ── */
+.mr-lt-header {
+  height: 52px;
+  border-bottom: 1px solid var(--mr-border);
+}
+/* Headers sit on one bottom line (P1-K05): a one-line label ("Source") shares the baseline of a two-line one's
+   unit ("/ day"), the way a printed ledger sets its column heads. */
+.mr-lt-th {
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  padding-bottom: token('spacing.sm');
+  box-sizing: border-box;
+}
+.mr-lt-th--end {
+  justify-content: flex-end;
+  text-align: end;
+}
+.mr-lt-th-text {
+  display: inline-flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+.mr-lt-th--end .mr-lt-th-text {
+  align-items: flex-end;
+}
+/* The label's own line: the sort caret is anchored to it, never to the middle of a two-line head (P1-K05). */
+.mr-lt-th-line {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  font: token('typography.body.sm.semibold');
+  line-height: 1.3;
+}
+.mr-lt-th-label {
+  font: token('typography.body.sm.semibold');
+  line-height: 1.3;
+  color: token('color.foreground.subtle');
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+/* "Volume reduced" breaks onto two lines inside its 64 px figure column (the header is two lines tall, like "In / day"). */
+.mr-lt-th-label--wrap {
+  white-space: normal;
+  text-overflow: clip;
+  overflow-wrap: normal;
+}
+.mr-lt-th.is-sorted .mr-lt-th-label {
+  color: token('color.foreground.default');
+}
+.mr-lt-th-unit {
+  font: token('typography.body.sm.normal');
+  line-height: 1.3;
+  color: token('color.foreground.subtle');
+  white-space: nowrap;
+}
+.mr-lt-sort {
+  all: unset;
+  position: relative;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: flex-end;
+  gap: token('spacing.sm');
+  max-width: 100%;
+  min-width: 0;
+  padding: token('spacing.xs') 0;
+  cursor: pointer;
+  border-radius: token('radius.md');
+}
+.mr-lt-th--end .mr-lt-sort {
+  justify-content: flex-end;
+}
+.mr-lt-sort:focus-visible {
+  outline: token('border.focus');
+  outline-offset: 2px;
+}
+.mr-lt-sort-icon {
+  /* Out of flow so a column never gives up width to an icon that only shows when sorted / hovered; centred on the
+     label's first line (0.65em = half of its 1.3 line height), so it reads with the word it sorts. */
+  position: absolute;
+  top: 0.65em;
+  transform: translateY(-50%);
+  display: inline-flex;
+  color: token('color.foreground.subtle');
+  opacity: 0;
+  transition: opacity var(--mr-duration-fast) var(--mr-easing);
+}
+.mr-lt-sort-icon svg {
+  width: 12px;
+  height: 12px;
+}
+.mr-lt-th--end .mr-lt-sort-icon {
+  right: calc(100% + token('spacing.xs'));
+}
+.mr-lt-th--start .mr-lt-sort-icon {
+  left: calc(100% + token('spacing.xs'));
+}
+.mr-lt-sort-icon.is-active {
+  opacity: 1;
+  color: token('color.foreground.default');
+}
+.mr-lt-sort:hover .mr-lt-sort-icon:not(.is-active),
+.mr-lt-sort:focus-visible .mr-lt-sort-icon:not(.is-active) {
+  opacity: 0.6;
+}
+.mr-lt-sort:hover .mr-lt-th-label {
+  color: token('color.foreground.default');
+}
+
+/* ── Body rows ── */
+.mr-lt-body {
+  position: relative;
+  width: 100%;
+}
+.mr-lt-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--mr-border-subtle);
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.default');
+  background: var(--mr-surface-panel);
+  cursor: default;
+  outline: none;
+  will-change: transform;
+}
+.mr-lt-row:hover {
+  background: token('color.background.neutral.subtle');
+}
+.mr-lt-row.is-highlighted {
+  background: token('color.background.accent.subtle');
+  box-shadow: inset 3px 0 0 token('color.border.accent.strong');
+}
+.mr-lt-row:focus-visible {
+  box-shadow: inset 0 0 0 2px token('color.border.focus');
+}
+.mr-lt-row.is-highlighted:focus-visible {
+  box-shadow:
+    inset 3px 0 0 token('color.border.accent.strong'),
+    inset 0 0 0 2px token('color.border.focus');
+}
+
+.mr-lt-td {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  overflow: hidden;
+}
+.mr-lt-td--end {
+  justify-content: flex-end;
+  text-align: end;
+  /* A figure is never clipped (P1-K05, WCAG 1.4.12): under a reader's text-spacing override it may spill into the
+     column gap, but its leading digits stay visible. Figure columns are sized to their widest value, so at normal
+     spacing nothing overflows. */
+  overflow: visible;
+}
+.mr-lt-td--end .mr-figure {
+  font-variant-numeric: tabular-nums;
+}
+.mr-lt-td--saved .mr-figure {
+  font: token('typography.body.md.semibold');
+}
+.mr-lt-td--trend {
+  overflow: visible;
+  padding-inline-start: token('spacing.md');
+}
+.mr-lt-th:nth-last-child(2) {
+  padding-inline-start: token('spacing.md');
+}
+.mr-lt-zero,
+.mr-lt-zero .mr-num {
+  color: token('color.foreground.subtle');
+  font-weight: 400;
+}
+.mr-lt-td--flow {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: token('spacing.xs');
+}
+.mr-lt-sub {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  max-width: 100%;
+}
+.mr-lt-dim {
+  color: token('color.foreground.subtle');
+}
+/* A name in the wide table (W3-LS-2, P1-K01): it wraps to two balanced lines instead of ending in an ellipsis, at a
+   leading that sets two lines inside the 48 px row (ROW_HEIGHT.wide). The columns are planned so every name fits
+   (layout.ts); the two-line clamp only keeps a pathological name inside its row. */
+.mr-lt-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  min-width: 0;
+  max-width: 100%;
+  line-height: 1.3;
+  white-space: normal;
+  overflow-wrap: break-word;
+  text-wrap: balance;
+}
+/* Worker group: context for the flow, not its name — secondary text. */
+.mr-lt-td--group {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+
+/* Pipeline link: reads as text; underline + icon on hover / focus so the table isn't a wall of blue. */
+.mr-lt-link {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  min-width: 0;
+  max-width: 100%;
+  color: inherit;
+  text-decoration: none;
+  border-radius: token('radius.md');
+}
+.mr-lt-link--strong {
+  font: token('typography.body.md.semibold');
+}
+.mr-lt-link:hover .mr-truncate,
+.mr-lt-link:focus-visible .mr-truncate,
+.mr-lt-link:hover .mr-lt-name,
+.mr-lt-link:focus-visible .mr-lt-name {
+  text-decoration: underline;
+  text-decoration-color: token('color.foreground.subtle');
+  text-underline-offset: 3px;
+}
+.mr-lt-link:hover {
+  color: token('color.foreground.link');
+}
+/* Sample data (OQ-01): the name alone, no link out of the app. */
+.mr-lt-link--static:hover {
+  color: inherit;
+}
+.mr-lt-link--static:hover .mr-truncate,
+.mr-lt-link--static:hover .mr-lt-name {
+  text-decoration: none;
+}
+/* The "open in Cribl" icon shows at rest at 0.6 (P1-K05: a link needs an affordance before the pointer finds it),
+   and full on hover, focus or the selected row. */
+.mr-lt-link-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: token('color.foreground.subtle');
+  opacity: 0.6;
+  transition: opacity var(--mr-duration-fast) var(--mr-easing);
+}
+.mr-lt-link-icon svg {
+  width: 12px;
+  height: 12px;
+}
+.mr-lt-row:hover .mr-lt-link-icon,
+.mr-lt-row:focus-within .mr-lt-link-icon,
+.mr-lt-row.is-highlighted .mr-lt-link-icon {
+  opacity: 1;
+}
+.mr-lt-link:focus-visible {
+  outline: token('border.focus');
+  outline-offset: 2px;
+}
+
+/* ── The ledger reads as a ledger (P2-W17) ──
+   Saved: the figure over a 4 px bar of its share of would-have-paid (green on a neutral track). */
+/* The figure stays centred on the row's line with the other figures; the bar sits under it at the cell's foot. */
+.mr-lt-td--saved {
+  position: relative;
+  overflow: visible;
+}
+.mr-lt-saved-stack {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+  min-width: 0;
+}
+.mr-lt-saved-stack > .mr-lt-bar {
+  position: absolute;
+  right: 0;
+  bottom: token('spacing.md');
+}
+.mr-lt-bar {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 4px;
+  border-radius: token('radius.full');
+  background: token('color.background.neutral.subtle');
+  overflow: hidden;
+}
+.mr-lt-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--mr-fill-saved);
+}
+.mr-lt-card-window {
+  margin-left: token('spacing.sm');
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-lt-card-saved .mr-lt-bar {
+  width: 96px;
+  margin-top: token('spacing.xs');
+}
+/* Trend: the 30-minute line, then its last value. */
+.mr-lt-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  min-width: 0;
+}
+.mr-lt-trend-end {
+  font: token('typography.body.sm.normal');
+  font-variant-numeric: tabular-nums;
+  color: token('color.foreground.subtle');
+  white-space: nowrap;
+}
+/* A commit hovered on the change timeline lights the rows it names (static: nothing pulses, DESIGN_BRIEF 4). */
+.mr-lt-row.is-linked {
+  background: token('color.background.accent.subtle');
+  box-shadow: inset 3px 0 0 token('color.border.accent.default');
+}
+/* The totals row's label in the receipt's mono face, with a dot leader to the figures (on the text's baseline). */
+.mr-lt-totals-label {
+  font: token('typography.code');
+  font-weight: 600;
+  color: token('color.foreground.default');
+}
+.mr-lt-totals-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5ch;
+  width: 100%;
+  min-width: 0;
+}
+.mr-lt-totals-text {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.mr-lt-leader {
+  flex: 1 1 3ch;
+  min-width: 3ch;
+  height: 0.2em;
+  align-self: baseline;
+  color: token('color.foreground.subtle');
+  background: radial-gradient(circle closest-side, currentColor 0 70%, transparent 85%) 0 0 / 0.8em 100% round no-repeat;
+}
+
+/* ── Status chips: the incident red / amber by severity; every other status is neutral (BEAUTY F10: green is
+      money, and a status is not money). Sentence case, never uppercase. ── */
+.mr-lt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  max-width: 100%;
+  min-width: 0;
+  height: token('dimension.component.sm');
+  padding: 0 token('spacing.md');
+  border-radius: token('radius.full');
+  font: token('typography.body.sm.semibold');
+  line-height: 1;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.mr-lt-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mr-lt-chip-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: token('radius.full');
+  background: currentColor;
+}
+.mr-lt-chip--high {
+  color: var(--mr-color-incident-high);
+  background: var(--mr-fill-incident-high-subtle);
+  border-color: token('color.border.danger.subtle');
+}
+.mr-lt-chip--medium {
+  color: var(--mr-color-incident-medium);
+  background: var(--mr-fill-incident-medium-subtle);
+  border-color: token('color.border.warning.subtle');
+}
+.mr-lt-chip--neutral {
+  color: token('color.foreground.subtle');
+  background: token('color.background.neutral.subtle');
+  border-color: var(--mr-border-subtle);
+}
+.mr-lt-ok {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+
+/* ── Totals ── */
+.mr-lt-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: var(--mr-surface-panel);
+}
+/* While rows run on under the sticky totals, a 12 px fade above them says so, instead of the totals' rule slicing
+   a row in half (P1-K05). Only then: at the end of the list the last row shows whole. */
+.mr-lt-foot::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: 12px;
+  background: linear-gradient(to bottom, transparent, var(--mr-surface-panel));
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--mr-duration-fast) var(--mr-easing);
+}
+.mr-lt[data-more-below='true'] .mr-lt-foot::before {
+  opacity: 1;
+}
+.mr-lt-totals {
+  height: 48px;
+  border-top: 1px solid var(--mr-border);
+  font: token('typography.body.md.semibold');
+}
+.mr-lt-totals .mr-figure {
+  font: token('typography.body.md.semibold');
+}
+
+/* ── Empty (inside the table, under the header) ── */
+.mr-lt-empty {
+  padding: token('spacing.lg');
+}
+
+/* ── Narrow: one card per flow ── */
+.mr-lt-row--narrow {
+  display: block;
+  padding: 0 token('spacing.lg');
+}
+.mr-lt-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: token('spacing.sm');
+  height: 100%;
+  min-width: 0;
+}
+.mr-lt-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: token('spacing.md');
+  min-width: 0;
+}
+.mr-lt-card-top .mr-lt-chip {
+  flex: 0 1 auto;
+  max-width: 55%;
+}
+.mr-lt-card-path {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-lt-card-figures {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.lg');
+  min-width: 0;
+}
+.mr-lt-card-saved {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.mr-lt-card-saved .mr-figure > .mr-num {
+  font: token('typography.body.lg.semibold');
+}
+.mr-lt-card-reduction {
+  flex: 0 0 auto;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.default');
+  white-space: nowrap;
+}
+.mr-lt-card-caption {
+  color: token('color.foreground.subtle');
+}
+.mr-lt-card-trend {
+  flex: 0 0 auto;
+  display: inline-flex;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mr-lt-sort-icon,
+  .mr-lt-link-icon,
+  .mr-lt-foot::before {
+    transition: none;
+  }
+}
+
+/* P1-F02: a diversion credit's Volume reduced cell — a word, not a figure: its savings rest on another destination's
+   price. P1-F03: bytes grown past what came in read negative, in the body colour (never the saved green). */
+.mr-lt-diverted {
+  font: token('typography.body.sm.normal');
+  font-style: italic;
+  color: token('color.foreground.subtle');
+  cursor: help;
+}
+.mr-lt-inflating {
+  color: token('color.foreground.default');
+}
+/* P1-F03: under the totals label, the cost flows that grow bytes add. */
+.mr-lt-added {
+  display: block;
+  margin-top: token('spacing.xs');
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-lt-totals-label:has(.mr-lt-added) {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0;
+}

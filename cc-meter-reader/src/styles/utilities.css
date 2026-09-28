@@ -1,0 +1,163 @@
+/*
+ * src/styles/utilities.css — shared classes for every view. Prefer these over ad-hoc values so the
+ * consistency pass (PRD 8.8 item 11) holds: one spacing scale, one radius, one card elevation.
+ *
+ * Type scale (PRD 8.8 item 1 — one display size, one title, body, caption per screen), mapped to Capra:
+ *   .mr-type-display   typography.metric.xl   hero money figure
+ *   .mr-type-metric    typography.metric.md   secondary figures (receipt strip, KPI)
+ *   .mr-type-title     typography.heading.md  view title (once per view)
+ *   .mr-type-section   typography.heading.sm  card / section headings
+ *   .mr-type-body      typography.body.md.normal
+ *   .mr-type-caption   typography.body.sm.normal, subtle — the basis under every number
+ */
+
+/* ── Numbers ─────────────────────────────────────────────────────────────── */
+.mr-num {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+  white-space: nowrap;
+}
+
+/* ── Type scale ──────────────────────────────────────────────────────────── */
+.mr-type-display {
+  font: token('typography.metric.xl');
+  letter-spacing: token('typography.metric.xl.letterSpacing');
+}
+.mr-type-metric {
+  font: token('typography.metric.md');
+  letter-spacing: token('typography.metric.md.letterSpacing');
+}
+.mr-type-title {
+  font: token('typography.heading.md');
+  letter-spacing: token('typography.heading.md.letterSpacing');
+}
+.mr-type-section {
+  font: token('typography.heading.sm');
+  letter-spacing: token('typography.heading.sm.letterSpacing');
+}
+.mr-type-body {
+  font: token('typography.body.md.normal');
+}
+.mr-type-caption {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+
+/* ── Money colours (text) ────────────────────────────────────────────────── */
+.mr-saved {
+  color: var(--mr-color-saved);
+}
+.mr-paid {
+  color: var(--mr-color-paid);
+}
+.mr-whp {
+  color: var(--mr-color-whp);
+}
+.mr-incident-high {
+  color: var(--mr-color-incident-high);
+}
+.mr-incident-medium {
+  color: var(--mr-color-incident-medium);
+}
+
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+/* Capra page template: 12-column grid, spacing.lg gutters, modules placed by span. */
+.mr-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: token('spacing.lg');
+}
+.mr-span-3 {
+  grid-column: span 3;
+}
+.mr-span-4 {
+  grid-column: span 4;
+}
+.mr-span-6 {
+  grid-column: span 6;
+}
+.mr-span-8 {
+  grid-column: span 8;
+}
+.mr-span-12 {
+  grid-column: span 12;
+}
+@media (max-width: 1024px) {
+  .mr-span-3,
+  .mr-span-4 {
+    grid-column: span 6;
+  }
+  .mr-span-6,
+  .mr-span-8 {
+    grid-column: span 12;
+  }
+}
+@media (max-width: 640px) {
+  .mr-span-3,
+  .mr-span-4 {
+    grid-column: span 12;
+  }
+}
+
+.mr-stack {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+}
+.mr-stack-lg {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+}
+.mr-row {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.md');
+}
+.mr-row-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: token('spacing.sm') token('spacing.md');
+}
+
+/* ── Page frame (BEAUTY F7) ──────────────────────────────────────────────────
+ * The one page column (`.mr-page`, width, title row, rhythm) is the Shell's <Page> component
+ * (src/components/Shell/Page.tsx + Page.css). Views render inside it and never set their own root max-width.
+ */
+
+/* ── Cards (BEAUTY F8) ───────────────────────────────────────────────────────
+ * ONE card rule for the whole app: panel surface, one border, radius.xl, shadow.low.down (the palette's
+ * --mr-card-* values). A card inside a card is flat — never a shadow on a shadow. Dashed borders mean
+ * "projected" and are reserved for projections; ordinary containers never use them.
+ */
+.mr-panel {
+  background: var(--mr-card-bg);
+  border: 1px solid var(--mr-card-border);
+  border-radius: var(--mr-card-radius);
+  box-shadow: var(--mr-card-shadow);
+  padding: token('spacing.lg');
+}
+.mr-panel .mr-panel,
+.mr-panel .mr-inc {
+  box-shadow: none;
+}
+
+.mr-visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.mr-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}

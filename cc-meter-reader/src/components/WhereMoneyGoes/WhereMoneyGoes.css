@@ -1,0 +1,198 @@
+/* src/components/WhereMoneyGoes/WhereMoneyGoes.css — per-destination paid + saved bars on one scale. */
+
+.mr-wmg {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mr-wmg-row {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+  padding: token('spacing.md') 0;
+  min-width: 0;
+}
+.mr-wmg-row + .mr-wmg-row {
+  border-top: 1px solid var(--mr-border-subtle);
+}
+.mr-wmg-row:first-child {
+  padding-top: 0;
+}
+.mr-wmg-row:last-child {
+  padding-bottom: 0;
+}
+
+.mr-wmg-head {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  min-width: 0;
+}
+.mr-wmg-dot {
+  flex: 0 0 auto;
+  width: token('spacing.md');
+  height: token('spacing.md');
+  border-radius: token('radius.full');
+}
+.mr-wmg-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+.mr-wmg-paid {
+  flex: 0 0 auto;
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-wmg-paid-amount {
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+
+.mr-wmg-track {
+  height: token('spacing.md');
+  border-radius: token('radius.full');
+  background: token('color.background.neutral.subtle');
+  overflow: hidden;
+}
+/*
+ * Unpriced: a 45° hatch in the would-have-paid hatch colour (DESIGN_BRIEF §2), visible on the card in both themes
+ * (the neutral subtle fill it replaced was 1.00:1 on the dark panel, P1-H05).
+ */
+.mr-wmg-row[data-unpriced='true'] .mr-wmg-track {
+  background: repeating-linear-gradient(45deg, var(--mr-hatch-whp) 0 2px, transparent 2px 6px);
+  box-shadow: inset 0 0 0 1px var(--mr-border-subtle);
+}
+.mr-wmg-bar {
+  display: flex;
+  /* A card-coloured gap between paid and saved, so the two read apart without their hues. */
+  gap: 2px;
+  height: 100%;
+  min-width: token('spacing.xs');
+  border-radius: token('radius.full');
+  overflow: hidden;
+  transition: width var(--mr-duration-ribbon) var(--mr-easing);
+}
+.mr-wmg-bar-paid {
+  flex: 0 0 auto;
+  /* Its own size container, so a sliver under 4 px draws nothing rather than a 2 px nub (P1-H05). */
+  container-type: inline-size;
+}
+.mr-wmg-bar-paid::before {
+  content: '';
+  display: block;
+  height: 100%;
+  background: var(--mr-fill-paid);
+}
+@container (max-width: 3.99px) {
+  .mr-wmg-bar-paid::before {
+    display: none;
+  }
+}
+.mr-wmg-bar-saved {
+  flex: 1 1 auto;
+  background:
+    repeating-linear-gradient(45deg, rgb(255 255 255 / 0.2) 0 2px, transparent 2px 7px),
+    var(--mr-fill-saved);
+}
+@media (forced-colors: active) {
+  .mr-wmg-bar-paid::before,
+  .mr-wmg-bar-saved,
+  .mr-wmg-track {
+    forced-color-adjust: none;
+  }
+  .mr-wmg-bar-paid::before,
+  .mr-wmg-bar-saved {
+    box-shadow: inset 0 0 0 1px CanvasText;
+  }
+}
+
+.mr-wmg-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: token('spacing.xs') token('spacing.md');
+  min-width: 0;
+}
+.mr-wmg-caption {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 token('spacing.sm');
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  min-width: 0;
+}
+.mr-wmg-type {
+  /* One family per line (BEAUTY F23): the output type is plain subtle text, like the rest of the caption. */
+  color: token('color.foreground.subtle');
+}
+.mr-wmg-saved {
+  font: token('typography.body.sm.semibold');
+}
+.mr-wmg-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: token('spacing.sm');
+}
+.mr-wmg-chip {
+  display: inline-flex;
+}
+
+/* The name opens the destination's statement (P2-W25): a quiet text button, underlined on hover and focus. */
+.mr-wmg-name--button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: start;
+  cursor: pointer;
+  border-radius: token('radius.md');
+}
+.mr-wmg-name--button:hover,
+.mr-wmg-name--button:focus-visible {
+  text-decoration: underline;
+  text-decoration-color: token('color.border.neutral.strong');
+  text-underline-offset: 3px;
+}
+.mr-wmg-name--button:focus-visible {
+  outline: token('border.focus');
+  outline-offset: 2px;
+}
+
+/*
+ * The counterfactual as a shape (P2-W25): the part of the saving that exists only because, without Cribl, the
+ * bytes would have gone somewhere dearer, hatched after the solid saving — "Without Cribl → siem-prod" drawn.
+ */
+.mr-wmg-bar-ghost {
+  flex: 0 0 auto;
+  background:
+    repeating-linear-gradient(45deg, var(--mr-fill-saved) 0 2px, transparent 2px 6px),
+    color-mix(in srgb, var(--mr-fill-saved) 16%, transparent);
+}
+.mr-wmg-row:has(.mr-wmg-bar-ghost) .mr-wmg-bar-saved {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.mr-wmg-chip[data-chip='counterfactual'] {
+  align-items: center;
+  gap: token('spacing.sm');
+}
+.mr-wmg-ghost-swatch {
+  width: 14px;
+  height: 8px;
+  border-radius: 2px;
+  background:
+    repeating-linear-gradient(45deg, var(--mr-fill-saved) 0 2px, transparent 2px 5px),
+    color-mix(in srgb, var(--mr-fill-saved) 16%, transparent);
+}
+@media (forced-colors: active) {
+  .mr-wmg-bar-ghost,
+  .mr-wmg-ghost-swatch {
+    forced-color-adjust: none;
+  }
+}

@@ -1,0 +1,9 @@
+/* src/components/common/MeteringNotice.css — the meter's own notices (EPIC_AUDIT P0-07, P1-D03, P1-D06):
+   the lead phrase of a one-line neutral notice ("Not updated since 2:14 PM.") in semibold, the rest normal. */
+
+.mr-notice-strong {
+  font: token('typography.body.md.semibold');
+}
+.mr-metering-notice {
+  min-width: 0;
+}

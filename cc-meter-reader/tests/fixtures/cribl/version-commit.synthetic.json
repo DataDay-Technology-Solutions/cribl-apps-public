@@ -1,0 +1,40 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/m/default/version/commit",
+    "body": {
+      "message": "demo: break the trim on mrd_pay_sample",
+      "files": [
+        "groups/default/local/cribl/pipelines/mrd_pay_sample/conf.yml"
+      ],
+      "effective": true
+    }
+  },
+  "status": 200,
+  "capturedAt": null,
+  "source": "synthetic",
+  "note": "SYNTHETIC: openapi.json example VersionCommitResponseExamplesCommitCreated with the demo file; branch is \"master\" on Cribl.Cloud (measured).",
+  "body": {
+    "count": 1,
+    "items": [
+      {
+        "author": {
+          "email": "member@example.com",
+          "name": "Demo Member"
+        },
+        "branch": "master",
+        "commit": "a1f3c9e7b2d4f6a8c0e1a1f3c9e7b2d4f6a8c0e1",
+        "files": {
+          "modified": [
+            "groups/default/local/cribl/pipelines/mrd_pay_sample/conf.yml"
+          ]
+        },
+        "summary": {
+          "changes": 1,
+          "insertions": 1,
+          "deletions": 1
+        }
+      }
+    ]
+  }
+}

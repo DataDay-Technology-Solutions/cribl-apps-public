@@ -1,0 +1,474 @@
+{
+  "schemaVersion": 1,
+  "note": "Meter Reader demo rig pipelines. Every conf.description carries [meter-reader-demo]; exactly one function per trim pipeline carries [mr-trim]. Apply with scripts/rig/apply.mjs.",
+  "pipelines": [
+    {
+      "id": "mrd_passthrough",
+      "role": "raw",
+      "provenance": "hand-built",
+      "conf": {
+        "output": "default",
+        "asyncFuncTimeout": 1000,
+        "streamtags": [
+          "meter-reader-demo"
+        ],
+        "description": "[meter-reader-demo] Passthrough: no functions. Raw streams run through this at full price until \"Apply the pack\".",
+        "functions": []
+      }
+    },
+    {
+      "id": "mrd_pay_sample",
+      "role": "reduced",
+      "provenance": "hand-built (SPEC 14.2)",
+      "trimFunctionIndex": 2,
+      "conf": {
+        "output": "default",
+        "asyncFuncTimeout": 1000,
+        "streamtags": [
+          "meter-reader-demo"
+        ],
+        "description": "[meter-reader-demo] Payments API: sample 1:2, then trim headers, user_agent and request_body. Steady ratio ≈ 0.75; trim broken ≈ 0.50.",
+        "functions": [
+          {
+            "id": "sampling",
+            "filter": "true",
+            "disabled": false,
+            "description": "Keep 1 of every 2 events",
+            "conf": {
+              "rules": [
+                {
+                  "filter": "true",
+                  "rate": 2
+                }
+              ]
+            }
+          },
+          {
+            "id": "serde",
+            "filter": "true",
+            "disabled": false,
+            "description": "Parse the JSON access log into fields",
+            "conf": {
+              "mode": "extract",
+              "type": "json",
+              "srcField": "_raw",
+              "remove": [],
+              "keep": []
+            }
+          },
+          {
+            "id": "eval",
+            "filter": "true",
+            "disabled": false,
+            "description": "[mr-trim] Remove headers, user_agent and request_body",
+            "conf": {
+              "remove": [
+                "headers",
+                "user_agent",
+                "request_body"
+              ]
+            }
+          },
+          {
+            "id": "serialize",
+            "filter": "true",
+            "disabled": false,
+            "description": "Serialize the remaining fields back into _raw as compact JSON",
+            "conf": {
+              "type": "json",
+              "dstField": "_raw",
+              "fields": [
+                "!_*",
+                "!cribl_*",
+                "*"
+              ]
+            }
+          },
+          {
+            "id": "eval",
+            "filter": "true",
+            "disabled": false,
+            "description": "Keep only _raw and _time so the byte estimate is the serialized event",
+            "conf": {
+              "keep": [
+                "_raw",
+                "_time"
+              ],
+              "remove": [
+                "*"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "mrd_k8s_noise",
+      "role": "reduced",
+      "provenance": "hand-built (SPEC 14.2)",
+      "trimFunctionIndex": 2,
+      "conf": {
+        "output": "default",
+        "asyncFuncTimeout": 1000,
+        "streamtags": [
+          "meter-reader-demo"
+        ],
+        "description": "[meter-reader-demo] Kubernetes: drop debug lines, then trim pod labels. Steady ratio ≈ 0.70.",
+        "functions": [
+          {
+            "id": "drop",
+            "filter": "_raw.indexOf('\"level\":\"debug\"') > -1",
+            "disabled": false,
+            "description": "Drop debug-level lines (matched on _raw before parsing, so dropped events cost no parse)",
+            "conf": {}
+          },
+          {
+            "id": "serde",
+            "filter": "true",
+            "disabled": false,
+            "description": "Parse the container JSON into fields",
+            "conf": {
+              "mode": "extract",
+              "type": "json",
+              "srcField": "_raw",
+              "remove": [],
+              "keep": []
+            }
+          },
+          {
+            "id": "eval",
+            "filter": "true",
+            "disabled": false,
+            "description": "[mr-trim] Remove labels",
+            "conf": {
+              "remove": [
+                "labels"
+              ]
+            }
+          },
+          {
+            "id": "serialize",
+            "filter": "true",
+            "disabled": false,
+            "description": "Serialize the remaining fields back into _raw as compact JSON",
+            "conf": {
+              "type": "json",
+              "dstField": "_raw",
+              "fields": [
+                "!_*",
+                "!cribl_*",
+                "*"
+              ]
+            }
+          },
+          {
+            "id": "eval",
+            "filter": "true",
+            "disabled": false,
+            "description": "Keep only _raw and _time so the byte estimate is the serialized event",
+            "conf": {
+              "keep": [
+                "_raw",
+                "_time"
+              ],
+              "remove": [
+                "*"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "mrd_win_xml_pack",
+      "role": "pack",
+      "provenance": "Dispensary pack cribl_splunk_forwarder_windows_xml_events_to_json 1.2.0 (David Maislin, Cribl; published 2025-12-04), pipeline Splunk_UF_Windows_XML_WEC_WEF_Sysmon — functions imported unchanged except: comment functions omitted, disabled:null normalized to false",
+      "conf": {
+        "output": "default",
+        "asyncFuncTimeout": 1000,
+        "streamtags": [
+          "meter-reader-demo"
+        ],
+        "description": "[meter-reader-demo] Windows XML → JSON: the pipeline of the Dispensary pack \"Splunk Forwarder Windows XML Events to JSON\" 1.2.0 (keeps the Splunk Windows TA and CIM working; pack README: 30–35% smaller).",
+        "functions": []
+      },
+      "fromPack": {
+        "pack": "cribl_splunk_forwarder_windows_xml_events_to_json",
+        "version": "1.2.0",
+        "pipeline": "Splunk_UF_Windows_XML_WEC_WEF_Sysmon",
+        "publisher": "Cribl"
+      },
+      "provenance_note": "DECISIONS D59: the function list is Cribl pack content and is not shipped in this Apache-2.0 repository; install the pack from the Cribl Dispensary. scripts/rig/apply.mjs leaves this pipeline to the organization."
+    },
+    {
+      "id": "mrd_win_docs_reduce",
+      "role": "aggressive",
+      "provenance": "hand-built after Cribl Docs \"Reducing Windows XML Events\" (parseWinEvent → remove → flatten → rename → serialize)",
+      "conf": {
+        "output": "default",
+        "asyncFuncTimeout": 1000,
+        "streamtags": [
+          "meter-reader-demo"
+        ],
+        "description": "[meter-reader-demo] Windows XML, aggressive (\"Go aggressive\"): parse, drop RenderingInfo (the Message repeats EventData), provider GUID, correlation and empty values, flatten to compact JSON (Cribl Docs \"Reducing Windows XML Events\", documented 34–70%).",
+        "functions": [
+          {
+            "id": "eval",
+            "filter": "true",
+            "disabled": false,
+            "description": "Parse the XML event; values in the list are treated as empty and dropped",
+            "conf": {
+              "add": [
+                {
+                  "name": "_raw",
+                  "value": "C.Text.parseWinEvent(_raw, ['-', '0x0', '%%1843', 'S-1-0-0', 'NULL SID', ''])"
+                }
+              ]
+            }
+          },
+          {
+            "id": "eval",
+            "filter": "true",
+            "disabled": false,
+            "description": "Drop RenderingInfo (the Message repeats EventData), the provider GUID, correlation, version and opcode",
+            "conf": {
+              "remove": [
+                "_raw.Event.RenderingInfo",
+                "_raw.Event.System.Provider.Guid",
+                "_raw.Event.System.Correlation",
+                "_raw.Event.System.Security",
+                "_raw.Event.System.Version",
+                "_raw.Event.System.Opcode"
+              ]
+            }
+          },
+          {
+            "id": "flatten",
+            "filter": "true",
+            "disabled": false,
+            "description": "Flatten the event to top-level fields",
+            "conf": {
+              "fields": [
+                "_raw"
+              ],
+              "prefix": "",
+              "depth": 5,
+              "delimiter": "_"
+            }
+          },
+          {
+            "id": "rename",
+            "filter": "true",
+            "disabled": false,
+            "description": "Strip the _raw_Event_… prefixes",
+            "conf": {
+              "wildcardDepth": 5,
+              "renameExpr": "name.replace(/_raw_.+_/,'')",
+              "rename": []
+            }
+          },
+          {
+            "id": "serialize",
+            "filter": "true",
+            "disabled": false,
+            "description": "Serialize the remaining fields back into _raw as compact JSON",
+            "conf": {
+              "type": "json",
+              "dstField": "_raw",
+              "fields": [
+                "!_*",
+                "!cribl_*",
+                "*"
+              ]
+            }
+          },
+          {
+            "id": "eval",
+            "filter": "true",
+            "disabled": false,
+            "description": "Keep only _raw and _time",
+            "conf": {
+              "keep": [
+                "_raw",
+                "_time"
+              ],
+              "remove": [
+                "*"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "mrd_syslog_pre",
+      "role": "pre",
+      "provenance": "hand-built: the Dispensary pack cribl-syslog-input 1.3.1 requires a Syslog Source (__inputId syslog:*, __syslogFail) and cannot run on Datagen events",
+      "conf": {
+        "output": "default",
+        "asyncFuncTimeout": 1000,
+        "streamtags": [
+          "meter-reader-demo"
+        ],
+        "description": "[meter-reader-demo] Syslog pre-processing: strip the RFC 3164 header (<pri>, timestamp, host) from _raw and keep the sender as host. Chained from mrd_pan_pack, never set on the Source (route in-bytes must stay raw).",
+        "functions": [
+          {
+            "id": "eval",
+            "filter": "/^<\\d{1,3}>[A-Z][a-z]{2}\\s{1,2}\\d{1,2}\\s\\d{2}:\\d{2}:\\d{2}\\s\\S+\\s/.test(_raw)",
+            "disabled": false,
+            "description": "Header present: host = sender, _raw = message body",
+            "conf": {
+              "add": [
+                {
+                  "name": "__hdr",
+                  "value": "_raw.match(/^<\\d{1,3}>[A-Z][a-z]{2}\\s{1,2}\\d{1,2}\\s\\d{2}:\\d{2}:\\d{2}\\s(\\S+)\\s/)"
+                },
+                {
+                  "name": "host",
+                  "value": "__hdr[1]"
+                },
+                {
+                  "name": "_raw",
+                  "value": "_raw.substring(__hdr[0].length)"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "mrd_pan_pack",
+      "role": "pack",
+      "provenance": "Dispensary pack cribl-palo-alto-networks 1.1.8 (Josh Rice, Cribl; published 2026-09-22), pipeline pan_traffic — functions imported with pack variables inlined (pan_default_source/index, out_format=csv), the optional/disabled sampling and drop groups and the device_info.csv time-zone lookup omitted; syslog pre-processing chained first",
+      "conf": {
+        "output": "default",
+        "asyncFuncTimeout": 1000,
+        "streamtags": [
+          "meter-reader-demo"
+        ],
+        "description": "[meter-reader-demo] Palo Alto TRAFFIC: syslog pre-processing (mrd_syslog_pre) + the pan_traffic pipeline of the Dispensary pack \"Palo Alto Networks\" 1.1.8 (remove future_use and unused fields, reserialize for the Splunk TA).",
+        "functions": []
+      },
+      "fromPack": {
+        "pack": "cribl-palo-alto-networks",
+        "version": "1.1.8",
+        "pipeline": "pan_traffic",
+        "publisher": "Cribl",
+        "chainedFirst": "mrd_syslog_pre"
+      },
+      "provenance_note": "DECISIONS D59: the function list is Cribl pack content and is not shipped in this Apache-2.0 repository; install the pack from the Cribl Dispensary. scripts/rig/apply.mjs leaves this pipeline to the organization."
+    },
+    {
+      "id": "mrd_vpc_pack",
+      "role": "pack",
+      "provenance": "SPEC 14.1 documented fallback: the Dispensary pack cribl-vpc-flow-for-security-teams 1.0.3 aggregates through Redis (not available here); field extraction and NODATA filter follow that pack",
+      "conf": {
+        "output": "default",
+        "asyncFuncTimeout": 1000,
+        "streamtags": [
+          "meter-reader-demo"
+        ],
+        "description": "[meter-reader-demo] AWS VPC Flow: extract the v2 fields, drop NODATA/SKIPDATA, aggregate per minute by src, dst, dstport and action (sum bytes and packets, count flows).",
+        "functions": [
+          {
+            "id": "serde",
+            "filter": "true",
+            "disabled": false,
+            "description": "Extract the VPC Flow Logs v2 fields (space-delimited)",
+            "conf": {
+              "mode": "extract",
+              "type": "delim",
+              "srcField": "_raw",
+              "delimChar": " ",
+              "quoteChar": "\"",
+              "escapeChar": "\\",
+              "nullValue": "-",
+              "fields": [
+                "version",
+                "account_id",
+                "interface_id",
+                "srcaddr",
+                "dstaddr",
+                "srcport",
+                "dstport",
+                "protocol",
+                "packets",
+                "bytes",
+                "start",
+                "end",
+                "action",
+                "log_status"
+              ],
+              "remove": [],
+              "keep": []
+            }
+          },
+          {
+            "id": "drop",
+            "filter": "log_status == 'NODATA' || log_status == 'SKIPDATA'",
+            "disabled": false,
+            "description": "Remove records with no data",
+            "conf": {}
+          },
+          {
+            "id": "aggregation",
+            "filter": "true",
+            "disabled": false,
+            "description": "One event per conversation per minute",
+            "conf": {
+              "passthrough": false,
+              "preserveGroupBys": false,
+              "sufficientStatsOnly": false,
+              "metricsMode": false,
+              "timeWindow": "60s",
+              "aggregations": [
+                "sum(bytes).as(bytes)",
+                "sum(packets).as(packets)",
+                "count().as(flows)"
+              ],
+              "groupbys": [
+                "srcaddr",
+                "dstaddr",
+                "dstport",
+                "action"
+              ],
+              "cumulative": false,
+              "flushOnInputClose": true
+            }
+          },
+          {
+            "id": "serialize",
+            "filter": "true",
+            "disabled": false,
+            "description": "Serialize the remaining fields back into _raw as compact JSON",
+            "conf": {
+              "type": "json",
+              "dstField": "_raw",
+              "fields": [
+                "!_*",
+                "!cribl_*",
+                "*"
+              ]
+            }
+          },
+          {
+            "id": "eval",
+            "filter": "true",
+            "disabled": false,
+            "description": "Keep only _raw and _time",
+            "conf": {
+              "keep": [
+                "_raw",
+                "_time"
+              ],
+              "remove": [
+                "*"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

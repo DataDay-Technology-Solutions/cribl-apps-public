@@ -1,0 +1,90 @@
+/*
+ * src/components/Meter/Meter.css — the hero number (DESIGN_BRIEF §3 "Display"): Open Sans 600, tabular
+ * numerals, −0.02em tracking, 88 px desktop → 56 px at 390 px, ≥ 160 px in presenter mode at 1920.
+ *
+ * Wheels are `overflow: clip` (not `hidden`) so each keeps the baseline of its first digit and the row can
+ * baseline-align dollars, separators and the smaller cents segment without font metrics.
+ */
+
+.mr-meter {
+  display: inline-flex;
+  align-items: baseline;
+  max-width: 100%;
+  color: var(--mr-color-saved);
+}
+
+.mr-meter--hero {
+  --mr-meter-size: clamp(56px, calc(24px + 4.5vw), 88px);
+}
+.mr-meter--presenter {
+  --mr-meter-size: clamp(88px, 9vw, 184px);
+}
+/* The stage sizes its figure itself (Presenter.css: a fixed character budget, so magnitude never resizes it). */
+.mr-meter--inherit {
+  --mr-meter-size: 1em;
+}
+
+.mr-meter-figure {
+  display: inline-flex;
+  align-items: baseline;
+  font-family: token('core.fontFamily.sans');
+  /* Capped by the nearest inline-size container so a long figure never overflows a phone-width card. */
+  font-size: min(var(--mr-meter-size), calc(100cqi / var(--mr-meter-em, 6)));
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+  white-space: nowrap;
+}
+
+.mr-meter-whole,
+.mr-meter-cents {
+  display: inline-flex;
+  align-items: baseline;
+}
+
+/* Cents: a smaller trailing ".42", baseline-aligned, secondary weight of attention. */
+.mr-meter-cents {
+  font-size: 0.42em;
+  letter-spacing: 0;
+  margin-left: 0.04em;
+  opacity: 0.72;
+}
+
+.mr-meter-static,
+.mr-meter-cell {
+  display: block;
+  height: 1.12em;
+  line-height: 1.12em;
+}
+
+/*
+ * The digit window is the glyph's own cap box, not the 1.12em line box (P0-16). Open Sans (Capra's face):
+ * ascender 2189, descender 600 of 2048 units, so in a 1.12em line the baseline sits 0.948em down; every digit's
+ * ink spans 1485 units above the baseline to 21 below — 0.2228em to 0.9582em from the top. The line box's
+ * extra 0.22em above the cap line and 0.16em below the baseline is where a rolling strip showed slivers of the
+ * next and previous digits; the clip hides exactly that band (with 1.5 px of slack for rounding and
+ * anti-aliasing), so a resting digit loses nothing and a rolling one shows only its window.
+ */
+.mr-meter-wheel {
+  display: inline-block;
+  height: 1.12em;
+  overflow: clip;
+  clip-path: inset(calc(0.2228em - 1.5px) 0 calc(0.1618em - 1.5px) 0);
+}
+
+.mr-meter-strip {
+  display: block;
+  will-change: transform;
+}
+
+.mr-meter-text {
+  display: inline-block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mr-meter-strip {
+    will-change: auto;
+  }
+}

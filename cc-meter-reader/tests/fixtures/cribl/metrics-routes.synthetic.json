@@ -1,0 +1,188 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/system/metrics/query",
+    "body": {
+      "where": "__worker_group=='default'",
+      "earliest": 1790395200000,
+      "latest": 1790395380000,
+      "aggs": {
+        "aggregations": [
+          "sum(\"route.in_bytes\").as(\"inB\")",
+          "sum(\"route.out_bytes\").as(\"outB\")",
+          "sum(\"route.in_events\").as(\"inE\")",
+          "sum(\"route.out_events\").as(\"outE\")"
+        ],
+        "splitBys": [
+          "__worker_group",
+          "route",
+          "name"
+        ],
+        "timeWindowSeconds": 60
+      }
+    }
+  },
+  "status": 200,
+  "capturedAt": null,
+  "source": "synthetic",
+  "note": "SYNTHETIC: built from the documented response shape (live envelope in metrics-empty.json; row shapes from the criblvision live capture, docs/platform/metrics.md §5.3) because the demo rig had no traffic at capture time. Includes rollup rows, a <type>:<id>:<variant> sub-series, an events-only series, explicit zeros and a missing minute.",
+  "body": {
+    "results": [
+      {
+        "starttime": 1790395200,
+        "endtime": 1790395260,
+        "__worker_group": "default",
+        "route": "mrd_r_payments",
+        "name": "payments_api",
+        "inB": 27777000,
+        "outB": 6944250,
+        "inE": 55000,
+        "outE": 27500
+      },
+      {
+        "starttime": 1790395200,
+        "endtime": 1790395260,
+        "__worker_group": "default",
+        "route": "mrd_r_payments",
+        "inB": 27777000,
+        "outB": 6944250,
+        "inE": 55000,
+        "outE": 27500
+      },
+      {
+        "starttime": 1790395200,
+        "endtime": 1790395260,
+        "__worker_group": "default",
+        "route": "mrd_r_k8s",
+        "inB": 41666000,
+        "outB": 12500000,
+        "inE": 30000,
+        "outE": 9000
+      },
+      {
+        "starttime": 1790395200,
+        "endtime": 1790395260,
+        "__worker_group": "default",
+        "route": "default",
+        "name": "default",
+        "inE": 12
+      },
+      {
+        "starttime": 1790395200,
+        "endtime": 1790395260,
+        "__worker_group": "default",
+        "inB": 69443000,
+        "outB": 19444250,
+        "inE": 85012,
+        "outE": 36500
+      },
+      {
+        "starttime": 1790395260,
+        "endtime": 1790395320,
+        "__worker_group": "default",
+        "route": "mrd_r_payments",
+        "name": "payments_api",
+        "inB": 27777000,
+        "outB": 6944250,
+        "inE": 55000,
+        "outE": 27500
+      },
+      {
+        "starttime": 1790395260,
+        "endtime": 1790395320,
+        "__worker_group": "default",
+        "route": "mrd_r_payments",
+        "inB": 27777000,
+        "outB": 6944250,
+        "inE": 55000,
+        "outE": 27500
+      },
+      {
+        "starttime": 1790395260,
+        "endtime": 1790395320,
+        "__worker_group": "default",
+        "route": "mrd_r_k8s",
+        "inB": 41666000,
+        "outB": 12500000,
+        "inE": 30000,
+        "outE": 9000
+      },
+      {
+        "starttime": 1790395260,
+        "endtime": 1790395320,
+        "__worker_group": "default",
+        "route": "default",
+        "name": "default",
+        "inE": 12
+      },
+      {
+        "starttime": 1790395260,
+        "endtime": 1790395320,
+        "__worker_group": "default",
+        "inB": 69443000,
+        "outB": 19444250,
+        "inE": 85012,
+        "outE": 36500
+      },
+      {
+        "starttime": 1790395320,
+        "endtime": 1790395380,
+        "__worker_group": "default",
+        "route": "mrd_r_payments",
+        "name": "payments_api",
+        "inB": 27777000,
+        "outB": 6944250,
+        "inE": 55000,
+        "outE": 27500
+      },
+      {
+        "starttime": 1790395320,
+        "endtime": 1790395380,
+        "__worker_group": "default",
+        "route": "mrd_r_payments",
+        "inB": 27777000,
+        "outB": 6944250,
+        "inE": 55000,
+        "outE": 27500
+      },
+      {
+        "starttime": 1790395320,
+        "endtime": 1790395380,
+        "__worker_group": "default",
+        "route": "mrd_r_k8s",
+        "inB": 41666000,
+        "outB": 12500000,
+        "inE": 30000,
+        "outE": 9000
+      },
+      {
+        "starttime": 1790395320,
+        "endtime": 1790395380,
+        "__worker_group": "default",
+        "route": "default",
+        "name": "default",
+        "inE": 12
+      },
+      {
+        "starttime": 1790395320,
+        "endtime": 1790395380,
+        "__worker_group": "default",
+        "inB": 69443000,
+        "outB": 19444250,
+        "inE": 85012,
+        "outE": 36500
+      }
+    ],
+    "metrics": {
+      "metrics_aggregator.referenced_metrics": 3,
+      "metrics_reader.execution_time": 1,
+      "metrics_reader.matched": 12,
+      "metrics_reader.invalid_series": 0,
+      "metrics_aggregator.results": 0,
+      "metrics_aggregator.execution_time": 3
+    },
+    "info": {
+      "timeWindowSeconds": 60
+    }
+  }
+}

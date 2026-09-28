@@ -1,0 +1,10 @@
+# BACKEND VARIANT ONLY (DECISIONS D12b): overlaid as config/schedules.yml by `npm run package:backend`.
+# Two of the ten schedules an App may declare (DECISIONS D4). Cron is five-field UTC.
+meter-every-minute:
+  endpoint: meter
+  cronSchedule: '* * * * *'
+  bodyExpression: '{ scheduleId, scheduledFor, mode: "scheduled" }'
+weekly-receipt:
+  endpoint: weeklyReceipt
+  cronSchedule: '0 12 * * 1' # Monday 12:00 UTC = 8 AM ET / 7 AM CT
+  bodyExpression: '{ scheduleId, scheduledFor, mode: "scheduled" }'

@@ -1,0 +1,284 @@
+{
+  "window": {
+    "earliest": "2026-09-26T06:41:00.000Z",
+    "latest": "2026-09-26T06:51:00.000Z",
+    "minutes": 10
+  },
+  "workerNodes": 1,
+  "rateFactor": 1,
+  "totalInGbPerDay": 450.14495328,
+  "totalRouteOutGbPerDay": 304.31231697600003,
+  "totalDestinationGbPerDay": 324.55835308800005,
+  "designGbPerDay": 450,
+  "achievedFactor": 1.0003221184,
+  "sources": [
+    {
+      "source": "mrd_windows_dc",
+      "stage": "reduced",
+      "pipeline": "mrd_win_xml_pack",
+      "output": "mrd_siem_prod",
+      "appliedEventsPerSec": 686,
+      "inGbPerDay": 149.93592192,
+      "rateAchieved": 1.0003304178814383,
+      "shortMinutes": 0,
+      "routeInGbPerDay": 149.93592192,
+      "routeOutGbPerDay": 74.821318272,
+      "eventsPerSec": 686.2266666666667,
+      "bytesPerEvent": 2528.8575203528476,
+      "routeEventsIn": 411736,
+      "routeEventsOut": 411736,
+      "routeOutBytesPerEvent": 1261.9554471797462,
+      "ratio": 0.5009780357243425,
+      "capture": {
+        "n": 400,
+        "mean": 1664.0625
+      },
+      "trueBasis": "capture mean × route.out_events",
+      "trueOutGbPerDay": 98.662239,
+      "trueRatio": 0.34197063827944885,
+      "target": {
+        "min": 0.3,
+        "max": 0.35
+      },
+      "band": {
+        "min": 0.19999999999999998,
+        "max": 0.44999999999999996
+      },
+      "ok": false,
+      "trueOk": true
+    },
+    {
+      "source": "mrd_windows_workstations",
+      "stage": "raw",
+      "pipeline": "mrd_passthrough",
+      "output": "mrd_siem_prod",
+      "appliedEventsPerSec": 366,
+      "inGbPerDay": 79.995232512,
+      "rateAchieved": 1.000336976320583,
+      "shortMinutes": 0,
+      "routeInGbPerDay": 79.995232512,
+      "routeOutGbPerDay": 81.004079232,
+      "eventsPerSec": 366.12333333333333,
+      "bytesPerEvent": 2528.8493312818086,
+      "routeEventsIn": 219674,
+      "routeEventsOut": 219674,
+      "routeOutBytesPerEvent": 2560.7414987663537,
+      "ratio": -0.012611335554886471,
+      "capture": {
+        "n": 400,
+        "mean": 2529.6075
+      },
+      "trueBasis": "capture mean × route.out_events",
+      "trueOutGbPerDay": 80.01921570552001,
+      "trueRatio": -0.00029980778562532784,
+      "target": {
+        "min": 0,
+        "max": 0
+      },
+      "band": {
+        "min": -0.03,
+        "max": 0.03
+      },
+      "ok": true,
+      "trueOk": true
+    },
+    {
+      "source": "mrd_pan_firewall",
+      "stage": "raw",
+      "pipeline": "mrd_passthrough",
+      "output": "mrd_siem_prod",
+      "appliedEventsPerSec": 841,
+      "inGbPerDay": 60.027898176,
+      "rateAchieved": 1.0003349187475228,
+      "shortMinutes": 0,
+      "routeInGbPerDay": 60.027898176,
+      "routeOutGbPerDay": 62.142583104,
+      "eventsPerSec": 841.2816666666666,
+      "bytesPerEvent": 825.8439087978858,
+      "routeEventsIn": 504769,
+      "routeEventsOut": 504769,
+      "routeOutBytesPerEvent": 854.9370424887423,
+      "ratio": -0.035228368679506517,
+      "capture": {
+        "n": 400,
+        "mean": 825.7
+      },
+      "trueBasis": "capture mean × route.out_events",
+      "trueOutGbPerDay": 60.017437915200006,
+      "trueRatio": 0.00017425665595238726,
+      "target": {
+        "min": 0,
+        "max": 0
+      },
+      "band": {
+        "min": -0.03,
+        "max": 0.03
+      },
+      "ok": false,
+      "trueOk": true
+    },
+    {
+      "source": "mrd_vpc_flow",
+      "stage": "raw",
+      "pipeline": "mrd_passthrough",
+      "output": "mrd_archive_s3",
+      "appliedEventsPerSec": 6200,
+      "inGbPerDay": 60.165432576,
+      "rateAchieved": 1.0003333333333333,
+      "shortMinutes": 0,
+      "routeInGbPerDay": 60.165432576,
+      "routeOutGbPerDay": 71.203736448,
+      "eventsPerSec": 6202.066666666667,
+      "bytesPerEvent": 112.27856950908837,
+      "routeEventsIn": 3721240,
+      "routeEventsOut": 3721240,
+      "routeOutBytesPerEvent": 132.87785576850726,
+      "ratio": -0.18346587732177588,
+      "capture": {
+        "n": 400,
+        "mean": 112.1575
+      },
+      "trueBasis": "destination total.out_bytes (sole feeder)",
+      "trueOutGbPerDay": 60.165432576,
+      "trueRatio": 0,
+      "target": {
+        "min": 0,
+        "max": 0
+      },
+      "band": {
+        "min": -0.03,
+        "max": 0.03
+      },
+      "ok": false,
+      "trueOk": true
+    },
+    {
+      "source": "mrd_payments_api",
+      "stage": "reduced",
+      "pipeline": "mrd_pay_sample",
+      "output": "mrd_siem_prod",
+      "appliedEventsPerSec": 407,
+      "inGbPerDay": 40.022868672,
+      "rateAchieved": 1.0003357903357903,
+      "shortMinutes": 0,
+      "routeInGbPerDay": 40.022868672,
+      "routeOutGbPerDay": 6.830182655999999,
+      "eventsPerSec": 407.13666666666666,
+      "bytesPerEvent": 1137.7694140378742,
+      "routeEventsIn": 244282,
+      "routeEventsOut": 122141,
+      "routeOutBytesPerEvent": 388.3366273405327,
+      "ratio": 0.8293430010733239,
+      "capture": {
+        "n": 400,
+        "mean": 516.6075
+      },
+      "trueBasis": "capture mean × route.out_events",
+      "trueOutGbPerDay": 9.086249758679998,
+      "trueRatio": 0.7729735508680131,
+      "target": {
+        "min": 0.7,
+        "max": 0.8
+      },
+      "band": {
+        "min": 0.6,
+        "max": 0.9
+      },
+      "ok": true,
+      "trueOk": true
+    },
+    {
+      "source": "mrd_k8s_prod",
+      "stage": "reduced",
+      "pipeline": "mrd_k8s_noise",
+      "output": "mrd_analytics",
+      "appliedEventsPerSec": 888,
+      "inGbPerDay": 59.997599424,
+      "rateAchieved": 1.000335960960961,
+      "shortMinutes": 0,
+      "routeInGbPerDay": 59.997599424,
+      "routeOutGbPerDay": 8.310417264,
+      "eventsPerSec": 888.2983333333333,
+      "bytesPerEvent": 781.7381097566696,
+      "routeEventsIn": 532979,
+      "routeEventsOut": 317248,
+      "routeOutBytesPerEvent": 181.91204042263465,
+      "ratio": 0.8614875037704308,
+      "capture": {
+        "n": 400,
+        "mean": 362.41
+      },
+      "trueBasis": "destination total.out_bytes (sole feeder)",
+      "trueOutGbPerDay": 16.557610175999997,
+      "trueRatio": 0.7240287889022325,
+      "target": {
+        "min": 0.65,
+        "max": 0.75
+      },
+      "band": {
+        "min": 0.55,
+        "max": 0.85
+      },
+      "ok": false,
+      "trueOk": true
+    }
+  ],
+  "outputs": [
+    {
+      "output": "mrd_siem_prod",
+      "gbPerDay": 247.83531033600002,
+      "events": 1258320,
+      "dropped": 0,
+      "routeOutSumGbPerDay": 224.798163264,
+      "routeEstimateError": -0.09295344977585174,
+      "trueOutSumGbPerDay": 247.7851423794,
+      "captureReconciliationError": -0.00020242457191432806
+    },
+    {
+      "output": "mrd_analytics",
+      "gbPerDay": 16.557610175999997,
+      "events": 317248,
+      "dropped": 0,
+      "routeOutSumGbPerDay": 8.310417264,
+      "routeEstimateError": -0.4980907766480803,
+      "trueOutSumGbPerDay": 16.557610175999997,
+      "captureReconciliationError": 0
+    },
+    {
+      "output": "mrd_archive_s3",
+      "gbPerDay": 60.165432576,
+      "events": 3721240,
+      "dropped": 0,
+      "routeOutSumGbPerDay": 71.203736448,
+      "routeEstimateError": 0.18346587732177588,
+      "trueOutSumGbPerDay": 60.165432576,
+      "captureReconciliationError": 0
+    }
+  ],
+  "health": {
+    "blockedMaxAggregate": 0,
+    "node": {
+      "samples": 10,
+      "cpuNodeAvg": 46.5,
+      "cpuProcessAvg": {
+        "0": 23.1,
+        "1": 23.4
+      },
+      "cpuProcessMax": {
+        "0": 24.6,
+        "1": 24.4
+      },
+      "loadMax": 1.69,
+      "freeMemMinMB": 271,
+      "rssMaxMB": 236,
+      "laggingSamples": 0,
+      "unresponsiveMax": 0,
+      "blockedMax": 0,
+      "backpressureMax": 0,
+      "droppedAtRigOutputs": 0,
+      "configVersions": [
+        "603840d"
+      ]
+    }
+  }
+}

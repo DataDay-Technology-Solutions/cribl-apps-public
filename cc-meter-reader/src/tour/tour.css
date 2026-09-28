@@ -1,0 +1,51 @@
+/*
+ * src/tour/tour.css — the tour's toasts and dialogs. Tokens only.
+ */
+
+/* ── Toast body: a title line and one supporting line ─────────────────────── */
+.mr-tour-toast {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+}
+.mr-tour-toast-title {
+  font: token('typography.body.md.semibold');
+  text-wrap: balance;
+}
+.mr-tour-toast-body {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  white-space: normal;
+  text-wrap: pretty;
+}
+
+/* ── Dialogs ────────────────────────────────────────────────────────────── */
+.mr-tour-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+  min-width: 0;
+}
+
+/* The weekly receipt: SPEC 12.4's 48-column text in the mono face, sized to fit its frame. */
+.mr-tour-receipt-frame {
+  container-type: inline-size;
+  display: flex;
+  justify-content: center;
+  padding: token('spacing.lg');
+  background: token('color.background.neutral.subtle');
+  border: token('border.default');
+  border-radius: token('radius.xl');
+  overflow-x: auto;
+}
+.mr-tour-receipt {
+  margin: 0;
+  font-family: token('core.fontFamily.mono');
+  /* 48 columns of a 0.6 em mono face fill the frame; never larger than the code size. */
+  font-size: min(token('core.fontSize.body'), 100cqi / 29.5);
+  line-height: 1.6;
+  color: token('color.foreground.default');
+  white-space: pre;
+  font-variant-numeric: tabular-nums;
+}

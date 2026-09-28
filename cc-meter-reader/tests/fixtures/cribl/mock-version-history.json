@@ -1,0 +1,51 @@
+{
+  "_note": "Leader-wide history measured on the dev org (docs/platform/version.md 5.2). Only groups/default commits come from live-version-log.json; the others reproduce measured subjects/times so /version (4 rows) and /m/default/version (1 row) scope like the real Leader.",
+  "commits": [
+    {
+      "short": "96a9674",
+      "date": "2026-09-24 00:09:32 +0000",
+      "message": "Initial commit.",
+      "author_name": "Cribl System",
+      "author_email": "cribl@leader.example",
+      "files": [
+        "local/cribl/cribl.yml",
+        "groups/default_search/local/cribl/cribl.yml",
+        "groups/default_search/local/cribl/pipelines/main/conf.yml"
+      ]
+    },
+    {
+      "short": "bbef631",
+      "date": "2026-09-24 00:09:51 +0000",
+      "message": "create group default",
+      "author_name": "Cribl System",
+      "author_email": "cribl@leader.example",
+      "files": [
+        "groups/default/local/cribl/cribl.yml",
+        "groups/default/local/cribl/pipelines/main/conf.yml",
+        "groups/default/local/cribl/pipelines/route.yml",
+        "groups/default/local/cribl/inputs.yml",
+        "groups/default/local/cribl/outputs.yml"
+      ]
+    },
+    {
+      "short": "ede0c7b",
+      "date": "2026-09-24 00:10:04 +0000",
+      "message": "create group default_fleet",
+      "author_name": "Cribl System",
+      "author_email": "cribl@leader.example",
+      "files": [
+        "groups/default_fleet/local/cribl/cribl.yml"
+      ]
+    },
+    {
+      "short": "9aad357",
+      "date": "2026-09-24 00:10:18 +0000",
+      "message": "create group default_outpost",
+      "author_name": "Cribl System",
+      "author_email": "cribl@leader.example",
+      "files": [
+        "groups/default_outpost/local/cribl/cribl.yml"
+      ]
+    }
+  ]
+}

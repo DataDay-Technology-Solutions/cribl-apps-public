@@ -1,0 +1,140 @@
+/* src/components/DestinationStatement/DestinationStatement.css — a destination's statement: a printed statement's
+   rhythm (section rules, dot leaders, tabular figures), the drawer's own padding. */
+
+.mr-stmt {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xl');
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.default');
+}
+.mr-stmt:focus-visible {
+  outline-offset: 6px;
+}
+.mr-stmt-sub {
+  color: token('color.foreground.subtle');
+}
+.mr-stmt-section {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+}
+.mr-stmt-title {
+  font: token('typography.heading.xs');
+  color: token('color.foreground.default');
+  padding-bottom: token('spacing.sm');
+  border-bottom: 1px solid var(--mr-border-subtle);
+}
+.mr-stmt-body,
+.mr-stmt-note {
+  text-wrap: pretty;
+}
+.mr-stmt-note {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+
+/* The two months as a receipt: the row names in the mono face with dot leaders, figures right-aligned. */
+.mr-stmt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.mr-stmt-table th,
+.mr-stmt-table td {
+  padding: token('spacing.xs') 0;
+  text-align: right;
+  vertical-align: baseline;
+}
+.mr-stmt-table thead th {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+  padding-bottom: token('spacing.sm');
+}
+.mr-stmt-table tbody th {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5ch;
+  text-align: left;
+  font: token('typography.code');
+  font-weight: 400;
+}
+.mr-stmt-table td {
+  /* The figures take what they need; the row names and their leaders take the rest. */
+  width: 1%;
+  padding-left: token('spacing.lg');
+  font: token('typography.body.md.semibold');
+  white-space: nowrap;
+}
+.mr-stmt-table thead th:not(:first-child) {
+  white-space: nowrap;
+  padding-left: token('spacing.lg');
+}
+.mr-stmt-rowlabel {
+  white-space: nowrap;
+}
+.mr-stmt-table tr[data-row='savedM'] th,
+.mr-stmt-table tr[data-row='savedM'] td {
+  padding-top: token('spacing.sm');
+  border-top: 1px dotted var(--mr-border);
+}
+.mr-stmt-leader {
+  flex: 1 1 auto;
+  min-width: 2ch;
+  height: 0.2em;
+  color: token('color.foreground.subtle');
+  background: radial-gradient(circle closest-side, currentColor 0 70%, transparent 85%) 0 0 / 1ch 100% repeat-x;
+}
+.mr-stmt-skel {
+  display: inline-block;
+  width: 5rem;
+  height: 14px;
+}
+
+.mr-stmt-budget {
+  height: 6px;
+  border-radius: token('radius.full');
+  background: var(--mr-fill-whp);
+  overflow: hidden;
+}
+.mr-stmt-budget-fill {
+  display: block;
+  height: 100%;
+  background: var(--mr-fill-paid);
+}
+.mr-stmt-budget-fill[data-over='true'] {
+  background: token('color.background.warning.solid.default');
+}
+
+.mr-stmt-prices {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+}
+.mr-stmt-prices li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 token('spacing.md');
+}
+.mr-stmt-price-from {
+  min-width: 9rem;
+  color: token('color.foreground.subtle');
+}
+.mr-stmt-price {
+  font: token('typography.body.md.semibold');
+}
+.mr-stmt-price-preset {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-stmt-actions {
+  display: flex;
+}
+.mr-stmt-footer {
+  display: flex;
+  justify-content: flex-end;
+}

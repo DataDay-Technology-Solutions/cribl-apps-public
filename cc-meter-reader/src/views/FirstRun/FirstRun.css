@@ -1,0 +1,292 @@
+/*
+ * src/views/FirstRun/FirstRun.css — the first-run card (DESIGN_BRIEF 5.6). Tokens only; the card uses the
+ * app's one card elevation and radius (PRD 8.8 item 11). No money colour: nothing here is a figure.
+ *
+ * Hierarchy (PRD 8.8 item 1): one title (heading.lg), body, captions. The eyebrow and section label are
+ * captions set semibold, not a second heading size.
+ */
+
+/* Width and centring are the Shell's Page frame (narrow, 720 px); this adds only the vertical offset. */
+.mr-fr {
+  /* Optically centred on tall screens, never crowded on short ones; the whole card, meter included, fits a
+     1440 × 900 laptop without scrolling. */
+  padding-block: max(token('spacing.lg'), 4vh) token('spacing.2xl');
+}
+
+.mr-fr-card {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xl');
+  padding: token('spacing.2xl');
+  background: var(--mr-surface-panel);
+  border: token('border.default');
+  border-radius: token('radius.xl');
+  box-shadow: token('shadow.low.down');
+}
+
+/* ── The card's meter (P2-W27): the Receipt hero in miniature, flat, with its perforated bottom edge ────
+ * The same torn outline as src/views/Receipt/Receipt.css .mr-hero: the element is painted in the card border
+ * colour and masked to a row of 6 px teeth; ::before is the panel, masked to the same shape 1 px inside it, so
+ * the outline follows every tooth in both themes. Flat (no shadow): a card inside a card (BEAUTY F8).
+ */
+.mr-fr-meter {
+  --mr-perf: 6px;
+  --mr-perf-inset: 1.414px; /* 1 px measured across a 45° tooth edge */
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    'label label'
+    'figure caption';
+  align-items: baseline;
+  column-gap: token('spacing.xl');
+  row-gap: token('spacing.xs');
+  padding: token('spacing.lg') token('spacing.xl') calc(token('spacing.lg') + var(--mr-perf));
+  border-radius: var(--mr-card-radius) var(--mr-card-radius) 0 0;
+  background: var(--mr-card-border);
+  -webkit-mask:
+    linear-gradient(#000 0 0) left 0 top 0 / 100% calc(100% - var(--mr-perf)) no-repeat,
+    conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) left 0 bottom 0 / calc(var(--mr-perf) * 2) var(--mr-perf) repeat-x;
+  mask:
+    linear-gradient(#000 0 0) left 0 top 0 / 100% calc(100% - var(--mr-perf)) no-repeat,
+    conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) left 0 bottom 0 / calc(var(--mr-perf) * 2) var(--mr-perf) repeat-x;
+}
+.mr-fr-meter::before {
+  content: '';
+  position: absolute;
+  inset: 1px 1px 0;
+  z-index: -1;
+  border-radius: calc(var(--mr-card-radius) - 1px) calc(var(--mr-card-radius) - 1px) 0 0;
+  background: var(--mr-card-bg);
+  -webkit-mask:
+    linear-gradient(#000 0 0) left 0 top 0 / 100% calc(100% - var(--mr-perf) - var(--mr-perf-inset)) no-repeat,
+    conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) left -1px bottom var(--mr-perf-inset) / calc(var(--mr-perf) * 2) var(--mr-perf)
+      repeat-x;
+  mask:
+    linear-gradient(#000 0 0) left 0 top 0 / 100% calc(100% - var(--mr-perf) - var(--mr-perf-inset)) no-repeat,
+    conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) left -1px bottom var(--mr-perf-inset) / calc(var(--mr-perf) * 2) var(--mr-perf)
+      repeat-x;
+}
+.mr-fr-meter-label {
+  grid-area: label;
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+}
+/* Display type (DESIGN_BRIEF §3) at a card's scale: dimmed while idle, the money colour once it reads a figure. */
+.mr-fr-meter-figure {
+  grid-area: figure;
+  display: inline-flex;
+  align-items: baseline;
+  font-family: token('core.fontFamily.sans');
+  font-size: clamp(36px, calc(20px + 2.4vw), 52px);
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+  white-space: nowrap;
+  color: token('color.foreground.subtle');
+  transition: color var(--mr-duration-ribbon) var(--mr-easing);
+}
+.mr-fr-meter[data-rolled='true'] .mr-fr-meter-figure {
+  color: var(--mr-color-saved);
+}
+.mr-fr-meter-static,
+.mr-fr-meter-cell {
+  display: block;
+  height: 1.12em;
+  line-height: 1.12em;
+  text-align: center;
+}
+.mr-fr-meter-wheel {
+  display: inline-block;
+  height: 1.12em;
+  overflow: clip;
+}
+.mr-fr-meter-strip {
+  display: block;
+  transform: translate3d(0, calc(var(--mr-fr-cell, 0) * -1.12em), 0);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mr-fr-meter-strip {
+    transition: transform 900ms var(--mr-easing) var(--mr-fr-delay, 0ms);
+  }
+}
+.mr-fr-meter-caption {
+  grid-area: caption;
+  justify-self: end;
+  text-align: end;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  text-wrap: balance;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.mr-fr-header {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+}
+/* The eyebrow at the left, the builder's signature at the right; a phone wraps the signature under it. */
+.mr-fr-eyebrow-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: token('spacing.xs') token('spacing.lg');
+}
+.mr-fr-credit {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-fr-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+}
+.mr-fr-eyebrow-icon {
+  display: inline-flex;
+  color: token('color.foreground.default');
+}
+.mr-fr-title {
+  font: token('typography.heading.lg');
+  letter-spacing: token('typography.heading.lg.letterSpacing');
+  color: token('color.foreground.default');
+  text-wrap: balance;
+}
+.mr-fr-lede {
+  font: token('typography.body.lg.normal');
+  color: token('color.foreground.subtle');
+  text-wrap: pretty;
+  max-width: 60ch;
+}
+
+/* ── How it works ───────────────────────────────────────────────────────── */
+.mr-fr-how {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+  padding-block: token('spacing.xl');
+  border-block: 1px solid var(--mr-border-subtle);
+}
+.mr-fr-label {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+}
+
+/* ── Actions ────────────────────────────────────────────────────────────── */
+.mr-fr-actions {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+}
+/* Each button as wide as its words, left-aligned: the primary reads as the primary (it is the longer label). */
+.mr-fr-buttons {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: start;
+  gap: token('spacing.md');
+}
+.mr-fr-button {
+  display: block;
+  min-width: 0;
+}
+.mr-fr-note {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  text-wrap: pretty;
+}
+/* Two sentences, two lines where there is room: the facts, then the reassurance. */
+.mr-fr-note > span {
+  display: block;
+}
+
+/* ── Story link ─────────────────────────────────────────────────────────── */
+.mr-fr-story {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.md');
+}
+.mr-fr-story-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: token('dimension.component.md');
+  height: token('dimension.component.md');
+  border-radius: token('radius.full');
+  border: token('border.default');
+  background: var(--mr-surface-panel);
+  color: token('color.foreground.default');
+}
+.mr-fr-story-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: token('spacing.md');
+  row-gap: token('spacing.xs');
+  font: token('typography.body.md.semibold');
+  min-width: 0;
+}
+.mr-fr-story-note {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+
+/* ── Footer: what it needs ──────────────────────────────────────────────── */
+.mr-fr-footer {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+  padding-top: token('spacing.lg');
+  border-top: 1px solid var(--mr-border-subtle);
+}
+.mr-fr-needs {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: token('spacing.sm');
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-fr-needs-title {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+}
+.mr-fr-since {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+
+/* ── Narrow frames (390 px phones): one column, full-width buttons ───────── */
+@media (max-width: 640px) {
+  .mr-fr {
+    padding-block: 0 token('spacing.lg');
+  }
+  .mr-fr-card {
+    padding: token('spacing.xl') token('spacing.lg');
+    gap: token('spacing.lg');
+  }
+  .mr-fr-meter {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'label'
+      'figure'
+      'caption';
+    padding-inline: token('spacing.lg');
+  }
+  .mr-fr-meter-caption {
+    justify-self: start;
+    text-align: start;
+  }
+  .mr-fr-how {
+    padding-block: token('spacing.lg');
+  }
+  .mr-fr-buttons {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -1,0 +1,65 @@
+/*
+ * src/components/Shell/Page.css — the one page frame (BEAUTY-3a F7). Tokens only.
+ * Width and title live here; the horizontal gutter is .mr-shell-main's (Shell.css), so every tab shares
+ * one left edge: at 1440 px the content starts at x = 80, at 1920 px at x = 320, at 390 px at x = 16.
+ */
+
+.mr-page {
+  width: 100%;
+  max-width: 1280px;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xl');
+  min-width: 0;
+}
+.mr-page[data-width='narrow'] {
+  max-width: 720px;
+}
+
+.mr-page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: token('spacing.md') token('spacing.xl');
+  min-width: 0;
+}
+.mr-page-titles {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+  flex: 1 1 320px;
+}
+.mr-page-title {
+  margin: 0;
+  font: token('typography.heading.lg');
+  letter-spacing: token('typography.heading.lg.letterSpacing');
+  color: token('color.foreground.default');
+  text-wrap: balance;
+}
+.mr-page-subtitle {
+  margin: 0;
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.subtle');
+  max-width: 96ch;
+  text-wrap: pretty;
+}
+.mr-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: token('spacing.md');
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .mr-page {
+    gap: token('spacing.lg');
+  }
+  .mr-page-actions {
+    flex: 1 1 100%;
+  }
+}

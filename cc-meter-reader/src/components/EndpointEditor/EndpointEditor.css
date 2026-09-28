@@ -1,0 +1,365 @@
+/*
+ * src/components/EndpointEditor/EndpointEditor.css — one endpoint as an inset panel inside the
+ * "Where to send alerts" card. Tokens only. Six-column field grid when wide; one column when narrow.
+ */
+
+.mr-ep {
+  container-type: inline-size;
+  container-name: mr-ep;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+  padding: token('spacing.lg');
+  border: token('border.default');
+  border-radius: token('radius.xl');
+  background: token('color.background.panel.solid');
+}
+.mr-ep[data-enabled='false'] .mr-ep-title {
+  color: token('color.foreground.subtle');
+}
+/* A changed endpoint carries the same quiet leading-edge marker as a changed price row (P1-G07). */
+.mr-ep[data-dirty='true'] {
+  position: relative;
+}
+.mr-ep[data-dirty='true']::before {
+  content: '';
+  position: absolute;
+  inset-block: token('spacing.lg');
+  inset-inline-start: -1px;
+  width: 2px;
+  border-radius: token('radius.full');
+  background: token('color.background.accent.solid.default');
+}
+/* The card takes focus after "Add endpoint" (tabindex -1): no ring for that programmatic focus. */
+.mr-ep:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.mr-ep-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: token('spacing.md') token('spacing.lg');
+}
+.mr-ep-title-line {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.md');
+  min-width: 0;
+}
+.mr-ep-title {
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.mr-ep-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.mr-ep-head-actions {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.lg');
+}
+
+.mr-ep-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.md');
+}
+.mr-ep-switch-label {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.default');
+}
+.mr-ep-switch--field {
+  min-height: token('dimension.component.md');
+}
+.mr-ep-switch-caption {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+
+/* ── Field grid ─────────────────────────────────────────────────────────── */
+.mr-ep-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: token('spacing.lg');
+  align-items: start;
+}
+.mr-ep-name {
+  grid-column: span 2;
+}
+.mr-ep-url {
+  grid-column: span 4;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+}
+.mr-ep-format,
+.mr-ep-severity,
+.mr-ep-weekly {
+  grid-column: span 2;
+}
+.mr-ep-weekly {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+}
+
+/* A label that matches Capra's field labels (Label: body.md semibold, spacing.sm to the control),
+   for the controls Capra ships without one. */
+.mr-ep-field-label {
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+
+.mr-ep .mr-switch {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.mr-ep-masked-field {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+}
+.mr-ep-masked-row {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.md');
+  min-width: 0;
+}
+.mr-ep-masked {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  min-width: 0;
+  height: token('dimension.component.md');
+  padding: 0 token('spacing.md');
+  border: 1px dashed token('color.border.neutral.default');
+  border-radius: token('radius.md');
+  background: token('color.background.neutral.subtle');
+  font: token('typography.body.sm.normal');
+  font-family: token('core.fontFamily.mono');
+  color: token('color.foreground.default');
+  overflow: hidden;
+  white-space: nowrap;
+}
+.mr-ep-masked-host {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.mr-ep-masked-dots {
+  flex: 0 0 auto;
+  color: token('color.foreground.subtle');
+  letter-spacing: 0.1em;
+}
+.mr-ep-masked-tail {
+  flex: 0 0 auto;
+}
+
+.mr-ep-url-edit {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+}
+.mr-ep-touch {
+  display: block;
+}
+/* SPEC 12.6 storage sentence, beside the URL it is about (P1-G06). */
+.mr-ep-storage {
+  margin: 0;
+  max-width: 88ch;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  text-wrap: pretty;
+}
+.mr-ep-keep {
+  display: flex;
+  justify-content: flex-start;
+}
+.mr-ep-host-hint {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+/* "Load targets" sits beside its privacy note; it wraps under it on narrow cards. */
+.mr-ep-targets-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: token('spacing.sm') token('spacing.md');
+  margin-top: token('spacing.sm');
+}
+.mr-ep-targets-line .mr-ep-host-hint {
+  flex: 1 1 260px;
+  margin: 0;
+  max-width: 72ch;
+}
+.mr-ep-targets-action {
+  flex: 0 0 auto;
+}
+
+/* ── Test ──────────────────────────────────────────────────────────────── */
+.mr-ep-foot {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  padding-top: token('spacing.lg');
+  border-top: 1px solid token('color.border.neutral.subtle');
+}
+.mr-ep-test {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: token('spacing.md') token('spacing.lg');
+}
+.mr-ep-test-button {
+  display: inline-flex;
+}
+.mr-ep-caption {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-ep-result {
+  min-width: 0;
+}
+/* A delivered test: neutral text with a check glyph (P1-G08). Failures use the danger alert. */
+.mr-ep-result-ok {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  margin: 0;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.default');
+}
+.mr-ep-result-ok svg {
+  flex: 0 0 auto;
+  color: token('color.foreground.subtle');
+}
+
+.mr-ep-preview {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+  min-width: 0;
+}
+.mr-ep-preview-title {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+}
+.mr-ep-json {
+  margin: 0;
+  max-height: 280px;
+  overflow: auto;
+  padding: token('spacing.md') token('spacing.lg');
+  border: token('border.default');
+  border-radius: token('radius.lg');
+  background: token('color.background.neutral.subtle');
+  font: token('typography.body.sm.normal');
+  font-family: token('core.fontFamily.mono');
+  color: token('color.foreground.default');
+  white-space: pre;
+}
+
+/* ── Channels (DECISIONS D23): send-through choice, the bell row, target connection ── */
+.mr-ep-channel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: token('spacing.sm') token('spacing.md');
+}
+.mr-ep-radios {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-inline-size: 0;
+}
+.mr-ep-channel .mr-ep-caption {
+  flex: 1 1 100%;
+}
+.mr-ep-channel-body {
+  grid-column: span 4;
+  margin: 0;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  text-wrap: pretty;
+}
+.mr-ep-channel-body--wide {
+  grid-column: span 4;
+}
+.mr-ep--bell {
+  background: token('color.background.neutral.subtle');
+}
+.mr-ep-relay {
+  margin: 0;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-ep-relay[data-relay='ready'] {
+  color: token('color.foreground.default');
+}
+.mr-ep-relay--missing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: token('spacing.sm') token('spacing.md');
+  padding: token('spacing.md');
+  border: 1px dashed token('color.border.neutral.default');
+  border-radius: token('radius.md');
+}
+.mr-ep-relay-text {
+  flex: 1 1 16rem;
+  margin: 0;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.default');
+}
+
+/* ── Narrow ─────────────────────────────────────────────────────────────── */
+@container mr-ep (max-width: 620px) {
+  .mr-ep-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .mr-ep-name,
+  .mr-ep-url,
+  .mr-ep-weekly,
+  .mr-ep-channel-body,
+  .mr-ep-channel-body--wide {
+    grid-column: span 2;
+  }
+  .mr-ep-format,
+  .mr-ep-severity {
+    grid-column: span 1;
+  }
+  .mr-ep-masked-row {
+    flex-wrap: wrap;
+  }
+  .mr-ep-channel {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+@container mr-ep (max-width: 380px) {
+  .mr-ep-format,
+  .mr-ep-severity {
+    grid-column: span 2;
+  }
+}
+
+/* Craft review, round 2: "Did it arrive?" with the member's answer, and whether the target's delivery is confirmed. */
+.mr-ep-arrive {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: token('spacing.sm') token('spacing.md');
+}
+.mr-ep-unconfirmed {
+  color: token('color.foreground.warning.default');
+}

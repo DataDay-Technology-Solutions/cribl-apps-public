@@ -1,0 +1,241 @@
+/* src/components/ReceiptBar/ReceiptBar.css — paid grey + saved green inside a would-have-paid length. */
+
+.mr-rbar {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+  min-width: 0;
+}
+
+/*
+ * The would-have-paid length as a dimension line (P1-H05): a hairline at the label's middle on each side of it,
+ * turning down at the bar's two ends as ticks that stop just above the track. The label is centred on the line.
+ */
+.mr-rbar-whp {
+  display: flex;
+  align-items: stretch;
+  gap: token('spacing.md');
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-rbar-whp::before,
+.mr-rbar-whp::after {
+  content: '';
+  flex: 1 1 0;
+  min-width: token('spacing.md');
+  /* From the text's middle to 4 px short of the track (the row gap is spacing.sm). */
+  margin-top: 0.5lh;
+  margin-bottom: calc(token('spacing.xs') - token('spacing.sm'));
+  border-top: 1px solid var(--mr-border);
+}
+.mr-rbar-whp::before {
+  border-left: 1px solid var(--mr-border);
+  border-top-left-radius: 2px;
+}
+.mr-rbar-whp::after {
+  border-right: 1px solid var(--mr-border);
+  border-top-right-radius: 2px;
+}
+.mr-rbar-whp-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  text-align: center;
+  text-wrap: balance;
+}
+.mr-rbar-amount {
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+
+.mr-rbar-track {
+  display: flex;
+  /* A card-coloured gap between paid and saved (the track itself is clear once there is a bar to draw). */
+  gap: 2px;
+  height: token('spacing.lg');
+  border-radius: token('radius.full');
+  overflow: hidden;
+}
+.mr-rbar[data-empty='true'] .mr-rbar-track {
+  background: var(--mr-fill-whp);
+}
+.mr-rbar-paid,
+.mr-rbar-saved,
+.mr-rbar-projected {
+  flex-basis: 0;
+  min-width: 0;
+  transition: flex-grow var(--mr-duration-ribbon) var(--mr-easing);
+}
+.mr-rbar-paid {
+  background: var(--mr-fill-paid);
+}
+.mr-rbar-saved {
+  /* The hatch the Flow map's saved wedge uses, faint: texture, not a second colour. */
+  background:
+    repeating-linear-gradient(45deg, rgb(255 255 255 / 0.2) 0 2px, transparent 2px 7px),
+    var(--mr-fill-saved);
+}
+.mr-rbar[data-empty='true'] .mr-rbar-paid,
+.mr-rbar[data-empty='true'] .mr-rbar-saved {
+  display: none;
+}
+@media (forced-colors: active) {
+  /* Both parts keep their fills and gain an outline, so the bar never vanishes into Canvas. */
+  .mr-rbar-paid,
+  .mr-rbar-saved,
+  .mr-rbar-swatch {
+    forced-color-adjust: none;
+    border: 1px solid CanvasText;
+  }
+  .mr-rbar-track {
+    forced-color-adjust: none;
+  }
+}
+
+.mr-rbar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: token('spacing.xs') token('spacing.lg');
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-rbar-legend p {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  white-space: nowrap;
+}
+.mr-rbar-legend-saved .mr-rbar-amount {
+  color: var(--mr-color-saved);
+}
+
+.mr-rbar-swatch {
+  flex: 0 0 auto;
+  width: token('spacing.md');
+  height: token('spacing.md');
+  border-radius: token('radius.full');
+}
+.mr-rbar-swatch--paid {
+  background: var(--mr-fill-paid);
+}
+.mr-rbar-swatch--saved {
+  background:
+    repeating-linear-gradient(45deg, rgb(255 255 255 / 0.2) 0 2px, transparent 2px 7px),
+    var(--mr-fill-saved);
+}
+
+/*
+ * The net line is the receipt's total: its own row under a plain hairline (dashed means "projected" in this
+ * app), the net at a card figure's size in money green, the payback as a chip, the cost basis on the right.
+ */
+.mr-rbar-net {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: token('spacing.sm') token('spacing.lg');
+  margin-top: token('spacing.sm');
+  padding-top: token('spacing.md');
+  border-top: 1px solid var(--mr-border-subtle);
+  color: token('color.foreground.subtle');
+}
+.mr-rbar-net-main {
+  font: token('typography.body.lg.semibold');
+  color: token('color.foreground.default');
+  white-space: nowrap;
+}
+.mr-rbar-net-amount {
+  font: token('typography.metric.md');
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  color: var(--mr-color-saved);
+}
+.mr-rbar-net[data-sign='negative'] .mr-rbar-net-amount {
+  color: token('color.foreground.default');
+}
+.mr-rbar-net-payback {
+  display: inline-flex;
+  align-items: center;
+  padding: token('spacing.xs') token('spacing.md');
+  border-radius: token('radius.full');
+  font: token('typography.body.sm.semibold');
+  white-space: nowrap;
+  background: token('color.background.neutral.subtle');
+  color: token('color.foreground.default');
+}
+.mr-rbar-net-payback[data-full='true'] {
+  /* A tint of the money green, so the chip reads in dark too (success.subtle is ~1:1 on the dark panel). */
+  background: color-mix(in srgb, var(--mr-fill-saved) 14%, transparent);
+  color: var(--mr-color-saved);
+}
+.mr-rbar-net-basis {
+  margin-left: auto;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  text-align: right;
+}
+@media (max-width: 760px) {
+  /* The net on its own row, the chip and the basis under it, whatever the amount: a short figure letting the chip
+     ride up would change the hero's height as the periods toggle (P1-F12). */
+  .mr-rbar-net-main {
+    flex-basis: 100%;
+  }
+  .mr-rbar-net-basis {
+    flex-basis: 100%;
+    margin-left: 0;
+    text-align: left;
+  }
+}
+
+/* P1-F02: the diversion credit — the same green as a hatch (never a second hue, DESIGN_BRIEF 2): dollars that rest on
+   another destination's price, beside the solid green of bytes dropped. */
+.mr-rbar-saved--diverted,
+.mr-rbar-swatch--diverted {
+  background: repeating-linear-gradient(-45deg, var(--mr-fill-saved) 0 3px, var(--mr-fill-saved-subtle) 3px 6px);
+}
+.mr-rbar-swatch--diverted {
+  border: 1px solid var(--mr-fill-saved);
+}
+.mr-rbar-split {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: token('spacing.xs') token('spacing.sm');
+  margin: 0;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  cursor: help;
+}
+.mr-rbar-split--reserved {
+  visibility: hidden;
+}
+.mr-rbar-split-part {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.xs');
+  white-space: nowrap;
+}
+.mr-rbar-split .mr-rbar-amount {
+  color: var(--mr-color-saved);
+}
+
+/* P2-W08: a projection — the part of the green a change would add, hatched and dashed (the What-if hero; the
+   Flow map's projected ribbons use the same hatch). Never a new hue. */
+.mr-rbar-projected {
+  background-color: var(--mr-fill-saved-subtle);
+  background-image: repeating-linear-gradient(45deg, var(--mr-hatch-saved) 0 1.5px, transparent 1.5px 5px);
+  border: 1px dashed var(--mr-color-saved);
+  border-left: 0;
+  border-radius: 0 token('radius.full') token('radius.full') 0;
+}
+.mr-rbar-swatch--projected {
+  background-color: var(--mr-fill-saved-subtle);
+  background-image: repeating-linear-gradient(45deg, var(--mr-hatch-saved) 0 1.5px, transparent 1.5px 4px);
+  border: 1px dashed var(--mr-color-saved);
+}
+.mr-rbar-legend-projected .mr-rbar-amount {
+  color: var(--mr-color-saved);
+}
+.mr-rbar[data-empty='true'] .mr-rbar-projected {
+  display: none;
+}

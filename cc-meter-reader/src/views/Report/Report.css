@@ -1,0 +1,118 @@
+/*
+ * src/views/Report/Report.css — the Report card view: the Shell's <Page> column, the controls card (4 of 12
+ * columns) beside the preview (8 of 12); one column at phone width, controls first. The preview frame is the
+ * document itself (always light: it is paper), framed like a card so it reads as the thing you hand over.
+ */
+
+.mr-page.mr-report-view {
+  gap: token('spacing.lg');
+}
+
+.mr-report-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
+  gap: token('spacing.lg');
+  align-items: start;
+}
+
+.mr-report-controls {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+  position: sticky;
+  top: token('spacing.lg');
+  min-width: 0;
+}
+
+.mr-report-field {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+  min-width: 0;
+}
+
+.mr-report-label {
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+
+.mr-report-range {
+  margin: 0;
+}
+
+.mr-report-checks {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  padding: token('spacing.md');
+  border-radius: var(--mr-card-radius);
+  background: token('color.background.neutral.subtle');
+}
+
+.mr-report-checks p {
+  margin: 0;
+}
+
+.mr-report-checks ul {
+  margin: 0;
+  padding-left: token('spacing.lg');
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+}
+
+.mr-report-actions {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+}
+
+.mr-report-preview {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+  min-width: 0;
+}
+
+.mr-report-preview-caption {
+  margin: 0;
+}
+
+.mr-report-frame {
+  display: block;
+  width: 100%;
+  height: min(1180px, calc(100vh - 160px));
+  min-height: 560px;
+  border: 1px solid var(--mr-card-border);
+  border-radius: var(--mr-card-radius);
+  box-shadow: var(--mr-card-shadow);
+  /* The document paints its own paper (light in both themes); this shows only before it loads. */
+  background: token('color.background.application');
+}
+
+.mr-report-frame--empty {
+  background: token('color.background.neutral.subtle');
+}
+
+@media (max-width: 1024px) {
+  .mr-report-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mr-report-controls {
+    position: static;
+  }
+  .mr-report-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .mr-report-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mr-report-frame {
+    height: 78vh;
+    min-height: 480px;
+  }
+}

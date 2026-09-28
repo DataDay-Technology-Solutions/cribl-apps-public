@@ -1,0 +1,856 @@
+// core/demo/levers.ts — the demo build's levers (SPEC 11): apply/revert a pack, break/restore a trim, set a
+// Datagen rate, reset baselines, reset everything.
+//
+// One module for both runtimes: the Demo Console calls these in the tab as the member (runtime 'ui'), the
+// demo backend functions call them from `onRequest`. Every lever:
+//   • refuses unless settings.demo.enabled ('demo_disabled', 403);
+//   • refuses any Cribl object whose description lacks `[meter-reader-demo]` ('not_demo_tagged', 403);
+//   • allows one lever in flight at a time (demo/state.inFlight, 90 s expiry; 'in_flight', 409);
+//   • shares the Leader budget with the sweep: refuses ('budget', 429, retry in 10 s) when the minute's
+//     sweep calls + lever calls + its own estimate would pass 45;
+//   • read-modify-writes the WHOLE object (PATCH replaces; omitted fields are deleted);
+//   • commits with an EXPLICIT file list taken from version/status for the touched objects only (the org has
+//     hundreds of unrelated pending files), with the SPEC 11 message, then deploys;
+//   • appends its commit to the timeline with the caller's username and the deploy's return time, so the
+//     sweep can name the commit without waiting for a timeline refresh (SPEC 10, S19);
+//   • records what it changed in demo/state; Revert, Restore and Reset mute the touched objects for 10 min.
+// Volatile: callers confirm with the user before invoking a lever (AGENTS.md "Confirming Destructive Operations").
+
+import type { Clock, CriblHttp, DemoState, HttpResult, ISO, KvStore, Logger, ObjectKey, Settings } from '../types.ts';
+import { stableStringify, type Codec } from '../codec.ts';
+import { RateLimited } from '../http.ts';
+import { KEYS, createKvDocs, type KvDocs } from '../kv.ts';
+import { commitAndDeploy, pendingFiles, VersionApiError } from '../adapters/version.ts';
+import * as urls from '../adapters/cribl-urls.ts';
+import { mergeCommits } from '../timeline.ts';
+import { closeDemoIncidents, incidentsDocKey } from '../incidents.ts';
+import { objectKey } from '../flows.ts';
+import { createMeteredTransport, LOCK_TTL_MS, minuteKey, type MeteredTransport } from '../sweep.ts';
+import { DAY_MS, MINUTE_MS, fromIso, toIso } from '../time.ts';
+import { RIG_GROUP_ID, TRIM_TAG, isDemoTagged, rigObjectKeys, rigSourceForRoute, rigSource, rigSourcesUsingPipeline } from './rig-ids.ts';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+/** One lever at a time; a marker older than this is stale (a lever that died mid-flight). */
+export const IN_FLIGHT_TTL_MS = 90_000;
+/** Leader calls per minute a lever may bring the minute's total to (SPEC 7: 45 of the 50). */
+export const LEVER_MINUTE_BUDGET = 45;
+/** A sweeper (tab, runner, backend) that swept this recently will sweep again this minute. */
+const SWEEPER_ALIVE_MS = 3 * MINUTE_MS;
+/** The console retries an in-flight or locked refusal after this long (SPEC 11); budget refusals wait for the next minute. */
+export const LEVER_RETRY_MS = 10_000;
+/** Revert / Restore / Reset mute detection on what they touched (SPEC 9.3, 11). */
+export const MUTE_MS = 10 * MINUTE_MS;
+export const MIN_RATE_MULTIPLIER = 0.1;
+export const MAX_RATE_MULTIPLIER = 10;
+/** Default settling estimate until measured (SPEC 11). */
+export const DEFAULT_MEASURED_LAG_SEC = 240;
+
+/**
+ * Leader calls one lever makes, KV included: settings + demo/state + meta reads (3), in-flight mark (1),
+ * object GET + PATCH (2), version/status + commit + deploy (3), timeline read + write (2), final demo/state (1).
+ */
+export const LEVER_CALLS = 12;
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+export interface LeverDeps {
+  http: CriblHttp;
+  kv: KvStore;
+  clock: Clock;
+  codec: Codec;
+  logger?: Logger;
+  sleep?: (ms: number) => Promise<void>;
+  /** The member pulling the lever: `getCriblUser().username` in the UI, the request body's user in a backend function. */
+  author: string;
+  /** Worker group of the demo rig (default 'default'). */
+  groupId?: string;
+  /** Leader calls a minute may reach with this lever (default 45). */
+  minuteBudget?: number;
+  /** Owner for the sweep lock that Reset baselines / Reset everything take (default `lever:<author>`). */
+  owner?: string;
+}
+
+export type LeverName = 'applyPack' | 'revertPack' | 'breakTrim' | 'restoreTrim' | 'setRate' | 'resetBaselines' | 'resetAll';
+export type LeverError =
+  | 'demo_disabled'
+  | 'not_demo_tagged'
+  | 'in_flight'
+  | 'locked'
+  | 'budget'
+  | 'not_found'
+  | 'forbidden'
+  | 'invalid'
+  | 'no_change'
+  | 'rate_limited'
+  | 'commit_failed'
+  | 'deploy_failed'
+  | 'failed';
+
+export interface LeverSuccess {
+  ok: true;
+  lever: LeverName;
+  /** Full SHA of the commit that carried the change (absent for levers that change no Cribl config). */
+  commit?: string;
+  /** When the deploy call returned. */
+  deployedAt?: ISO;
+  message?: string;
+  files?: string[];
+  /** Leader calls this lever made, KV included. */
+  calls: number;
+}
+export interface LeverRefusal {
+  ok: false;
+  lever: LeverName;
+  error: LeverError;
+  /** HTTP status a backend function answers with. */
+  status: number;
+  message: string;
+  /** The untagged object, for 'not_demo_tagged'. */
+  id?: string;
+  /** When to try again ('budget', 'in_flight', 'locked', 'rate_limited'). */
+  retryInMs?: number;
+  /** Set on 'deploy_failed': the change is committed but not deployed. */
+  commit?: string;
+  calls: number;
+}
+export type LeverResult = LeverSuccess | LeverRefusal;
+
+/** A refusal raised inside a lever body. */
+class LeverStop extends Error {
+  readonly code: LeverError;
+  readonly status: number;
+  readonly id?: string;
+  constructor(code: LeverError, status: number, message: string, id?: string) {
+    super(message);
+    this.name = 'LeverStop';
+    this.code = code;
+    this.status = status;
+    if (id !== undefined) this.id = id;
+  }
+}
+
+type Obj = Record<string, unknown>;
+const isObj = (v: unknown): v is Obj => v !== null && typeof v === 'object' && !Array.isArray(v);
+const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+const same = (a: unknown, b: unknown): boolean => stableStringify(a) === stableStringify(b);
+
+export function emptyDemoState(): DemoState {
+  return {
+    schemaVersion: 1,
+    routes: {},
+    measuredLagSec: DEFAULT_MEASURED_LAG_SEC,
+    trim: {},
+    rates: {},
+    muted: {},
+  };
+}
+
+// ─── Lever context and plumbing ──────────────────────────────────────────────
+interface LeverCtx {
+  deps: LeverDeps;
+  t: MeteredTransport;
+  docs: KvDocs;
+  gid: string;
+  demo: DemoState;
+  settings: Settings;
+  now(): number;
+}
+
+/** What a lever body hands back to the runner. */
+interface LeverChange {
+  /** Commit message; absent when no Cribl config changed. */
+  message?: string;
+  /** Selects the pending repo paths of the touched objects (version/status). */
+  match?: (path: string) => boolean;
+  /** Best-effort undo of the PATCHes when the commit cannot be made. */
+  rollback?: () => Promise<void>;
+  /** Applied to demo/state once the change is live. */
+  update(state: DemoState): void;
+  /** Objects to mute for MUTE_MS. */
+  mute?: ObjectKey[];
+}
+
+function itemsOf(res: HttpResult): Obj[] {
+  const body = res.json;
+  const list: unknown = Array.isArray(body) ? body : isObj(body) ? body.items : undefined;
+  return Array.isArray(list) ? list.filter(isObj) : [];
+}
+
+function httpStop(res: HttpResult, what: string): LeverStop {
+  if (res.status === 404) return new LeverStop('not_found', 404, `${what} not found`);
+  if (res.status === 401 || res.status === 403) return new LeverStop('forbidden', 403, `${what}: not allowed (HTTP ${res.status})`);
+  const detail = res.text ?? (res.json === undefined ? '' : JSON.stringify(res.json));
+  return new LeverStop('failed', res.status || 502, `${what} failed: HTTP ${res.status} ${detail.slice(0, 160)}`.trim());
+}
+
+async function getOne(ctx: LeverCtx, path: string, what: string): Promise<Obj> {
+  const res = await ctx.t.http.request('GET', path);
+  if (!res.ok) throw httpStop(res, what);
+  const item = itemsOf(res)[0];
+  if (!item) throw new LeverStop('not_found', 404, `${what} not found`);
+  return item;
+}
+
+async function patch(ctx: LeverCtx, path: string, body: Obj, what: string): Promise<void> {
+  const res = await ctx.t.http.request('PATCH', path, body);
+  if (!res.ok) throw httpStop(res, `saving ${what}`);
+}
+
+function requireTag(description: unknown, id: string): void {
+  if (!isDemoTagged(description))
+    throw new LeverStop('not_demo_tagged', 403, `${id} is not a demo object (its description lacks [meter-reader-demo])`, id);
+}
+
+/** Inputs are PATCHed without read-only provenance (config-apis.md: omit criblSourceProvenance). */
+function writableInput(input: Obj): Obj {
+  const out = clone(input);
+  delete out.criblSourceProvenance;
+  delete out.status;
+  return out;
+}
+
+const basename = (p: string): string => p.slice(p.lastIndexOf('/') + 1);
+const pipelineFileMatch = (gid: string, pipelineId: string) => (p: string) =>
+  p.includes(`groups/${gid}/`) && p.includes(`/pipelines/${pipelineId}/`);
+const routeTableMatch = (gid: string) => (p: string) =>
+  p.includes(`groups/${gid}/`) && (basename(p) === 'route.yml' || basename(p) === 'routes.yml');
+const inputsMatch = (gid: string) => (p: string) => p.includes(`groups/${gid}/`) && basename(p) === 'inputs.yml';
+const anyOf =
+  (...ms: ((p: string) => boolean)[]) =>
+  (p: string): boolean =>
+    ms.some((m) => m(p));
+
+function stopFromError(e: unknown): LeverStop {
+  if (e instanceof LeverStop) return e;
+  if (e instanceof RateLimited) return new LeverStop('rate_limited', 429, 'Rate limited by the Leader; try again shortly');
+  if (e instanceof VersionApiError) {
+    if (e.code === 'nothing_to_commit' || e.code === 'invalid_files')
+      return new LeverStop('no_change', 409, 'Nothing changed: the object is already in that state');
+    if (e.code === 'deploy_failed') return new LeverStop('deploy_failed', e.status || 502, e.message);
+    if (e.code === 'commit_failed') return new LeverStop('commit_failed', e.status || 502, e.message);
+    return new LeverStop('failed', e.status || 502, e.message);
+  }
+  return new LeverStop('failed', 500, e instanceof Error ? e.message : String(e));
+}
+
+/**
+ * When the console should try again. The Leader budget is per UTC minute, so a budget or rate-limit refusal
+ * waits for the next minute (every refused attempt still costs three reads); the others retry in 10 s.
+ */
+function retryFor(code: LeverError, nowMs: number): number | undefined {
+  if (code === 'budget' || code === 'rate_limited') return Math.max(1_000, MINUTE_MS - (nowMs % MINUTE_MS) + 1_000);
+  return code === 'in_flight' || code === 'locked' ? LEVER_RETRY_MS : undefined;
+}
+
+/**
+ * The shared lever protocol around a body: gate (demo mode, one in flight, budget) → mark in flight → body →
+ * commit + deploy the touched files → timeline append → demo/state (changes, mutes, calls, in-flight cleared).
+ */
+async function runLever(
+  name: LeverName,
+  deps: LeverDeps,
+  estimate: (demo: DemoState) => number,
+  body: (ctx: LeverCtx) => Promise<LeverChange>,
+): Promise<LeverResult> {
+  const clock = deps.clock;
+  const logger = deps.logger;
+  const t = createMeteredTransport(deps.http, deps.kv, {
+    clock,
+    ...(deps.sleep ? { sleep: deps.sleep } : {}),
+  });
+  const docs = createKvDocs({
+    kv: t.kv,
+    codec: deps.codec,
+    clock,
+    ...(logger ? { logger } : {}),
+  });
+  const rawDocs = createKvDocs({
+    kv: t.rawKv,
+    codec: deps.codec,
+    clock,
+    ...(logger ? { logger } : {}),
+  });
+  const gid = deps.groupId ?? RIG_GROUP_ID;
+  const refuse = (stop: LeverStop, extra: { commit?: string } = {}): LeverRefusal => {
+    const r: LeverRefusal = {
+      ok: false,
+      lever: name,
+      error: stop.code,
+      status: stop.status,
+      message: stop.message,
+      calls: t.calls(),
+      ...extra,
+    };
+    if (stop.id !== undefined) r.id = stop.id;
+    const retry = retryFor(stop.code, clock.now());
+    if (retry !== undefined) r.retryInMs = retry;
+    return r;
+  };
+
+  let demo: DemoState | undefined;
+  let marked = false;
+  try {
+    const [settings, stored, meta] = await Promise.all([docs.getSettings(), docs.getDemoState(), docs.getMeta()]);
+    if (!settings?.demo?.enabled) return refuse(new LeverStop('demo_disabled', 403, 'Demo mode is off. Turn it on under Settings → Demo.'));
+    demo = stored ?? emptyDemoState();
+    const startedAt = clock.now();
+    if (demo.inFlight && startedAt - fromIso(demo.inFlight.since) < IN_FLIGHT_TTL_MS) {
+      return refuse(new LeverStop('in_flight', 409, `${demo.inFlight.lever} is running. Other levers wait until it returns.`));
+    }
+    const minute = minuteKey(startedAt);
+    const used =
+      (meta?.callsThisMinute?.minute === minute ? meta.callsThisMinute.calls : 0) +
+      (demo.leverCalls?.minute === minute ? demo.leverCalls.calls : 0);
+    const need = estimate(demo);
+    const cap = deps.minuteBudget ?? LEVER_MINUTE_BUDGET;
+    // SPEC 7/11 ("meta.lastSweepCalls + its own estimate"): until this minute's sweep has run — it meters only
+    // once the minute is 20 s old (core/sweep.ts SETTLE_MS) — keep its share free so a lever never starves it.
+    // Only while a sweeper is alive, and never more than would refuse the minute's first lever.
+    const lastSweepAt = meta?.lastSweepAt ? fromIso(meta.lastSweepAt) : Number.NaN;
+    const sweepPending = meta?.callsThisMinute?.minute !== minute && startedAt - lastSweepAt < SWEEPER_ALIVE_MS;
+    const reserve = sweepPending ? Math.max(0, Math.min(meta?.lastSweepCalls ?? 0, cap - need)) : 0;
+    if (used + reserve + need > cap) {
+      return refuse(
+        new LeverStop('budget', 429, `The Leader budget for this minute is spent (${used}${reserve > 0 ? ` + ${reserve} held for the sweep` : ''} + ${need} > ${cap} calls); retrying shortly.`),
+      );
+    }
+
+    demo = { ...demo, inFlight: { lever: name, since: toIso(startedAt) } };
+    await docs.putDemoState(demo);
+    marked = true;
+
+    const ctx: LeverCtx = {
+      deps,
+      t,
+      docs,
+      gid,
+      demo,
+      settings,
+      now: () => clock.now(),
+    };
+    const change = await body(ctx);
+
+    let commit: string | undefined;
+    let deployedAt: ISO | undefined;
+    let files: string[] | undefined;
+    if (change.message && change.match) {
+      const committedAt = toIso(clock.now());
+      try {
+        files = await pendingFiles(t.http, gid, change.match);
+        if (files.length === 0) throw new LeverStop('no_change', 409, 'Nothing changed: the object is already in that state');
+        ({ commit, deployedAt } = await commitAndDeploy(t.http, gid, change.message, files, { clock }));
+      } catch (e) {
+        if (e instanceof VersionApiError && e.code === 'deploy_failed' && e.commit) {
+          // Committed but not live: keep demo/state in step with the committed config so Restore still works.
+          await finish(docs, rawDocs, demo, change, t, clock.now(), logger);
+          marked = false;
+          return refuse(stopFromError(e), { commit: e.commit });
+        }
+        // Nothing was committed: put the object back as it was read (best effort).
+        await change.rollback?.().catch(() => undefined);
+        throw e;
+      }
+      const timeline = await docs.getTimeline();
+      const nowIso = toIso(clock.now());
+      await docs.putTimeline(
+        mergeCommits(
+          timeline,
+          gid,
+          [
+            {
+              hash: commit,
+              message: change.message,
+              author: deps.author || 'unknown',
+              committedAt,
+              deployedAt,
+              groupId: gid,
+              files,
+              source: 'demo',
+            },
+          ],
+          nowIso,
+        ),
+      );
+    }
+
+    await finish(docs, rawDocs, demo, change, t, clock.now(), logger);
+    marked = false;
+    const ok: LeverSuccess = { ok: true, lever: name, calls: t.calls() };
+    if (commit) ok.commit = commit;
+    if (deployedAt) ok.deployedAt = deployedAt;
+    if (change.message && commit) ok.message = change.message;
+    if (files) ok.files = files;
+    return ok;
+  } catch (e) {
+    const stop = stopFromError(e);
+    if (!(e instanceof LeverStop)) logger?.warn(`lever ${name} failed`, e);
+    if (marked) await clearInFlight(rawDocs, demo!, t, clock.now(), logger);
+    return refuse(stop);
+  }
+}
+
+/** Applies the change to demo/state, mutes, records this lever's calls and clears the in-flight marker (1 write). */
+async function finish(
+  docs: KvDocs,
+  rawDocs: KvDocs,
+  demo: DemoState,
+  change: LeverChange,
+  t: MeteredTransport,
+  nowMs: number,
+  logger?: Logger,
+): Promise<void> {
+  const next = clone(demo);
+  change.update(next);
+  const until = toIso(nowMs + MUTE_MS);
+  const muted: Record<ObjectKey, ISO> = {};
+  for (const [k, v] of Object.entries(next.muted ?? {})) if (fromIso(v) > nowMs) muted[k] = v;
+  for (const k of change.mute ?? []) muted[k] = until;
+  next.muted = muted;
+  delete next.inFlight;
+  const minute = minuteKey(nowMs);
+  next.leverCalls = {
+    minute,
+    calls: (demo.leverCalls?.minute === minute ? demo.leverCalls.calls : 0) + t.calls() + 1,
+  };
+  try {
+    await docs.putDemoState(next);
+  } catch (e) {
+    logger?.warn('lever: could not record demo/state; retrying without the rate-limit guard', e);
+    await rawDocs.putDemoState(next);
+  }
+}
+
+/** Clears a failed lever's in-flight marker (best effort, outside the 429 guard). */
+async function clearInFlight(rawDocs: KvDocs, current: DemoState, t: MeteredTransport, nowMs: number, logger?: Logger): Promise<void> {
+  try {
+    const next = { ...current };
+    delete next.inFlight;
+    const minute = minuteKey(nowMs);
+    next.leverCalls = {
+      minute,
+      calls: (current.leverCalls?.minute === minute ? current.leverCalls.calls : 0) + t.calls() + 1,
+    };
+    await rawDocs.putDemoState(next);
+  } catch (e) {
+    logger?.warn('lever: could not clear the in-flight marker (it expires in 90 s)', e);
+  }
+}
+
+// ─── Route table helpers ─────────────────────────────────────────────────────
+interface RouteTable {
+  table: Obj;
+  tableId: string;
+  routes: Obj[];
+}
+
+async function getRouteTable(ctx: LeverCtx): Promise<RouteTable> {
+  const res = await ctx.t.http.request('GET', urls.routes(ctx.gid));
+  if (!res.ok) throw httpStop(res, `routes of ${ctx.gid}`);
+  const tables = itemsOf(res);
+  const table = tables.find((x) => x.id === 'default') ?? tables[0];
+  if (!table || !Array.isArray(table.routes)) throw new LeverStop('not_found', 404, `routing table of ${ctx.gid} not found`);
+  return {
+    table,
+    tableId: typeof table.id === 'string' && table.id ? table.id : 'default',
+    routes: (table.routes as unknown[]).filter(isObj),
+  };
+}
+
+/**
+ * Finds a route by id; failing that, a rig key / input id / other route-id spelling resolves to the route whose
+ * id is one of the rig Source's route ids or whose filter selects its input (live and emulated rigs differ).
+ */
+function findRoute(rt: RouteTable, routeId: string): { route: Obj; index: number; id: string } {
+  let index = rt.routes.findIndex((r) => r.id === routeId);
+  if (index < 0) {
+    const src = rigSource(routeId);
+    if (src) {
+      index = rt.routes.findIndex((r) => {
+        const id = typeof r.id === 'string' ? r.id : '';
+        return (
+          src.routeIds.includes(id) ||
+          rigSourceForRoute({
+            id,
+            filter: typeof r.filter === 'string' ? r.filter : undefined,
+          }) === src
+        );
+      });
+    }
+  }
+  if (index < 0) throw new LeverStop('not_found', 404, `route ${routeId} not found`);
+  return { route: rt.routes[index], index, id: String(rt.routes[index].id) };
+}
+
+async function setRoutePipeline(ctx: LeverCtx, rt: RouteTable, index: number, pipelineId: string): Promise<() => Promise<void>> {
+  const next = clone(rt.table);
+  const routes = (next.routes as Obj[]).filter(isObj);
+  routes[index] = { ...routes[index], pipeline: pipelineId };
+  next.routes = routes;
+  await patch(ctx, urls.route(ctx.gid, rt.tableId), next, `route table ${rt.tableId}`);
+  return () => patch(ctx, urls.route(ctx.gid, rt.tableId), rt.table, `route table ${rt.tableId}`);
+}
+
+// ─── Levers ──────────────────────────────────────────────────────────────────
+/** "Apply the pack" (keys 1/2/3; `aggressive` = G): point a demo route at its pack pipeline. */
+export function applyPack(deps: LeverDeps, args: { routeId: string; level?: 'pack' | 'aggressive' }): Promise<LeverResult> {
+  return runLever(
+    'applyPack',
+    deps,
+    () => LEVER_CALLS,
+    async (ctx) => {
+      const rt = await getRouteTable(ctx);
+      const { route, index, id: routeId } = findRoute(rt, args.routeId);
+      requireTag(route.description, routeId);
+      const src = rigSourceForRoute({
+        id: routeId,
+        filter: typeof route.filter === 'string' ? route.filter : undefined,
+      });
+      if (!src?.packPipelineId) throw new LeverStop('invalid', 400, `route ${routeId} has no pack to apply`);
+      const level = args.level ?? 'pack';
+      const target = level === 'aggressive' && src.aggressivePipelineId ? src.aggressivePipelineId : src.packPipelineId;
+      const current = typeof route.pipeline === 'string' ? route.pipeline : '';
+      if (current === target) throw new LeverStop('no_change', 409, `route ${routeId} already runs ${target}`);
+      const undo = await setRoutePipeline(ctx, rt, index, target);
+      const prior = ctx.demo.routes[routeId];
+      return {
+        message: `demo: apply the pack on ${routeId}`,
+        match: routeTableMatch(ctx.gid),
+        rollback: undo,
+        update(state) {
+          state.routes[routeId] = {
+            previousPipelineId: prior?.previousPipelineId ?? current,
+            appliedAt: toIso(ctx.now()),
+            level,
+          };
+        },
+      };
+    },
+  );
+}
+
+/** "Revert the pack" (V): back to the route's previous pipeline; mutes the route's objects for 10 minutes. */
+export function revertPack(deps: LeverDeps, args: { routeId: string }): Promise<LeverResult> {
+  return runLever(
+    'revertPack',
+    deps,
+    () => LEVER_CALLS,
+    async (ctx) => {
+      const rt = await getRouteTable(ctx);
+      const { route, index, id: routeId } = findRoute(rt, args.routeId);
+      requireTag(route.description, routeId);
+      const src = rigSourceForRoute({
+        id: routeId,
+        filter: typeof route.filter === 'string' ? route.filter : undefined,
+      });
+      const state = ctx.demo.routes[routeId];
+      const previous = state?.previousPipelineId ?? src?.pipelineId;
+      if (!previous) throw new LeverStop('invalid', 400, `no previous pipeline is known for route ${routeId}`);
+      const current = typeof route.pipeline === 'string' ? route.pipeline : '';
+      if (current === previous) {
+        // Already reverted (e.g. by hand in the Cribl UI): forget the applied state, or say there is nothing to do.
+        if (!state) throw new LeverStop('no_change', 409, `route ${routeId} already runs ${previous}`);
+        return { update: (s) => void delete s.routes[routeId] };
+      }
+      const undo = await setRoutePipeline(ctx, rt, index, previous);
+      const mute = new Set<ObjectKey>([objectKey('route', ctx.gid, routeId), objectKey('pipe', ctx.gid, previous)]);
+      if (current) mute.add(objectKey('pipe', ctx.gid, current));
+      if (src) for (const k of rigObjectKeys(src, ctx.gid, [previous, current])) mute.add(k);
+      return {
+        message: `demo: revert the pack on ${routeId}`,
+        match: routeTableMatch(ctx.gid),
+        rollback: undo,
+        update(s) {
+          delete s.routes[routeId];
+        },
+        mute: [...mute],
+      };
+    },
+  );
+}
+
+/** Finds the `[mr-trim]` function of a demo pipeline (after checking the pipeline's own tag). */
+function trimFunction(pipeline: Obj, pipelineId: string): { functions: Obj[]; index: number } {
+  const conf = isObj(pipeline.conf) ? pipeline.conf : {};
+  requireTag(conf.description ?? pipeline.description, pipelineId);
+  const functions = Array.isArray(conf.functions) ? (conf.functions as unknown[]).filter(isObj) : [];
+  const index = functions.findIndex((f) => typeof f.description === 'string' && f.description.includes(TRIM_TAG));
+  if (index < 0) throw new LeverStop('invalid', 400, `pipeline ${pipelineId} has no ${TRIM_TAG} function`);
+  return { functions, index };
+}
+
+function withFunction(pipeline: Obj, functions: Obj[], index: number, fn: Obj): Obj {
+  const next = clone(pipeline);
+  const conf = isObj(next.conf) ? next.conf : {};
+  const list = functions.map((f) => clone(f));
+  list[index] = fn;
+  next.conf = { ...conf, functions: list };
+  return next;
+}
+
+/** "Break the trim" (B): disables the pipeline's `[mr-trim]` function. */
+export function breakTrim(deps: LeverDeps, args: { pipelineId: string }): Promise<LeverResult> {
+  return runLever(
+    'breakTrim',
+    deps,
+    () => LEVER_CALLS,
+    async (ctx) => {
+      const path = urls.pipeline(ctx.gid, args.pipelineId);
+      const pipeline = await getOne(ctx, path, `pipeline ${args.pipelineId}`);
+      const { functions, index } = trimFunction(pipeline, args.pipelineId);
+      const fn = functions[index];
+      if (fn.disabled === true) throw new LeverStop('no_change', 409, `the trim on ${args.pipelineId} is already broken`);
+      await patch(
+        ctx,
+        path,
+        withFunction(pipeline, functions, index, {
+          ...clone(fn),
+          disabled: true,
+        }),
+        `pipeline ${args.pipelineId}`,
+      );
+      const prior = ctx.demo.trim[args.pipelineId];
+      return {
+        message: `demo: break the trim on ${args.pipelineId}`,
+        match: pipelineFileMatch(ctx.gid, args.pipelineId),
+        rollback: () => patch(ctx, path, pipeline, `pipeline ${args.pipelineId}`),
+        update(s) {
+          s.trim[args.pipelineId] = {
+            functionIndex: index,
+            previous: prior?.previous ?? clone(fn),
+            brokenAt: toIso(ctx.now()),
+          };
+        },
+      };
+    },
+  );
+}
+
+/** "Restore" (R): puts the `[mr-trim]` function back exactly as it was; mutes the pipeline's objects. */
+export function restoreTrim(deps: LeverDeps, args: { pipelineId: string }): Promise<LeverResult> {
+  return runLever(
+    'restoreTrim',
+    deps,
+    () => LEVER_CALLS,
+    async (ctx) => {
+      const path = urls.pipeline(ctx.gid, args.pipelineId);
+      const pipeline = await getOne(ctx, path, `pipeline ${args.pipelineId}`);
+      const change = restoreTrimOn(ctx, pipeline, args.pipelineId);
+      if (!change) {
+        // Already restored (e.g. by hand): forget the broken state, or say there is nothing to do.
+        if (!ctx.demo.trim[args.pipelineId]) throw new LeverStop('no_change', 409, `the trim on ${args.pipelineId} is not broken`);
+        return { update: (s) => void delete s.trim[args.pipelineId] };
+      }
+      await patch(ctx, path, change.next, `pipeline ${args.pipelineId}`);
+      return {
+        message: `demo: restore the trim on ${args.pipelineId}`,
+        match: pipelineFileMatch(ctx.gid, args.pipelineId),
+        rollback: () => patch(ctx, path, pipeline, `pipeline ${args.pipelineId}`),
+        update(s) {
+          delete s.trim[args.pipelineId];
+        },
+        mute: pipelineMuteKeys(ctx.gid, args.pipelineId),
+      };
+    },
+  );
+}
+
+/** The restored pipeline, or undefined when the trim is already as it was. */
+function restoreTrimOn(ctx: LeverCtx, pipeline: Obj, pipelineId: string): { next: Obj } | undefined {
+  const { functions, index } = trimFunction(pipeline, pipelineId);
+  const stored = ctx.demo.trim[pipelineId];
+  const at =
+    stored && functions[stored.functionIndex] && String(functions[stored.functionIndex].description ?? '').includes(TRIM_TAG)
+      ? stored.functionIndex
+      : index;
+  const current = functions[at];
+  // Trust the recorded function only if it is the trim function; otherwise just re-enable what is there.
+  const recorded =
+    isObj(stored?.previous) && String(stored.previous.description ?? '').includes(TRIM_TAG) ? (stored.previous as Obj) : undefined;
+  const restored: Obj = recorded ? clone(recorded) : { ...clone(current), disabled: false };
+  if (same(current, restored)) return undefined;
+  return { next: withFunction(pipeline, functions, at, restored) };
+}
+
+function pipelineMuteKeys(gid: string, pipelineId: string): ObjectKey[] {
+  const keys = new Set<ObjectKey>([objectKey('pipe', gid, pipelineId)]);
+  for (const src of rigSourcesUsingPipeline(pipelineId)) for (const k of rigObjectKeys(src, gid, [pipelineId])) keys.add(k);
+  return [...keys];
+}
+
+/** "Spike" / "Calm" (S / C): sets a demo Datagen Source to its baseline rate × multiplier (0.1–10). */
+export function setRate(deps: LeverDeps, args: { inputId: string; multiplier: number }): Promise<LeverResult> {
+  return runLever(
+    'setRate',
+    deps,
+    () => LEVER_CALLS,
+    async (ctx) => {
+      const m = args.multiplier;
+      if (!(Number.isFinite(m) && m >= MIN_RATE_MULTIPLIER && m <= MAX_RATE_MULTIPLIER)) {
+        throw new LeverStop('invalid', 400, `multiplier must be between ${MIN_RATE_MULTIPLIER} and ${MAX_RATE_MULTIPLIER}`);
+      }
+      const path = urls.input(ctx.gid, args.inputId);
+      const input = await getOne(ctx, path, `source ${args.inputId}`);
+      requireTag(input.description, args.inputId);
+      const samples = Array.isArray(input.samples) ? (input.samples as unknown[]).filter(isObj) : [];
+      const current = Number(samples[0]?.eventsPerSec);
+      if (input.type !== 'datagen' || samples.length === 0 || !Number.isFinite(current)) {
+        throw new LeverStop('invalid', 400, `${args.inputId} is not a Datagen source with a rate`);
+      }
+      const baseline = ctx.demo.rates[args.inputId]?.baselineEps ?? current;
+      const eps = Math.max(1, Math.round(baseline * m));
+      if (eps === current) throw new LeverStop('no_change', 409, `${args.inputId} already runs at ${eps} events/s`);
+      const next = writableInput(input);
+      next.samples = samples.map((s, i) => (i === 0 ? { ...clone(s), eventsPerSec: eps } : clone(s)));
+      await patch(ctx, path, next, `source ${args.inputId}`);
+      return {
+        message: `demo: set ${args.inputId} to ${m}x`,
+        match: inputsMatch(ctx.gid),
+        rollback: () => patch(ctx, path, writableInput(input), `source ${args.inputId}`),
+        update(s) {
+          if (m === 1) delete s.rates[args.inputId];
+          else
+            s.rates[args.inputId] = {
+              baselineEps: baseline,
+              multiplier: m,
+              setAt: toIso(ctx.now()),
+            };
+        },
+      };
+    },
+  );
+}
+
+/** Runs `fn` while holding the sweep lock, so a sweep in progress can't write back what the lever resets. */
+async function withSweepLock<T>(ctx: LeverCtx, fn: () => Promise<T>): Promise<T> {
+  const owner = ctx.deps.owner ?? `lever:${ctx.deps.author || 'unknown'}`;
+  if (!(await ctx.docs.acquireLock(owner, LOCK_TTL_MS)))
+    throw new LeverStop('locked', 409, 'A sweep is writing right now; retrying shortly.');
+  try {
+    return await fn();
+  } finally {
+    await ctx.docs.putDoc(KEYS.lock, { owner, expiresAt: toIso(ctx.now()) }).catch(() => undefined);
+  }
+}
+
+/** "Reset baselines" (Tier 1): deletes `baselines` so the EWMA re-learns from the next samples (SPEC 9.2, 11). */
+export function resetBaselines(deps: LeverDeps): Promise<LeverResult> {
+  return runLever(
+    'resetBaselines',
+    deps,
+    () => 11,
+    async (ctx) => {
+      await withSweepLock(ctx, () => ctx.docs.del('baselines'));
+      return { update: () => undefined };
+    },
+  );
+}
+
+/**
+ * "Reset everything" (0): restores every broken trim, every Datagen rate to 1× and every budget override,
+ * closes demo-caused incidents, clears the scene and mutes everything it touched for 10 minutes. One commit
+ * (`demo: reset everything`) carries the config changes. Applied packs are left alone ("Revert all" is V).
+ */
+export function resetAll(deps: LeverDeps): Promise<LeverResult> {
+  const estimate = (demo: DemoState): number => 20 + 2 * (Object.keys(demo.trim ?? {}).length + Object.keys(demo.rates ?? {}).length);
+  return runLever('resetAll', deps, estimate, (ctx) =>
+    withSweepLock(ctx, async () => {
+      // 1. Read and check everything first, so a refusal (untagged, missing) leaves the org untouched.
+      const writes: {
+        path: string;
+        next: Obj;
+        original: Obj;
+        what: string;
+        match: (p: string) => boolean;
+      }[] = [];
+      const mute = new Set<ObjectKey>();
+      for (const pipelineId of Object.keys(ctx.demo.trim ?? {})) {
+        const path = urls.pipeline(ctx.gid, pipelineId);
+        const pipeline = await getOne(ctx, path, `pipeline ${pipelineId}`);
+        const change = restoreTrimOn(ctx, pipeline, pipelineId);
+        for (const k of pipelineMuteKeys(ctx.gid, pipelineId)) mute.add(k);
+        if (change)
+          writes.push({
+            path,
+            next: change.next,
+            original: pipeline,
+            what: `pipeline ${pipelineId}`,
+            match: pipelineFileMatch(ctx.gid, pipelineId),
+          });
+      }
+      for (const [inputId, rate] of Object.entries(ctx.demo.rates ?? {})) {
+        const path = urls.input(ctx.gid, inputId);
+        const input = await getOne(ctx, path, `source ${inputId}`);
+        requireTag(input.description, inputId);
+        const src = rigSource(inputId);
+        if (src) for (const k of rigObjectKeys(src, ctx.gid)) mute.add(k);
+        else mute.add(objectKey('in', ctx.gid, inputId));
+        const samples = Array.isArray(input.samples) ? (input.samples as unknown[]).filter(isObj) : [];
+        if (samples.length === 0 || Number(samples[0].eventsPerSec) === rate.baselineEps) continue;
+        const next = writableInput(input);
+        next.samples = samples.map((s, i) => (i === 0 ? { ...clone(s), eventsPerSec: rate.baselineEps } : clone(s)));
+        writes.push({
+          path,
+          next,
+          original: writableInput(input),
+          what: `source ${inputId}`,
+          match: inputsMatch(ctx.gid),
+        });
+      }
+
+      // 2. Apply; a failed PATCH puts back the ones already made.
+      const undo: (() => Promise<void>)[] = [];
+      const rollback = async (): Promise<void> => {
+        for (const u of [...undo].reverse()) await u().catch(() => undefined);
+      };
+      try {
+        for (const wr of writes) {
+          await patch(ctx, wr.path, wr.next, wr.what);
+          undo.push(() => patch(ctx, wr.path, wr.original, wr.what));
+        }
+      } catch (e) {
+        await rollback();
+        throw e;
+      }
+
+      // Budgets a scene overrode.
+      const overrides = Object.entries(ctx.demo.budgetsOverride ?? {});
+      if (overrides.length > 0) {
+        const budgets = { ...(ctx.settings.budgets ?? {}) };
+        for (const [outputId, o] of overrides) {
+          if (o.previousCentsPerMonth === undefined) delete budgets[outputId];
+          else budgets[outputId] = { centsPerMonth: o.previousCentsPerMonth };
+          mute.add(objectKey('out', ctx.gid, outputId));
+        }
+        await ctx.docs.putSettings({
+          ...ctx.settings,
+          budgets,
+          updatedAt: toIso(ctx.now()),
+        });
+      }
+
+      // Close open incidents a demo caused (today's and yesterday's docs hold every open one in a demo).
+      const nowMs = ctx.now();
+      for (const key of [incidentsDocKey(nowMs), incidentsDocKey(nowMs - DAY_MS)]) {
+        const doc = await ctx.docs.getIncidents(key);
+        if (!doc) continue;
+        const items = closeDemoIncidents(doc.items, toIso(nowMs));
+        if (!same(items, doc.items)) await ctx.docs.putIncidents(key, { schemaVersion: 1, items });
+      }
+
+      const change: LeverChange = {
+        update(s) {
+          s.trim = {};
+          s.rates = {};
+          delete s.scene;
+          delete s.budgetsOverride;
+        },
+        mute: [...mute],
+      };
+      if (writes.length > 0) {
+        change.message = 'demo: reset everything';
+        change.match = anyOf(...writes.map((wr) => wr.match));
+        change.rollback = rollback;
+      }
+      return change;
+    }),
+  );
+}

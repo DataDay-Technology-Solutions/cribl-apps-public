@@ -1,0 +1,96 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/m/default/version/files?commit=bbef631b46bd226130b80c43223a25645e919852"
+  },
+  "status": 200,
+  "capturedAt": "2026-09-26T04:40:00.000Z",
+  "source": "live",
+  "note": "GitFile tree (one node per path segment) pruned from 383 files to 5",
+  "body": {
+    "items": [
+      {
+        "count": 1,
+        "items": [
+          {
+            "name": "groups",
+            "children": [
+              {
+                "name": "default",
+                "children": [
+                  {
+                    "name": "data",
+                    "children": [
+                      {
+                        "name": "lookups",
+                        "children": [
+                          {
+                            "name": "model_relative_entropy_top_domains.csv",
+                            "state": "A"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "name": "default",
+                    "children": [
+                      {
+                        "name": "cribl",
+                        "children": [
+                          {
+                            "name": "inputs.yml",
+                            "state": "A"
+                          },
+                          {
+                            "name": "pipelines",
+                            "children": [
+                              {
+                                "name": "main",
+                                "children": [
+                                  {
+                                    "name": "conf.yml",
+                                    "state": "A"
+                                  }
+                                ]
+                              },
+                              {
+                                "name": "passthru",
+                                "children": [
+                                  {
+                                    "name": "conf.yml",
+                                    "state": "A"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "name": "local",
+                    "children": [
+                      {
+                        "name": "cribl",
+                        "children": [
+                          {
+                            "name": "inputs.yml",
+                            "state": "A"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "commitMessage": "create group default"
+      }
+    ],
+    "count": 1
+  }
+}

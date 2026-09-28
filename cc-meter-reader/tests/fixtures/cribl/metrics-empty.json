@@ -1,0 +1,39 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/system/metrics/query",
+    "body": {
+      "where": "__worker_group=='default'",
+      "earliest": 1790395920000,
+      "latest": 1790396520000,
+      "aggs": {
+        "aggregations": [
+          "sum(\"total.in_bytes\").as(\"inB\")",
+          "sum(\"total.in_events\").as(\"inE\")"
+        ],
+        "splitBys": [
+          "__worker_group",
+          "input"
+        ],
+        "timeWindowSeconds": 60
+      }
+    }
+  },
+  "status": 200,
+  "capturedAt": "2026-09-26T04:40:00.000Z",
+  "source": "live",
+  "body": {
+    "results": [],
+    "metrics": {
+      "metrics_aggregator.referenced_metrics": 3,
+      "metrics_reader.execution_time": 0,
+      "metrics_reader.matched": 1,
+      "metrics_reader.invalid_series": 0,
+      "metrics_aggregator.results": 0,
+      "metrics_aggregator.execution_time": 3
+    },
+    "info": {
+      "timeWindowSeconds": 60
+    }
+  }
+}

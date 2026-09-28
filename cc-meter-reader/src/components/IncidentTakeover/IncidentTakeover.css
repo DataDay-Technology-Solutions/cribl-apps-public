@@ -1,0 +1,554 @@
+/*
+ * src/components/IncidentTakeover/IncidentTakeover.css — the incident card at projector scale (PRD 8.1, 8.8
+ * item 8; DESIGN_BRIEF 5.2). Sizes scale with the frame: the maxima are the 1920 px stage values, the minima
+ * the 390 px phone values (the presenter re-scales them by min(width, height), Presenter.css). One elevation
+ * for the takeover (shadow.high.down), one radius (radius.xl).
+ *
+ * One card, two moods (BEAUTY F3, F8): a full-bleed header band in the severity's tint carries the glyph and
+ * the title — no stripe clipped by the rounded corners. The recovery is the SAME card, same height, in saved
+ * green: the band and the whole card take the green tint, so it reads on a projector in both themes.
+ *
+ * Placement: the host view sets --mr-takeover-inset-{left,right,bottom} (the presenter keeps the QR column
+ * free) and --mr-takeover-height (the lower half of the frame); defaults suit a plain page.
+ */
+
+/* .mr-tk-ghost: the frozen red card of the alert → recovery crossfade (IncidentTakeover.tsx, P1-B01). */
+.mr-takeover,
+.mr-tk-ghost {
+  --mr-tk-pad: clamp(16px, 2.08vw, 40px);
+  --mr-tk-band-pad: clamp(12px, 1.25vw, 24px);
+  --mr-tk-gap: clamp(12px, 1.25vw, 24px);
+  --mr-tk-title: clamp(20px, 1.875vw, 36px);
+  --mr-tk-ratio: clamp(48px, 5.42vw, 104px);
+  --mr-tk-money: clamp(20px, 1.875vw, 36px);
+  --mr-tk-commit: clamp(14px, 1.25vw, 24px);
+  /* The change's hash and person (P1-B02): the name on the alert reads at the money's scale, never smallest. */
+  --mr-tk-by: clamp(18px, 1.67vw, 32px);
+  /* The lost counter's figure (P2-W03). */
+  --mr-tk-lost: clamp(20px, 1.875vw, 36px);
+  /* The drawn drop under the figures (P2-W15). */
+  --mr-tk-watch: clamp(32px, 2.7vw, 52px);
+  --mr-tk-caught: clamp(22px, 2.29vw, 44px);
+  --mr-tk-delivery: clamp(16px, 1.56vw, 30px);
+  --mr-tk-small: clamp(12px, 1.15vw, 22px);
+  --mr-tk-glyph: clamp(24px, 1.875vw, 36px);
+
+  /* Tone: the band tint and its edge. High by default. */
+  --mr-tk-band: token('color.background.danger.default');
+  --mr-tk-band-edge: token('color.border.danger.subtle');
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--mr-card-bg, var(--mr-surface-panel));
+  border: 1px solid var(--mr-card-border, var(--mr-border));
+  border-radius: var(--mr-card-radius, token('radius.xl'));
+  box-shadow: token('shadow.high.down');
+  color: token('color.foreground.default');
+  overflow: hidden;
+}
+.mr-takeover--medium {
+  --mr-tk-band: token('color.background.warning.default');
+  --mr-tk-band-edge: token('color.border.warning.subtle');
+}
+.mr-takeover--info {
+  --mr-tk-band: token('color.background.info.default');
+  --mr-tk-band-edge: token('color.border.info.subtle');
+}
+/* Recovery: the same card in saved green — band and body both tinted, a green edge. */
+.mr-takeover--recovered {
+  --mr-tk-band: token('color.background.success.default');
+  --mr-tk-band-edge: token('color.border.success.subtle');
+  background: var(--mr-fill-saved-subtle);
+  border-color: token('color.border.success.subtle');
+}
+
+/* ── Placement ───────────────────────────────────────────────────────────── */
+.mr-takeover--overlay {
+  position: fixed;
+  z-index: 50;
+  left: var(--mr-takeover-inset-left, token('spacing.2xl'));
+  right: var(--mr-takeover-inset-right, token('spacing.2xl'));
+  bottom: var(--mr-takeover-inset-bottom, token('spacing.2xl'));
+  /* The host sets the height (the presenter: exactly the lower half), the same for the alert and the
+     recovery (BEAUTY F3). A card that cannot fit scrolls inside itself rather than climbing the stage. */
+  height: var(--mr-takeover-height, auto);
+  max-height: calc(100vh - 2 * var(--mr-takeover-inset-bottom, token('spacing.2xl')));
+  overflow-y: auto;
+}
+.mr-takeover--inline {
+  width: 100%;
+}
+/*
+ * The overlay's height is fixed, so its content is budgeted (P0-14): the title clamps to two lines, the
+ * commit is one line whose message ellipsizes (the hash and the author callout always show; the full text is
+ * on hover), and the body is the part that gives — it shrinks and clips its own bottom — so the foot with
+ * "Caught in 2:50 · Sent to Slack ✓" never leaves the card, whatever the incident's words.
+ */
+.mr-takeover--overlay .mr-tk-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+.mr-takeover--overlay .mr-tk-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+.mr-takeover--overlay .mr-tk-commit-text {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+.mr-takeover--overlay .mr-tk-commit-text > * {
+  flex: 0 0 auto;
+}
+/* On the stage the message follows the person on the same line, smaller, and ellipsizes (full text on hover), so
+   the commit costs one line of the fixed card; on a phone (the card is in the page) it wraps under the person. */
+.mr-takeover--overlay .mr-tk-commit-lines {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 0.5em;
+}
+.mr-takeover--overlay .mr-tk-commit-lines > .mr-tk-commit-text {
+  flex: 0 0 auto;
+}
+.mr-takeover--overlay .mr-tk-message {
+  flex: 0 1 auto;
+  min-width: 3em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 720px) {
+  .mr-takeover--overlay .mr-tk-commit-lines {
+    flex-wrap: wrap;
+    gap: 0.15em 0.5em;
+  }
+  .mr-takeover--overlay .mr-tk-message {
+    flex-basis: 100%;
+  }
+}
+/* The host never takes part in the page layout (the card is fixed); it only carries data-leaving. */
+.mr-takeover-host,
+.mr-tk-ghost-host {
+  display: contents;
+}
+/* The frozen red card sits exactly over the green one (same classes, same fixed box) and only fades. */
+.mr-tk-ghost {
+  pointer-events: none;
+  z-index: 51;
+}
+.mr-takeover-host .mr-takeover {
+  transition: opacity 200ms ease-in;
+}
+.mr-takeover-host[data-leaving='true'] .mr-takeover {
+  opacity: 0;
+}
+
+/* ── Head: the full-bleed severity band ──────────────────────────────────── */
+.mr-tk-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, 1vw, 20px);
+  min-width: 0;
+  padding: var(--mr-tk-band-pad) var(--mr-tk-pad);
+  background: var(--mr-tk-band);
+  border-bottom: 1px solid var(--mr-tk-band-edge);
+}
+.mr-tk-head .mr-inc-glyph svg {
+  width: var(--mr-tk-glyph);
+  height: var(--mr-tk-glyph);
+}
+.mr-tk-title {
+  flex: 1 1 auto;
+  margin: 0;
+  min-width: 0;
+  font-weight: 600;
+  font-size: var(--mr-tk-title);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.mr-tk-title--recovery {
+  color: var(--mr-color-saved);
+}
+.mr-tk-dismiss {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: token('spacing.md');
+}
+.mr-tk-hint {
+  font-size: var(--mr-tk-small);
+  color: token('color.foreground.subtle');
+  white-space: nowrap;
+}
+@media (max-width: 720px), (hover: none) {
+  .mr-tk-hint {
+    display: none;
+  }
+}
+
+/* ── Body: before → after | money, commit, cause ─────────────────────────── */
+.mr-tk-body {
+  flex: 1 0 auto;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  /* Both columns start at the top (P1-B02): the figures and "what happened" line up under the band. */
+  align-items: start;
+  gap: var(--mr-tk-gap) clamp(16px, 3.33vw, 64px);
+  min-width: 0;
+  padding: var(--mr-tk-pad) var(--mr-tk-pad) calc(var(--mr-tk-gap) / 2);
+}
+@media (max-width: 720px) {
+  .mr-tk-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.mr-tk-ratio {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+}
+.mr-tk-ratio-row {
+  display: flex;
+  align-items: baseline;
+  gap: clamp(8px, 1.25vw, 24px);
+  margin: 0;
+  font-weight: 600;
+  font-size: var(--mr-tk-ratio);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.mr-tk-arrow {
+  font-weight: 400;
+  color: token('color.foreground.subtle');
+  font-size: 0.6em;
+  align-self: center;
+}
+.mr-tk-after--high {
+  color: var(--mr-color-incident-high);
+}
+.mr-tk-after--medium {
+  color: var(--mr-color-incident-medium);
+}
+.mr-tk-after--saved {
+  color: var(--mr-color-saved);
+}
+/* D47: the words before a lone recovered figure (an incident closed before D47 kept no drop). */
+.mr-tk-recovered-to {
+  display: inline-flex;
+  align-items: baseline;
+  gap: clamp(8px, 1.25vw, 24px);
+  font-size: var(--mr-tk-small);
+  font-weight: 400;
+  color: token('color.foreground.subtle');
+  letter-spacing: normal;
+}
+.mr-tk-unit {
+  font-size: var(--mr-tk-small);
+  font-weight: 400;
+  color: token('color.foreground.subtle');
+  letter-spacing: normal;
+}
+.mr-tk-caption {
+  margin: 0;
+  font-size: var(--mr-tk-small);
+  color: token('color.foreground.subtle');
+}
+
+.mr-tk-detail {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(6px, 0.63vw, 12px);
+  min-width: 0;
+}
+.mr-tk-money,
+.mr-tk-object {
+  margin: 0;
+  font-size: var(--mr-tk-money);
+  font-weight: 600;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  text-wrap: balance;
+}
+/* A " · "-joined money line (MoneyLine): whole parts; each separator hangs in the gap before its part, so a
+   wrap never starts or ends a line on "·" — a wrapped part's separator falls left of the line and is clipped. */
+.mr-tk-money {
+  --mr-tk-sep: 0.9em;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--mr-tk-sep);
+  overflow: hidden;
+}
+.mr-tk-part {
+  white-space: nowrap;
+}
+.mr-tk-sep {
+  display: inline-block;
+  width: var(--mr-tk-sep);
+  margin-inline-start: calc(-1 * var(--mr-tk-sep));
+  text-align: center;
+  white-space: pre;
+  color: token('color.foreground.subtle');
+  font-weight: 400;
+}
+.mr-takeover--recovery .mr-tk-money {
+  font-size: var(--mr-tk-commit);
+  font-weight: 400;
+}
+.mr-tk-commit {
+  display: flex;
+  align-items: flex-start;
+  gap: clamp(8px, 0.83vw, 16px);
+  margin: 0;
+  font-size: var(--mr-tk-by);
+  line-height: 1.25;
+  min-width: 0;
+}
+/* The git glyph sits on the first line (the hash and the person), never between two lines (P1-B02). */
+.mr-tk-commit > svg {
+  flex: 0 0 auto;
+  width: 0.75em;
+  height: 0.75em;
+  margin-top: 0.25em;
+  color: token('color.foreground.subtle');
+}
+.mr-tk-commit-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+  min-width: 0;
+}
+.mr-tk-commit-text {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mr-tk-message {
+  margin: 0;
+  font-size: var(--mr-tk-commit);
+  line-height: 1.35;
+  color: token('color.foreground.subtle');
+  overflow-wrap: anywhere;
+}
+.mr-tk-hash {
+  font-family: token('core.fontFamily.mono');
+  font-size: 0.8em;
+  padding: 0 0.3em;
+  border-radius: token('radius.lg');
+  background: token('color.background.neutral.subtle');
+  border: 1px solid var(--mr-border-subtle);
+  white-space: nowrap;
+}
+.mr-tk-author {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.mr-tk-cause {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: clamp(6px, 0.63vw, 12px) clamp(8px, 0.83vw, 16px);
+  margin: 0;
+  font-size: var(--mr-tk-small);
+}
+.mr-tk-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15em 0.7em;
+  border-radius: token('radius.full');
+  border: 1px solid var(--mr-border-subtle);
+  background: token('color.background.neutral.subtle');
+  color: token('color.foreground.subtle');
+  font-weight: 600;
+  white-space: nowrap;
+}
+.mr-tk-chip--nearby,
+.mr-tk-chip--table {
+  background: token('color.background.warning.subtle');
+  border-color: token('color.border.warning.subtle');
+  color: token('color.foreground.warning.strong');
+}
+.mr-tk-when {
+  color: token('color.foreground.subtle');
+  font-variant-numeric: tabular-nums;
+}
+.mr-tk-caveat {
+  margin: 0;
+  font-size: var(--mr-tk-small);
+  color: token('color.foreground.subtle');
+}
+
+/* ── Foot: the clock and the delivery ────────────────────────────────────── */
+/* A fixed grid (P1-B02): clock | delivery | note. The clock and the note take their own widths and the delivery
+   the rest, one line that ellipsizes (hover shows it), so a delivery arriving, retrying or failing never changes
+   the foot's height or pushes anything out of the card. */
+.mr-tk-foot {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) minmax(0, max-content);
+  align-items: center;
+  gap: clamp(8px, 1vw, 16px) clamp(16px, 2.5vw, 48px);
+  margin: 0 var(--mr-tk-pad);
+  padding: var(--mr-tk-gap) 0 var(--mr-tk-pad);
+  border-top: 1px solid var(--mr-border-subtle);
+  overflow: hidden;
+}
+.mr-tk-foot > .mr-tk-caught {
+  grid-column: 1;
+}
+.mr-tk-foot > .mr-tk-delivery,
+.mr-tk-foot > .mr-tk-slot {
+  grid-column: 2;
+}
+.mr-tk-slot {
+  margin: 0;
+  font-size: var(--mr-tk-delivery);
+}
+.mr-tk-foot > .mr-tk-note {
+  grid-column: 3;
+}
+.mr-takeover--recovered .mr-tk-foot {
+  border-top-color: var(--mr-tk-band-edge);
+}
+.mr-tk-caught {
+  display: inline-flex;
+  align-items: center;
+  gap: clamp(8px, 0.83vw, 16px);
+  margin: 0;
+  font-size: var(--mr-tk-caught);
+  font-weight: 600;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.mr-tk-caught > svg {
+  width: 0.8em;
+  height: 0.8em;
+  color: token('color.foreground.subtle');
+}
+.mr-tk-clock {
+  display: inline-block;
+  min-width: 4ch;
+  font-variant-numeric: tabular-nums;
+}
+.mr-tk-delivery {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--mr-tk-delivery);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Keyed by its words: a delivery landing fades the new line in (200 ms). */
+  animation: mr-tk-line-in 200ms ease-out;
+}
+@keyframes mr-tk-line-in {
+  from {
+    opacity: 0;
+  }
+}
+.mr-tk-delivery--retrying {
+  color: token('color.foreground.warning.default');
+}
+.mr-tk-delivery--failed,
+.mr-tk-delivery--blocked {
+  color: token('color.foreground.danger.default');
+}
+.mr-tk-note {
+  justify-self: end;
+  max-width: 26em;
+  margin: 0;
+  font-size: var(--mr-tk-small);
+  line-height: 1.3;
+  text-align: right;
+  color: token('color.foreground.subtle');
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+/* A phone: one column — the clock, then a two-line delivery slot (reserved, so the delivery landing never
+   reflows the card), then the note. */
+@media (max-width: 720px) {
+  .mr-tk-foot {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+  }
+  .mr-tk-foot > .mr-tk-caught,
+  .mr-tk-foot > .mr-tk-delivery,
+  .mr-tk-foot > .mr-tk-slot,
+  .mr-tk-foot > .mr-tk-note {
+    grid-column: 1;
+  }
+  .mr-tk-delivery,
+  .mr-tk-slot {
+    min-height: calc(2 * 1.2em);
+    white-space: normal;
+  }
+  .mr-tk-note {
+    justify-self: start;
+    max-width: none;
+    text-align: left;
+  }
+}
+/*
+ * The lost counter (P2-W03): under the ratio, "Lost since the deploy" in the caption's grey and the running total in
+ * the incident red, its cents at the figure's own size (they are what moves). On the green card the same slot holds
+ * the frozen total in the default ink: red is only ever the live counter.
+ */
+.mr-tk-lost {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2em 0.5em;
+  margin: 0;
+  font-size: var(--mr-tk-small);
+  line-height: 1.3;
+  color: token('color.foreground.subtle');
+}
+.mr-tk-lost-figure {
+  font-size: var(--mr-tk-lost);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--mr-color-incident-high);
+}
+.mr-tk-lost-figure .mr-meter {
+  color: inherit;
+}
+.mr-tk-lost-figure .mr-meter-cents {
+  font-size: 1em;
+  opacity: 1;
+  margin-left: 0;
+}
+.mr-tk-lost--frozen .mr-tk-lost-figure {
+  color: token('color.foreground.default');
+}
+
+/* P0-14: what TakeoverCard's fit step drops, whole, when the fixed-height overlay's body cannot fit. */
+.mr-tk-body[data-fit='no-caveat'] .mr-tk-caveat,
+.mr-tk-body[data-fit='no-cause'] .mr-tk-cause,
+.mr-tk-body[data-lost='none'] .mr-tk-lost,
+.mr-tk-body[data-watch='none'] .mr-rw,
+.mr-tk-foot[data-note='none'] .mr-tk-note {
+  display: none;
+}
+/* The drawn drop spans the figures' column; on a phone (one column) it takes the card's width. */
+.mr-tk-ratio .mr-rw--takeover {
+  margin-top: 0;
+}
+@media (max-width: 720px) {
+  .mr-tk-ratio .mr-rw--takeover {
+    height: 64px;
+  }
+}

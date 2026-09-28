@@ -1,0 +1,676 @@
+/*
+ * src/components/PriceTable/PriceTable.css — the Prices table. Tokens only.
+ * Wide container: a four-column table with a sticky-free header and hairline rows (1.0 shows no committed
+ * rate column, P0-19).
+ * Narrow container (< 760 px, e.g. a phone): each destination becomes a small card with visible labels.
+ */
+
+.mr-pt {
+  container-type: inline-size;
+  container-name: mr-pt;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mr-pt-head,
+.mr-pt-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1.5fr) minmax(200px, 1.3fr) minmax(136px, 0.8fr) minmax(176px, 1.25fr);
+  column-gap: token('spacing.lg');
+  align-items: start;
+  padding-inline: token('spacing.md');
+}
+
+.mr-pt-head {
+  padding-block: token('spacing.sm');
+  border-bottom: 1px solid token('color.border.neutral.default');
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+}
+
+.mr-pt-row {
+  position: relative;
+  padding-block: token('spacing.md');
+  border-bottom: 1px solid token('color.border.neutral.subtle');
+  transition: background-color var(--mr-duration-fast) var(--mr-easing);
+}
+.mr-pt-row:last-child {
+  border-bottom: none;
+}
+.mr-pt-row:hover {
+  /* Half the neutral tint (P1-G03): the full one left the outlined 'unpriced' pill at 4.41:1. */
+  background: color-mix(in srgb, token('color.background.neutral.subtle') 50%, transparent);
+}
+/* A changed row carries one quiet marker at its leading edge. */
+.mr-pt-row[data-dirty='true']::before {
+  content: '';
+  position: absolute;
+  inset-block: token('spacing.md');
+  inset-inline-start: 0;
+  width: 2px;
+  border-radius: token('radius.full');
+  background: token('color.background.accent.solid.default');
+}
+
+.mr-pt-cell {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+}
+
+/* Destination: name + badge on a control-height line, then id · type · group. */
+.mr-pt-name-line {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.md');
+  min-height: token('dimension.component.md');
+  min-width: 0;
+}
+.mr-pt-name {
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.mr-pt-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+}
+.mr-pt-meta {
+  font: token('typography.body.sm.normal');
+  font-family: token('core.fontFamily.mono');
+  color: token('color.foreground.subtle');
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mr-pt-affix {
+  color: token('color.foreground.subtle');
+  font-variant-numeric: tabular-nums;
+}
+
+/* Capra's SelectField keeps an (empty) label row above its trigger; lift it so every control in a row
+   shares one top edge with the text fields. */
+.mr-pt-preset,
+.mr-pt-cf {
+  margin-top: token('spacing.sm/negative');
+}
+
+/* The preset picker and its ⓘ share a line; the button sits on the trigger's baseline (the SelectField
+   keeps an empty label row above its trigger). */
+.mr-pt-preset-line {
+  display: flex;
+  align-items: flex-end;
+  gap: token('spacing.xs');
+  min-width: 0;
+}
+.mr-pt-preset-line > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.mr-pt-preset-line > :last-child {
+  flex: 0 0 auto;
+  margin-bottom: token('spacing.xs');
+}
+/* Stands in for the ⓘ on a Custom price row (nothing to explain), so every picker keeps one width. */
+.mr-pt-info-spacer {
+  width: token('dimension.component.md');
+  height: token('dimension.component.md');
+}
+
+/* The preset list (P0-20; it renders in a portal, outside .mr-pt). Each option is the vendor's name over
+   its typical price and range; the popover sizes to these options instead of the 200 px trigger, so every
+   name takes one line (the longest, CrowdStrike's, is 296 px) and the list is at least 320 px wide, while
+   staying inside a 390 px screen (100vw less the option's inset and the popover's padding). */
+.mr-pt-opt {
+  display: flex;
+  flex-direction: column;
+  width: min(21rem, calc(100vw - 5.5rem));
+  min-width: 0;
+}
+/* A list about five options tall: short enough that a picker on the Prices table's last row at 1440 x 900
+   still opens downward instead of flipping up over the card's description (the platform list is 320 px,
+   which made the popover taller than the room below). Selected by the list's role and our own option, as
+   src/demo/demo.css does for dialogs; nothing here reaches into the design system's classes. */
+[role='listbox']:has(.mr-pt-opt) {
+  max-height: 17.5rem;
+}
+/* On a phone the first destination's picker sits two-thirds down the screen: a list a quarter of the
+   screen tall still opens downward there, instead of flipping up over the card's title and description. */
+@media (max-width: 760px) {
+  [role='listbox']:has(.mr-pt-opt) {
+    max-height: clamp(10rem, 25vh, 17.5rem);
+  }
+}
+.mr-pt-opt-name {
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.default');
+}
+.mr-pt-opt-caption {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  font-variant-numeric: tabular-nums;
+}
+
+/* Under the picker, in the meta line's face: the preset's typical price and range at a glance. */
+.mr-pt-preset-note {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* The ⓘ popover: title, range and confidence, the not-a-quote line (always in view), then the basis and
+   sources in their own scroll area. */
+.mr-pt-info {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+  width: min(440px, calc(100vw - 48px));
+  color: token('color.foreground.default');
+}
+.mr-pt-info p {
+  margin: 0;
+}
+.mr-pt-info-title {
+  font: token('typography.body.md.semibold');
+  font-variant-numeric: tabular-nums;
+}
+.mr-pt-info-range {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  font-variant-numeric: tabular-nums;
+}
+.mr-pt-info-disclaimer {
+  font: token('typography.body.sm.semibold');
+  padding-bottom: token('spacing.sm');
+  border-bottom: 1px solid token('color.border.neutral.subtle');
+}
+.mr-pt-info-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+  max-height: min(40vh, 320px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-inline-end: token('spacing.xs');
+  border-radius: token('radius.md');
+}
+.mr-pt-info-scroll:focus-visible {
+  outline: 2px solid token('color.border.focus');
+  outline-offset: 2px;
+}
+.mr-pt-info-basis {
+  font: token('typography.body.sm.normal');
+}
+.mr-pt-info-heading {
+  font: token('typography.body.sm.semibold');
+}
+.mr-pt-info-sources {
+  margin: 0;
+  padding-inline-start: token('spacing.lg');
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  font: token('typography.body.sm.normal');
+}
+.mr-pt-info-sources a {
+  color: token('color.foreground.link');
+  overflow-wrap: anywhere;
+}
+.mr-pt-info-quote {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: token('color.foreground.subtle');
+  overflow-wrap: anywhere;
+}
+
+/* Field labels: only in the card layout (the header labels the columns on wide screens). Styled like
+   Capra's field Label so a card reads like any other form. */
+.mr-pt-cell-label {
+  display: none;
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+
+/* ── Narrow: one card per destination ───────────────────────────────────── */
+@container mr-pt (max-width: 760px) {
+  .mr-pt-head {
+    display: none;
+  }
+  .mr-pt-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      'dest dest'
+      'preset preset'
+      'price price'
+      'cf cf';
+    row-gap: token('spacing.md');
+    column-gap: token('spacing.md');
+    padding: token('spacing.lg') token('spacing.md');
+  }
+  .mr-pt-row:hover {
+    background: none;
+  }
+  .mr-pt-row[data-dirty='true']::before {
+    inset-block: token('spacing.lg');
+  }
+  .mr-pt-dest {
+    grid-area: dest;
+  }
+  .mr-pt-preset {
+    grid-area: preset;
+  }
+  .mr-pt-price {
+    grid-area: price;
+  }
+  .mr-pt-cf {
+    grid-area: cf;
+  }
+  .mr-pt-name-line {
+    min-height: 0;
+  }
+  .mr-pt-cell {
+    gap: token('spacing.sm');
+  }
+  .mr-pt-cell-label {
+    display: block;
+  }
+  .mr-pt-preset,
+  .mr-pt-cf {
+    margin-top: 0;
+  }
+  .mr-pt-preset .mr-pt-cell-label,
+  .mr-pt-cf .mr-pt-cell-label {
+    margin-bottom: token('spacing.sm/negative');
+  }
+}
+
+/* ── P1-G03 ───────────────────────────────────────────────────────────── */
+/* The ⓘ is a 32 px button with a 44 px hit area: an invisible ring around it takes the pointer. */
+.mr-pt-info-hit {
+  display: inline-flex;
+  position: relative;
+}
+.mr-pt-info-hit button {
+  position: relative;
+}
+.mr-pt-info-hit button::after {
+  content: '';
+  position: absolute;
+  inset: calc((44px - token('dimension.component.md')) / -2);
+}
+
+/* ── P2-W09: the live receipt ────────────────────────────────────────────── */
+/* A row's line runs under its fields, from the preset column to the edge: the receipt's face, one dot leader. */
+.mr-pt-receipt {
+  grid-column: 2 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: token('spacing.sm');
+  min-width: 0;
+  margin-top: token('spacing.sm');
+  font: token('typography.body.sm.normal');
+  font-family: token('core.fontFamily.mono');
+  font-variant-numeric: tabular-nums;
+  color: token('color.foreground.subtle');
+}
+.mr-pt-receipt-what {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.mr-pt-receipt-leader {
+  flex: 1 1 auto;
+  min-width: token('spacing.lg');
+  border-bottom: 1px dotted token('color.border.neutral.strong');
+  transform: translateY(-4px);
+}
+.mr-pt-receipt-amount {
+  white-space: nowrap;
+  color: token('color.foreground.default');
+}
+.mr-pt-receipt-was {
+  white-space: nowrap;
+}
+/* The unit after a figure: secondary text, never the figure's colour or weight (DESIGN_BRIEF §3). */
+.mr-pt-receipt-unit {
+  color: token('color.foreground.subtle');
+  font-weight: 400;
+  -webkit-text-stroke: 0;
+}
+@container mr-pt (max-width: 760px) {
+  .mr-pt-receipt {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+    margin-top: 0;
+  }
+  .mr-pt-receipt-what {
+    overflow: visible;
+  }
+  /* The old figure takes its own line, right-aligned under the new one. */
+  .mr-pt-receipt-was {
+    flex-basis: 100%;
+    text-align: end;
+  }
+}
+
+/* The card's receipt at the prices on screen: three lines, the saved one in the money green. */
+.mr-pt-totals {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  margin-top: token('spacing.lg');
+  margin-inline-start: auto;
+  width: min(100%, 460px);
+  padding: token('spacing.md') token('spacing.lg');
+  border-radius: token('radius.lg');
+  background: token('color.background.neutral.subtle');
+  font-family: token('core.fontFamily.mono');
+  font-variant-numeric: tabular-nums;
+}
+.mr-pt-totals-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: token('spacing.xs') token('spacing.md');
+  margin-bottom: token('spacing.xs');
+  font-family: token('core.fontFamily.sans');
+}
+.mr-pt-totals-title {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+}
+.mr-pt-totals-basis {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-pt-totals-line {
+  display: flex;
+  align-items: baseline;
+  gap: token('spacing.sm');
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: token('color.foreground.default');
+}
+.mr-pt-totals-label,
+.mr-pt-totals-amount {
+  white-space: nowrap;
+}
+.mr-pt-totals-line[data-tone='saved'] {
+  margin-top: token('spacing.xs');
+  padding-top: token('spacing.xs');
+  border-top: 1px solid token('color.border.neutral.default');
+}
+.mr-pt-totals-line[data-tone='saved'] .mr-pt-totals-amount {
+  color: var(--mr-color-saved);
+  -webkit-text-stroke: 0.04em currentColor;
+}
+
+/* Above the save bar while dirty: what Save will write, receipt-style. */
+.mr-pt-pending {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  padding-bottom: token('spacing.sm');
+  margin-bottom: token('spacing.sm');
+  border-bottom: 1px dashed token('color.border.neutral.subtle');
+}
+.mr-pt-pending-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: token('spacing.md');
+  margin: 0;
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+}
+.mr-pt-kbd {
+  font: token('typography.body.sm.normal');
+  font-family: token('core.fontFamily.mono');
+  color: token('color.foreground.subtle');
+}
+.mr-pt-pending-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font: token('typography.body.sm.normal');
+  font-family: token('core.fontFamily.mono');
+  font-variant-numeric: tabular-nums;
+  color: token('color.foreground.default');
+}
+.mr-pt-pending-line {
+  display: flex;
+  align-items: baseline;
+  gap: token('spacing.sm');
+  min-width: 0;
+}
+.mr-pt-pending-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.mr-pt-pending-diff {
+  white-space: nowrap;
+}
+.mr-pt-pending-before {
+  color: token('color.foreground.subtle');
+}
+.mr-pt-pending-more {
+  color: token('color.foreground.subtle');
+}
+/* A phone keeps the sticky bar short: two lines, then the count of the rest. */
+.mr-pt-pending-more[data-width='phone'] {
+  display: none;
+}
+@media (max-width: 640px) {
+  .mr-pt-pending-line:nth-child(n + 3),
+  .mr-pt-pending-more[data-width='wide'] {
+    display: none;
+  }
+  .mr-pt-pending-more[data-width='phone'] {
+    display: list-item;
+  }
+}
+/* No keyboard shortcut to mention on a touch screen. */
+@media (hover: none) and (pointer: coarse) {
+  .mr-pt-kbd {
+    display: none;
+  }
+}
+
+/* ── P2-W24: the vendor-tile preset picker ───────────────────────────────── */
+/* The trigger fills the column like the field it replaced, its label left-aligned. */
+.mr-pp-trigger {
+  display: flex;
+  min-width: 0;
+}
+.mr-pp-trigger > * {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.mr-pp-trigger button {
+  justify-content: space-between;
+  min-width: 0;
+}
+.mr-pp-trigger button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The picker: a search field over a scrolling grid of tiles, sized to the tiles, never the trigger. */
+.mr-pp {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  width: min(30rem, calc(100vw - 3rem));
+}
+.mr-pp-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  max-height: min(15rem, 40vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px;
+}
+/* On a phone the first destination's picker sits two-thirds down the screen: a short grid (search is the fast
+   path there) still opens downward instead of flipping up over the card's title and description (P0-20). */
+@media (max-width: 760px) {
+  .mr-pp-scroll {
+    max-height: clamp(8rem, 22vh, 15rem);
+  }
+}
+.mr-pp-heading {
+  margin: 0 0 token('spacing.xs');
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+}
+.mr-pp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: token('spacing.xs');
+}
+.mr-pp-tile {
+  display: flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  min-width: 0;
+  padding: token('spacing.sm');
+  border: 1px solid token('color.border.neutral.subtle');
+  border-radius: token('radius.md');
+  background: var(--mr-surface-panel);
+  cursor: pointer;
+  transition: border-color var(--mr-duration-fast) var(--mr-easing), background-color var(--mr-duration-fast) var(--mr-easing);
+}
+.mr-pp-tile:hover {
+  border-color: token('color.border.neutral.strong');
+}
+.mr-pp-tile:focus-visible {
+  outline: 2px solid token('color.border.focus');
+  outline-offset: 1px;
+}
+.mr-pp-tile[aria-selected='true'] {
+  border-color: token('color.border.accent.default');
+  background: token('color.background.accent.subtle');
+}
+/* The monogram wears its vendor's colour from the destination ramp, as a tint with the text on top. */
+.mr-pp-mono {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: token('radius.md');
+  font: token('typography.body.sm.semibold');
+  font-family: token('core.fontFamily.mono');
+  letter-spacing: 0.02em;
+  color: token('color.foreground.default');
+  background: color-mix(in srgb, var(--mr-pp-tone, token('color.neutral.9')) 22%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mr-pp-tone, token('color.neutral.9')) 55%, transparent);
+}
+.mr-pp-tile[data-tone='1'] { --mr-pp-tone: var(--mr-dest-1); }
+.mr-pp-tile[data-tone='2'] { --mr-pp-tone: var(--mr-dest-2); }
+.mr-pp-tile[data-tone='3'] { --mr-pp-tone: var(--mr-dest-3); }
+.mr-pp-tile[data-tone='4'] { --mr-pp-tone: var(--mr-dest-4); }
+.mr-pp-tile[data-tone='5'] { --mr-pp-tone: var(--mr-dest-5); }
+.mr-pp-tile[data-tone='6'] { --mr-pp-tone: var(--mr-dest-6); }
+.mr-pp-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.mr-pp-name {
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.default');
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mr-pp-caption {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.mr-pp-empty {
+  margin: 0;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+
+/* ── P2-W24: price history ───────────────────────────────────────────────── */
+.mr-pt-history-toggle {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.link');
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.mr-pt-history-toggle:focus-visible {
+  outline: 2px solid token('color.border.focus');
+  outline-offset: 2px;
+  border-radius: token('radius.md');
+}
+.mr-pt-history {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: token('spacing.sm') 0 0;
+  padding: token('spacing.sm') token('spacing.md');
+  list-style: none;
+  border-radius: token('radius.md');
+  background: token('color.background.neutral.subtle');
+  font: token('typography.body.sm.normal');
+  font-family: token('core.fontFamily.mono');
+  font-variant-numeric: tabular-nums;
+  color: token('color.foreground.default');
+}
+.mr-pt-history-line {
+  display: flex;
+  align-items: baseline;
+  gap: token('spacing.sm');
+  min-width: 0;
+}
+.mr-pt-history-when {
+  white-space: nowrap;
+  color: token('color.foreground.subtle');
+}
+.mr-pt-history-what {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+/* On a phone each change takes two lines: when, then what and who, never cut off. */
+@container mr-pt (max-width: 760px) {
+  .mr-pt-history-line {
+    flex-direction: column;
+    gap: 0;
+    padding-block: 2px;
+  }
+  .mr-pt-history-line .mr-pt-receipt-leader {
+    display: none;
+  }
+  .mr-pt-history-what {
+    white-space: normal;
+  }
+}

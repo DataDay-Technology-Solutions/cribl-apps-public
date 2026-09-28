@@ -1,0 +1,31 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/m/default/routes"
+  },
+  "status": 200,
+  "capturedAt": "2026-09-26T04:40:00.000Z",
+  "source": "live",
+  "body": {
+    "items": [
+      {
+        "id": "default",
+        "routes": [
+          {
+            "id": "default",
+            "name": "default",
+            "final": true,
+            "disabled": false,
+            "pipeline": "main",
+            "description": "",
+            "enableOutputExpression": false,
+            "filter": "true",
+            "clones": [],
+            "output": "default"
+          }
+        ]
+      }
+    ],
+    "count": 1
+  }
+}

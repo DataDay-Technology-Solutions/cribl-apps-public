@@ -1,0 +1,100 @@
+/* src/components/Heatmap/Heatmap.css — the hour-of-week savings map: one hue (the money green), opacity for amount. */
+
+.mr-heat {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+  min-width: 0;
+}
+.mr-heat-svg {
+  display: block;
+  width: 100%;
+  max-width: 560px;
+  height: auto;
+  overflow: visible;
+  font-family: token('core.fontFamily.sans');
+  font-size: 10px;
+  touch-action: pan-y;
+}
+.mr-heat-svg:focus-visible {
+  outline: token('border.focus');
+  outline-offset: 4px;
+  border-radius: token('radius.lg');
+}
+.mr-heat-weekend {
+  fill: token('color.background.neutral.subtle');
+}
+.mr-heat-day,
+.mr-heat-hour {
+  fill: var(--mr-chart-axis);
+}
+.mr-heat-day[data-weekend='true'] {
+  font-weight: 600;
+}
+.mr-heat-cell {
+  fill: var(--mr-fill-saved);
+}
+.mr-heat-cell--empty {
+  fill: none;
+  stroke: var(--mr-border-subtle);
+  stroke-width: 1;
+}
+.mr-heat-rank {
+  font-size: 10px;
+  font-weight: 700;
+  fill: token('color.foreground.default');
+  pointer-events: none;
+}
+.mr-heat-rank[data-dark='true'] {
+  fill: var(--mr-card-bg);
+}
+.mr-heat-focus {
+  fill: none;
+  stroke: token('color.foreground.default');
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+.mr-heat-readout {
+  min-height: 1lh;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  font-variant-numeric: tabular-nums;
+}
+.mr-heat-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: token('spacing.sm') token('spacing.lg');
+}
+.mr-heat-top {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+  font-variant-numeric: tabular-nums;
+}
+.mr-heat-scale {
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.sm');
+  font: token('typography.body.sm.normal');
+  font-size: 12px;
+  color: token('color.foreground.subtle');
+}
+.mr-heat-scale-ramp {
+  width: 64px;
+  height: 8px;
+  border-radius: token('radius.full');
+  background: linear-gradient(90deg, color-mix(in srgb, var(--mr-fill-saved) 10%, transparent), var(--mr-fill-saved));
+}
+@media (forced-colors: active) {
+  .mr-heat-cell,
+  .mr-heat-scale-ramp {
+    forced-color-adjust: none;
+  }
+}

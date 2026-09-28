@@ -1,0 +1,312 @@
+/* src/views/Receipt/Compare.css — "Compare with…" on the Receipt hero (P2-W13, CompareStrip.tsx).
+ *
+ * Scoped to a hero that carries `data-compare`: the second figure takes the card's right column beside the meter
+ * (the half the popover already drops into, empty otherwise), under the actions; at ≤ 900 px — where the hero is
+ * one column (Receipt.css) — it follows the range's caption. The stacked bars take the bar's place. Colours are
+ * the money tokens only: saved green for more saved, the incident red for less, neutral for no change.
+ */
+
+.mr-hero[data-compare] {
+  /* The figure spans the meter's rows; a flexible row under the caption takes any height it adds, so the meter,
+     its words and its caption stay together instead of spreading to match it. */
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    'id actions'
+    'number compare'
+    'words compare'
+    'caption compare'
+    '. compare'
+    'bar bar'
+    'how how';
+}
+
+/* The comparison takes the right column, so the other periods' list (P1-H01's aside) steps aside while it shows:
+   the compare grid has no room for it, and auto-placed it fell under "How this number is made" (review W2). */
+.mr-hero[data-compare] .mr-hero-aside {
+  display: none;
+}
+
+.mr-cmp {
+  grid-area: compare;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+  width: 22rem;
+  max-width: 100%;
+  justify-self: end;
+  margin-top: token('spacing.xl');
+  padding-left: token('spacing.xl');
+  border-left: 1px solid var(--mr-border-subtle);
+}
+.mr-cmp-eyebrow {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+  text-wrap: balance;
+}
+.mr-cmp-words {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  text-wrap: pretty;
+}
+/* A → B: the baseline in the paid voice, the range in the saved green; the same tabular figures. */
+.mr-cmp-fromto {
+  margin-top: token('spacing.sm');
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: token('spacing.sm');
+  font: 600 clamp(22px, calc(14px + 1.2vw), 30px) / 1.2 token('core.fontFamily.sans');
+  letter-spacing: -0.01em;
+  color: token('color.foreground.subtle');
+  font-variant-numeric: tabular-nums;
+}
+.mr-cmp-a {
+  color: token('color.foreground.default');
+}
+.mr-cmp-b {
+  color: var(--mr-color-saved);
+}
+.mr-cmp-unit {
+  font: token('typography.body.md.normal');
+  letter-spacing: normal;
+  color: token('color.foreground.subtle');
+}
+/* The signed change: a quiet chip, green for more saved, red for less, neutral for none. */
+.mr-cmp-delta {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: token('spacing.xs');
+  margin-top: token('spacing.xs');
+  padding: 2px token('spacing.sm');
+  border-radius: token('radius.full');
+  font: token('typography.body.md.semibold');
+  font-variant-numeric: tabular-nums;
+  /* No change: default text on the neutral tint (subtle on subtle would miss 4.5:1). */
+  color: token('color.foreground.default');
+  background: token('color.background.neutral.subtle');
+}
+.mr-cmp-delta[data-direction='up'] {
+  color: var(--mr-color-saved);
+  background: var(--mr-fill-saved-subtle);
+}
+.mr-cmp-delta[data-direction='down'] {
+  color: var(--mr-color-incident-high);
+  background: var(--mr-fill-incident-high-subtle);
+}
+.mr-cmp-share {
+  margin-top: token('spacing.xs');
+  text-wrap: pretty;
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+  font-variant-numeric: tabular-nums;
+}
+.mr-cmp-caret {
+  display: inline-flex;
+}
+.mr-cmp-notes,
+.mr-cmp-notice {
+  margin-top: token('spacing.xs');
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  text-wrap: pretty;
+}
+.mr-cmp-notice {
+  color: token('color.foreground.default');
+}
+.mr-cmp-error {
+  margin-top: token('spacing.xs');
+}
+.mr-cmp-ghost {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+  margin-top: token('spacing.sm');
+}
+.mr-cmp-ghost-fig {
+  width: 12rem;
+  height: 30px;
+}
+.mr-cmp-ghost-chip {
+  width: 7rem;
+  height: 24px;
+  border-radius: token('radius.full');
+}
+
+/* ── Two stacked bars on one scale ─────────────────────────────────────── */
+.mr-cmp-bars {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.lg');
+  min-width: 0;
+}
+.mr-cmp-row {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  min-width: 0;
+}
+.mr-cmp-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: token('spacing.xs') token('spacing.lg');
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+.mr-cmp-row[data-which='baseline'] .mr-cmp-row-head {
+  color: token('color.foreground.subtle');
+}
+.mr-cmp-row-saved {
+  color: var(--mr-color-saved);
+}
+.mr-cmp-lane {
+  min-width: 0;
+}
+.mr-cmp-track {
+  display: flex;
+  gap: token('spacing.xs');
+  height: token('spacing.lg');
+  min-width: token('spacing.lg');
+  border-radius: token('radius.full');
+  overflow: hidden;
+  background: var(--mr-fill-whp);
+  transition: width var(--mr-duration-ribbon) var(--mr-easing);
+}
+.mr-cmp-row[data-which='baseline'] .mr-cmp-track {
+  height: token('spacing.md');
+}
+.mr-cmp-paid,
+.mr-cmp-saved {
+  flex-basis: 0;
+  min-width: 0;
+}
+.mr-cmp-paid {
+  background: var(--mr-fill-paid);
+}
+.mr-cmp-saved {
+  background: var(--mr-fill-saved);
+}
+/* The earlier window reads as the earlier one: the same colours, quieter. */
+.mr-cmp-row[data-which='baseline'] .mr-cmp-paid,
+.mr-cmp-row[data-which='baseline'] .mr-cmp-saved {
+  opacity: 0.55;
+}
+.mr-cmp-row[data-empty='true'] .mr-cmp-paid,
+.mr-cmp-row[data-empty='true'] .mr-cmp-saved {
+  display: none;
+}
+/* A sentence that wraps on a phone (never clipped at the card's edge); the figures keep tabular digits. */
+.mr-cmp-row-line {
+  font: token('typography.body.sm.normal');
+  font-variant-numeric: tabular-nums;
+  color: token('color.foreground.subtle');
+  text-wrap: pretty;
+}
+
+/* ── What moved: receipt lines with dot leaders and a change column ──── */
+.mr-cmp-movers {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.xs');
+  margin-top: token('spacing.md');
+  max-width: 40rem;
+}
+.mr-cmp-movers-title {
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.subtle');
+}
+.mr-cmp-movers-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font: token('typography.code');
+  line-height: 1.6;
+  color: token('color.foreground.default');
+}
+.mr-cmp-mover {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5ch;
+  min-width: 0;
+}
+.mr-cmp-mover-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Dot leaders drawn like the receipt lists' (ReceiptList.css): round dots on the baseline, a whole number of them. */
+.mr-cmp-mover-dots {
+  flex: 1 1 3ch;
+  min-width: 3ch;
+  align-self: baseline;
+  height: 0.2em;
+  color: token('color.foreground.subtle');
+  background: radial-gradient(circle closest-side, currentColor 0 70%, transparent 85%) 0 0 / 0.8em 100% round no-repeat;
+}
+.mr-cmp-mover-amount,
+.mr-cmp-mover-delta {
+  flex: 0 0 auto;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.mr-cmp-mover-delta {
+  min-width: 9ch;
+  color: token('color.foreground.subtle');
+}
+.mr-cmp-mover[data-direction='up'] .mr-cmp-mover-delta {
+  color: var(--mr-color-saved);
+}
+.mr-cmp-mover[data-direction='down'] .mr-cmp-mover-delta {
+  color: var(--mr-color-incident-high);
+}
+
+/* ── Narrow: one column (Receipt.css switches the hero at 900 px) ─────── */
+@media (max-width: 900px) {
+  .mr-hero[data-compare] {
+    grid-template-rows: none;
+    grid-template-areas:
+      'id'
+      'number'
+      'words'
+      'caption'
+      'compare'
+      'bar'
+      'actions'
+      'how';
+  }
+  .mr-cmp {
+    width: auto;
+    justify-self: stretch;
+    margin-top: token('spacing.lg');
+    padding: token('spacing.md') 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--mr-border-subtle);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mr-cmp-track {
+    transition: none;
+  }
+}
+
+/* The picker's "Compare with" select, between the window and the preview. */
+.mr-range-compare {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Show the math (MathDrawer's "Compared with" section): a change that saved less reads in the incident red. */
+.mr-math-values strong.mr-math-down {
+  color: var(--mr-color-incident-high);
+}

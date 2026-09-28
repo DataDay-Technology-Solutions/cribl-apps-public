@@ -1,0 +1,70 @@
+/*
+ * src/components/RatioWatch/RatioWatch.css — the drawn drop on the incident cards (P2-W15). Scoped to .mr-rw--card so
+ * the Story's own stage-sized chart rules (Story.css, the same part classes) never reach it, and it never reaches
+ * theirs. The diamond is the ink colour (no accent hue on the stage); the loss is the incident's subtle fill.
+ */
+.mr-rw.mr-rw--card {
+  position: relative;
+  width: 100%;
+  height: 120px;
+  min-width: 0;
+}
+.mr-rw.mr-rw--takeover {
+  height: var(--mr-tk-watch, 60px);
+}
+.mr-rw--card .mr-rw-svg {
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: visible;
+  font-family: token('core.fontFamily.sans');
+}
+.mr-rw--card .mr-rw-axis {
+  stroke: var(--mr-chart-grid);
+  stroke-width: 1;
+}
+.mr-rw--card .mr-rw-baseline {
+  stroke: var(--mr-fill-saved);
+  stroke-opacity: 0.6;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 5;
+}
+.mr-rw--card .mr-rw-line {
+  fill: none;
+  stroke-width: 2.5px;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.mr-rw--takeover .mr-rw-line {
+  stroke-width: var(--mr-tk-watch-stroke, 3px);
+}
+.mr-rw--card .mr-rw-line--before {
+  stroke: var(--mr-fill-saved);
+}
+.mr-rw--card .mr-rw-line--after {
+  stroke: var(--mr-fill-incident-high);
+}
+.mr-rw--card .mr-rw-lost {
+  fill: var(--mr-fill-incident-high-subtle);
+}
+.mr-rw--card .mr-rw-rule {
+  stroke: token('color.foreground.subtle');
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+.mr-rw--card .mr-rw-diamond {
+  fill: token('color.foreground.default');
+  stroke: var(--mr-card-bg, var(--mr-surface-panel));
+  stroke-width: 2;
+}
+.mr-rw--card .mr-rw-value {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  fill: var(--mr-color-saved);
+}
+.mr-rw--card .mr-rw-time {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  fill: var(--mr-chart-axis);
+}

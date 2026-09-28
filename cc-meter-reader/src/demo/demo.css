@@ -1,0 +1,102 @@
+/*
+ * src/demo/demo.css — styles the demo runtime needs outside the Demo Console chunk: the lever and scene
+ * confirmation (Capra Modal.confirm content, portalled into <body>), which the lever keys can open from any
+ * view. Tokens only.
+ */
+
+.mr-demo-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+}
+.mr-demo-confirm-body {
+  display: block;
+  font: token('typography.body.md.normal');
+  color: token('color.foreground.default');
+  text-wrap: pretty;
+}
+.mr-demo-confirm-list {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.sm');
+}
+.mr-demo-confirm-caption {
+  display: block;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-demo-confirm-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: token('spacing.md');
+  row-gap: token('spacing.xs');
+  padding: token('spacing.md');
+  background: token('color.background.neutral.subtle');
+  /* In dark, neutral.subtle IS the modal surface (neutral-2): without the border the item card vanishes. */
+  border: 1px solid var(--mr-border-subtle);
+  border-radius: token('radius.md');
+}
+.mr-demo-confirm-label {
+  font: token('typography.body.md.semibold');
+  color: token('color.foreground.default');
+}
+.mr-demo-confirm-id {
+  font: token('typography.body.sm.normal');
+  font-family: token('core.fontFamily.mono');
+  color: token('color.foreground.subtle');
+}
+.mr-demo-confirm-action {
+  flex-basis: 100%;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-demo-confirm-deploy {
+  display: block;
+  font: token('typography.body.sm.semibold');
+  color: token('color.foreground.default');
+}
+.mr-demo-confirm-deploy .mr-demo-confirm-id {
+  color: token('color.foreground.default');
+}
+.mr-demo-confirm-note {
+  display: block;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  font-variant-numeric: tabular-nums;
+}
+
+/* Break the trim (and a scene that breaks it) keeps its danger variant on the confirm button. Modal.confirm
+   has no appearance option for its button, so the dialog that carries a danger question re-points Capra's
+   own primary-button variables at the danger scale — the same steps as the console's Break button
+   (src/views/Demo/DemoConsole.css, EPIC_AUDIT P1-L01): `solid.active` (#d33236 in both themes) carries white
+   14 px text at 4.9:1, where Capra's default red-9 fill measured 3.9:1; hover and press darken from it. */
+[role='dialog']:has(.mr-demo-confirm[data-tone='danger']) button[data-variant='primary'] {
+  --_primary-color: token('color.foreground.danger.contrast');
+  --_primary-background-color: token('color.background.danger.solid.active');
+  --_primary-hover-background-color: color-mix(in srgb, token('color.background.danger.solid.active') 88%, token('core.color.black.A12'));
+  --_primary-active-background-color: color-mix(in srgb, token('color.background.danger.solid.active') 78%, token('core.color.black.A12'));
+  --_focus-outline-color: token('color.danger.A8');
+}
+
+/* …and the question carries a danger glyph, not Modal.confirm's amber info icon (EPIC_AUDIT P1-L03).
+   Modal.danger has the right glyph but drops the Cancel button a volatile lever needs (AGENTS.md), and
+   Modal.confirm has no appearance option, so the icon slot of a danger question is repainted: Capra's
+   AttentionSolid glyph (its own path, @capra/icons) as a mask in the danger foreground colour. */
+[role='dialog']:has(.mr-demo-confirm[data-tone='danger']) [data-appearance='default'][aria-hidden='true'] {
+  background-color: token('color.foreground.danger.default');
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M15 3H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2M9.25 6.75a.751.751 0 0 1 1.5 0v4a.75.75 0 0 1-1.5 0zM10 14.5a.983.983 0 1 1 0-1.965.983.983 0 0 1 0 1.965'/%3E%3C/svg%3E")
+    center / token('dimension.icon.md') no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M15 3H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2M9.25 6.75a.751.751 0 0 1 1.5 0v4a.75.75 0 0 1-1.5 0zM10 14.5a.983.983 0 1 1 0-1.965.983.983 0 0 1 0 1.965'/%3E%3C/svg%3E")
+    center / token('dimension.icon.md') no-repeat;
+}
+[role='dialog']:has(.mr-demo-confirm[data-tone='danger']) [data-appearance='default'][aria-hidden='true'] > svg {
+  visibility: hidden;
+}
+
+/* On the phone remote the confirmation's buttons are thumb-sized, like the console's (≥ 48 px). */
+@media (max-width: 640px) {
+  [role='dialog']:has(.mr-demo-confirm) button {
+    min-height: token('dimension.component.xl');
+  }
+}

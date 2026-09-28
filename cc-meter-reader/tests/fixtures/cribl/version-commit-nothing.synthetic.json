@@ -1,0 +1,16 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/m/default/version/commit"
+  },
+  "status": 200,
+  "capturedAt": null,
+  "source": "synthetic",
+  "note": "SYNTHETIC: \"nothing to commit\" arrives as an item without a commit (docs/platform/version.md §3).",
+  "body": {
+    "count": 1,
+    "items": [
+      {}
+    ]
+  }
+}

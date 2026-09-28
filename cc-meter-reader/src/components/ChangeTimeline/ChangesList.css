@@ -1,0 +1,173 @@
+/*
+ * src/components/ChangeTimeline/ChangesList.css — "Changes" (P2-W07): receipt lines in Capra's mono face, dot
+ * leaders on the baseline (the same round-dot tile as ReceiptList, BEAUTY F13), the amount right-aligned in tabular
+ * figures, green for a gain and the incident red for a loss; a net line under a dotted rule. Two columns where the
+ * card is wide, read top to bottom.
+ */
+
+.mr-changes {
+  display: flex;
+  flex-direction: column;
+  gap: token('spacing.md');
+  min-width: 0;
+}
+.mr-changes-title {
+  font: token('typography.heading.sm');
+  color: token('color.foreground.default');
+}
+.mr-changes-caption,
+.mr-changes-empty {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+}
+.mr-changes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  column-count: 2;
+  column-gap: token('spacing.xl');
+  column-rule: 1px solid var(--mr-border-subtle);
+}
+.mr-changes-item {
+  break-inside: avoid;
+  min-width: 0;
+}
+.mr-changes-item--total {
+  column-span: all;
+  margin-top: token('spacing.sm');
+  padding-top: token('spacing.sm');
+  border-top: 1px dotted var(--mr-border);
+}
+/* hash | message ..... amount / day, and the author, time and basis under the message (the hash column aligns them). */
+.mr-changes-row {
+  all: unset;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 1ch;
+  row-gap: token('spacing.xs');
+  width: 100%;
+  min-width: 0;
+  padding: token('spacing.sm');
+  border-radius: token('radius.md');
+  cursor: pointer;
+}
+.mr-changes-row:hover {
+  background: token('color.background.neutral.subtle');
+}
+.mr-changes-row:focus-visible {
+  outline: token('border.focus');
+  outline-offset: -2px;
+}
+.mr-changes-row.is-selected {
+  background: token('color.background.accent.subtle');
+  box-shadow: inset 3px 0 0 token('color.border.accent.strong');
+}
+.mr-changes-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5ch;
+  min-width: 0;
+  font: token('typography.code');
+  line-height: 1.5;
+  color: token('color.foreground.default');
+}
+.mr-changes-item--total .mr-changes-line {
+  font-weight: 600;
+}
+.mr-changes-hash {
+  grid-row: 1;
+  grid-column: 1;
+  font: token('typography.code');
+  line-height: 1.5;
+  color: token('color.foreground.subtle');
+}
+.mr-changes-row .mr-changes-line {
+  grid-row: 1;
+  grid-column: 2;
+}
+.mr-changes-row .mr-changes-meta {
+  grid-row: 2;
+  grid-column: 2;
+}
+.mr-changes-line--total {
+  padding-inline: token('spacing.sm');
+}
+.mr-changes-message {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mr-changes-leader {
+  flex: 1 1 3ch;
+  min-width: 3ch;
+  align-self: baseline;
+  height: 0.2em;
+  color: token('color.foreground.subtle');
+  background: radial-gradient(circle closest-side, currentColor 0 70%, transparent 85%) 0 0 / 0.8em 100% round no-repeat;
+}
+.mr-changes-amount {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.mr-changes-amount.is-up {
+  color: var(--mr-color-saved);
+}
+.mr-changes-amount.is-down {
+  color: var(--mr-color-incident-high);
+}
+.mr-changes-amount.is-flat {
+  font-family: token('core.fontFamily.sans');
+  font-size: 13px;
+  color: token('color.foreground.subtle');
+}
+.mr-changes-per {
+  flex: 0 0 auto;
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  white-space: nowrap;
+}
+.mr-changes-meta {
+  font: token('typography.body.sm.normal');
+  color: token('color.foreground.subtle');
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .mr-changes-list {
+    column-count: 1;
+  }
+}
+/* On a phone the message keeps one line (its whole text on hover and in the row's name) and the figure takes a line
+   of its own at the right, with no leader to strand: wrapped, a message ran 3–4 mono lines, broke inside ids and left
+   one orphan dot before the figure (review W2). */
+@media (max-width: 640px) {
+  .mr-changes-line {
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+  .mr-changes-message {
+    flex: 1 1 100%;
+  }
+  .mr-changes-leader {
+    display: none;
+  }
+  .mr-changes-amount {
+    margin-inline-start: auto;
+  }
+  .mr-changes-meta {
+    white-space: normal;
+  }
+}
+/* Under the net, when some rows are unattributed workspace shifts: they are listed, not summed. */
+.mr-changes-net-note {
+  display: block;
+  padding-inline: token('spacing.sm');
+  white-space: normal;
+}
