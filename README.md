@@ -16,6 +16,8 @@ A free, open-source Cribl App built by Steve Koelpin. It turns Cribl's throughpu
 
 **Install:** download `meter-reader-1.1.0.tgz` from the [meter-reader-v1.1.0 release](../../releases/tag/meter-reader-v1.1.0), then in Cribl open **Apps → Add App → Import from File**. The release declares no external host and no backend, so it installs on every Cribl.Cloud plan, Standard included. This is an App, not a pack: it is not imported under Processing → Packs.
 
+**Watch:** the [6-minute walkthrough](https://youtu.be/_4KhXD4fvTk).
+
 Full documentation: [`cc-meter-reader/README.md`](cc-meter-reader/README.md). Questions and ideas: an issue on this repo.
 
 ## Packs in this repo

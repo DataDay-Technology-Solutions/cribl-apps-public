@@ -12,6 +12,8 @@ Built by **Steve Koelpin**.
 
 Join the Cribl Innovators Network — a community for Cribl builders: https://www.linkedin.com/groups/13052739
 
+**▶ Watch the 6-minute walkthrough:** https://youtu.be/_4KhXD4fvTk
+
 ![Meter Reader: the Saved by Cribl counter ticks, a pipeline change breaks a trim, and the alert names the commit and the person who shipped it](video/hero.gif)
 
 ## Summary
