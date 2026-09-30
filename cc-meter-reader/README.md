@@ -601,7 +601,7 @@ Savings are already estimated in the community at one $/GB for the whole deploym
 What the hackathon's Stage One asks of this repository, each with where it is checked.
 
 - [x] An Apache-2.0 [LICENSE](LICENSE) at the root (compliance test).
-- [x] Public repository in the `Cribl-Community` organization: `Cribl-Community/cc-meter-reader` is the submission of record; `DataDay-Technology-Solutions/cribl-apps-public/cc-meter-reader` is a staging copy that may lag it (it carries the packages through 1.1.4); install from this repository.
+- [x] Public repository in the `Cribl-Community` organization: `Cribl-Community/cc-meter-reader` is the submission of record; `DataDay-Technology-Solutions/cribl-apps-public/cc-meter-reader` is a staging copy that may lag it (it carries the packages through 1.1.5); install from this repository.
 - [x] The packaged App as a versioned `.tgz`, committed in this repository: [`release/meter-reader-1.1.5.tgz`](release/meter-reader-1.1.5.tgz) (the optional Enterprise variant beside it, `release/meter-reader-1.1.5-backend.tgz`), sha256 in `release/SHA256SUMS`; the compliance test reads the committed package and holds its README, grants and version to this tree
 - [x] README: what the App does, how to install it, the Cribl APIs it uses and the proxy hosts it declares (none), setup steps, and how to uninstall
 - [x] Build disclosure and AI tool and third-party disclosure, with licenses (compliance test)
