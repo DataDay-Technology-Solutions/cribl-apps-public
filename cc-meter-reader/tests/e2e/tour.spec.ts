@@ -13,7 +13,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
-import type { Incident } from '../../core/types.ts';
+import type { Incident, Snapshot } from '../../core/types.ts';
+import { weeklyReceiptAt } from '../../src/tour/engine.ts';
 import { fmtDollars } from '../../core/format.ts';
 import type { TourFixture } from '../../src/tour/types.ts';
 import { planRebase, rebaseHeadline, rebaseValue } from '../../src/tour/rebase.ts';
@@ -27,6 +28,27 @@ function movedMtdM(): number {
   const zone = TOUR.timezone || 'America/Chicago';
   const plan = planRebase(Date.parse(TOUR.anchor ?? TOUR.generatedAt), Date.now(), zone);
   return plan.dayShift === 0 ? TOUR.snapshot.headline.mtdM : rebaseHeadline(rebaseValue(TOUR.snapshot, plan), zone, TOUR.settings.criblCostCentsPerMonth).headline.mtdM;
+}
+
+/**
+ * The weekly receipt the tour previews at 130 s (src/tour/engine.ts weeklyReceiptAt): the week before today, from the
+ * hour rows of the snapshot on screen then (the script's last snapshot, moved onto today's date), in the page's zone.
+ */
+function sampleWeekReceipt() {
+  const zone = TOUR.timezone || 'America/Chicago';
+  const plan = planRebase(Date.parse(TOUR.anchor ?? TOUR.generatedAt), Date.now(), zone);
+  const last = [...TOUR.script].reverse().find((st) => st.action === 'snapshot')!.payload as Snapshot;
+  const moved = rebaseValue(last, plan);
+  const snapshot = plan.dayShift === 0 ? moved : rebaseHeadline(moved, zone, TOUR.settings.criblCostCentsPerMonth);
+  return weeklyReceiptAt(TOUR.weeklyReceipt, Date.now(), 'America/Chicago', { snapshot, labels: TOUR.settings.humanize })!;
+}
+
+/** The sample's annualized run rate as the tour shows it (the same move onto today's date). */
+function movedAnnualizedM(): number {
+  const zone = TOUR.timezone || 'America/Chicago';
+  const plan = planRebase(Date.parse(TOUR.anchor ?? TOUR.generatedAt), Date.now(), zone);
+  if (plan.dayShift === 0) return TOUR.snapshot.headline.annualizedM;
+  return rebaseHeadline(rebaseValue(TOUR.snapshot, plan), zone, TOUR.settings.criblCostCentsPerMonth).headline.annualizedM;
 }
 const REG_AUTHOR = (TOUR.script.find((s) => s.action === 'incident.open')!.payload as Incident).commit!.author;
 const escapeRe = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -107,9 +129,14 @@ test.describe('first run and the sample tour', () => {
     await expect(band).toContainText('Sample data. This is how Meter Reader looks once it is metering your traffic.');
     await expect(page.getByTestId('footer-sweep')).toHaveText('Showing sample data');
 
-    // ── The Receipt shows the sample workspace (the fixture's month to date, ticking at its rate) ──
+    // ── The Receipt shows the sample workspace: its annualized run rate first (founder-build r1 ui-2, about $8.1M a
+    //    year), then, one click away, the fixture's month to date, ticking at its rate ──
     const meter = page.locator('main [data-callout="saved"][data-value-m], main [data-callout="saved"] [data-value-m]').first();
     await expect(meter).toBeVisible();
+    await expect(page.locator('.mr-receipt-view')).toHaveAttribute('data-period', 'annualized');
+    await expect.poll(async () => Number(await meter.getAttribute('data-value-m'))).toBe(movedAnnualizedM());
+    await page.getByRole('radio', { name: 'MTD' }).click();
+    await expect(page.locator('.mr-receipt-view')).toHaveAttribute('data-period', 'mtd');
     const dollars = Number(await meter.getAttribute('data-value-m')) / 100_000;
     const atSweep = movedMtdM() / 100_000;
     expect(dollars).toBeGreaterThan(atSweep - 1);
@@ -123,19 +150,38 @@ test.describe('first run and the sample tour', () => {
     await expect(page.getByText(new RegExp(`Commit [0-9a-f]{7} by ${escapeRe(REG_AUTHOR)}, caught in 2:51`)).first()).toBeVisible();
     await expect(page.getByRole('main').getByText(REGRESSION).first()).toBeVisible();
 
-    // ── Its Slack delivery at ~31 s, and the message it sent ───────────────
+    // ── Its delivery at ~31 s, and the message it sent ─────────────────────
     const viewMessage = page.getByRole('button', { name: 'View message' });
     await expect(viewMessage).toBeVisible({ timeout: 15_000 });
-    // A notification target: Cribl accepted it for delivery (craft review, round 1), not "Sent".
+    // A notification target: Cribl accepted it for delivery (craft review, round 1), not "Sent" — the toast says so too
+    // (founder-build r1 ui-7, m1).
     await expect(page.getByText(/^Handed to Cribl for FinOps alerts ✓/).first()).toBeVisible();
+    await expect(page.getByText(/^Sent to FinOps alerts/)).toHaveCount(0);
     await viewMessage.click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
-    await expect(dialog.locator('[data-callout="slack-message"]')).toContainText(REGRESSION);
-    await expect(dialog).toContainText('caught in 2:51');
-    await expect(dialog).toContainText('Lost per day');
+    // What the target received: the plain text a release target gets (as Settings previews it), no Block Kit card.
+    await expect(dialog.getByRole('heading', { name: 'Handed to Cribl for FinOps alerts' })).toBeVisible();
+    await expect(dialog.locator('[data-callout="target-message"]')).toContainText(REGRESSION);
+    await expect(dialog.locator('[data-callout="target-message"]')).toContainText(/[Cc]aught in 2:51/);
+    await expect(dialog.locator('[data-callout="slack-message"]')).toHaveCount(0);
+    await expect(dialog.locator('.mr-slack-fields, .mr-slack-field')).toHaveCount(0);
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();
     await expect(dialog).toHaveCount(0);
+
+    // ── The sample's Settings agree: its FinOps target reads connected (m1) ───
+    await page.getByRole('navigation').getByRole('link', { name: 'Settings', exact: true }).first().click();
+    await expect(page.locator('.mr-settings-layout')).toBeVisible();
+    const railLink = page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: /^Where to send alerts/ });
+    if (await railLink.isVisible()) await railLink.click();
+    else {
+      await page.getByRole('button', { name: /Section/ }).click();
+      await page.getByRole('option', { name: /^Where to send alerts/ }).click();
+    }
+    await expect(page.getByTestId('endpoint-0-relay')).toHaveAttribute('data-relay', 'ready', { timeout: 15_000 });
+    await expect(page.getByTestId('endpoint-0-relay')).toHaveText('Connected. Alerts reach finops_slack through Cribl.');
+    await page.getByRole('navigation').getByRole('link', { name: 'Receipt', exact: true }).first().click();
+    await expectPath(page, '/');
 
     // ── Clear sample data → back to first run, live, nothing written ───────
     await band.getByRole('button', { name: 'Clear sample data' }).click();
@@ -173,7 +219,8 @@ test.describe('first run and the sample tour', () => {
     await expect(viewMessage).toBeVisible({ timeout: 15_000 });
     await viewMessage.click();
     const dialog = page.getByRole('dialog');
-    await expect(dialog.locator('[data-callout="slack-message"]')).toBeVisible();
+    // m1 (founder-build r1 ui-7): the target's plain text, not a Slack card.
+    await expect(dialog.locator('[data-callout="target-message"]')).toBeVisible();
     for (const theme of ownsScreens() ? THEMES : []) {
       await setTheme(page, theme);
       await settle(page);
@@ -194,8 +241,9 @@ test.describe('first run and the sample tour', () => {
     await viewReceipt.click();
     const receipt = page.getByRole('dialog');
     await expect(receipt).toContainText('Meter Reader — weekly receipt');
-    // Its top line is the fixture's own (buildWeeklyReceipt over the sample week), with its dollars.
-    const top = TOUR.weeklyReceipt!.lines[0];
+    // Its top line is the sample's own week (founder-build r1 ui-7, M3: rebuilt from the rebased hour rows a Custom range
+    // over that week sums), with its dollars.
+    const top = sampleWeekReceipt().lines[0];
     await expect(receipt).toContainText(new RegExp(`${escapeRe(top.label)} \\.+ +${escapeRe(fmtDollars(top.savedM))}`));
     await expect(receipt).toContainText('Open alerts: 1 (Cost spike: Kubernetes prod)');
     for (const theme of ownsScreens() ? THEMES : []) {
@@ -231,6 +279,9 @@ test.describe('first run and the sample tour', () => {
     await expect(page.getByText(REGRESSION).first()).toBeVisible({ timeout: 45_000 });
     await expect(page.getByRole('button', { name: 'View message' })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('button', { name: 'View message' })).toHaveCount(0, { timeout: 20_000 });
+    // The drop's takeover card (row 11) stays until 70 s: dismissed (Escape), so the grid is the Receipt itself.
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('tour-takeover')).toHaveCount(0);
     for (const theme of THEMES) {
       await setTheme(page, theme);
       for (const width of WIDTHS) await shoot(page, 'tour-receipt', theme, width);

@@ -211,7 +211,7 @@
   pointer-events: none;
 }
 .mr-ct-marker:focus-visible .mr-ct-marker-ring {
-  stroke: token('color.border.focus');
+  stroke: token('color.foreground.accent.default');
   opacity: 1;
 }
 
@@ -291,7 +291,7 @@
 .mr-ct-card:focus-visible {
   box-shadow:
     token('shadow.medium.down'),
-    0 0 0 2px token('color.border.focus');
+    0 0 0 2px token('color.foreground.accent.default');
 }
 .mr-ct-card-head {
   display: flex;
@@ -342,7 +342,7 @@
   color: token('color.foreground.default');
 }
 .mr-ct-card-close:focus-visible {
-  outline: token('border.focus');
+  outline: 2px solid token('color.foreground.accent.default');
   outline-offset: 1px;
 }
 .mr-ct-card-message {
@@ -416,7 +416,7 @@ button.mr-ct-moved-row:hover {
   background: token('color.background.neutral.subtle');
 }
 button.mr-ct-moved-row:focus-visible {
-  outline: token('border.focus');
+  outline: 2px solid token('color.foreground.accent.default');
 }
 .mr-ct-moved-label {
   flex: 1 1 auto;

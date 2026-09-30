@@ -13,11 +13,11 @@
 import type { ReactNode } from 'react';
 import { Alert } from '@capra/core';
 import { useNavigate } from 'react-router-dom';
-import { t } from '../../copy/en.ts';
+import { t, tn } from '../../copy/en.ts';
 import { formatClock, formatRelative, formatTimeOfDay, toMs } from '../../lib/format.ts';
 import { useNow } from '../../lib/ticker.ts';
 import { shallowEqual, useAppState } from '../../state/react.tsx';
-import { everyPriceIsZero, meteredBy, meteredGroups, meteringFailure, sweepOwnerHost } from '../../state/selectors.ts';
+import { everyPriceIsZero, meteredBy, meteredGroups, meteringFailure, sweepOwnerHost, zeroPricedReducers } from '../../state/selectors.ts';
 import { errorKindForStatus, type ApiErrorInfo, type ApiErrorKind } from '../../state/store.ts';
 import { deriveDataStatus, meteredByLine, meteringBackoff, sweepErrorText } from '../Shell/status.ts';
 import { InlineNotice } from './InlineNotice.tsx';
@@ -124,6 +124,12 @@ export function ErrorNotice(props: ErrorNoticeProps) {
   }
 }
 
+/** 'DevNull', 'DevNull and Archive', 'A, B and C' (row 14's destination names). */
+function listWords(names: readonly string[]): string {
+  if (names.length <= 1) return names[0] ?? '';
+  return `${names.slice(0, -1).join(', ')} ${t('common.and')} ${names[names.length - 1]}`;
+}
+
 // ─── The meter's own state (P0-07, P1-D03, P1-D06) ────────────────────────────
 
 export interface MeteringNoticeProps {
@@ -169,6 +175,8 @@ export function MeteringNotice({ placement = 'receipt', layout = 'section' }: Me
         host: stale ? sweepOwnerHost(s.meta) : undefined,
         runtime: s.settings.runtime,
         zero: receipt && s.source === 'live' && everyPriceIsZero(s.prices),
+        // Row 14 (r1 ui-11): the mixed $0 case names the $0 destinations the pipelines reduce into.
+        zeroRows: receipt && s.source === 'live' && !everyPriceIsZero(s.prices) ? zeroPricedReducers(s.snapshot, s.settings.humanize).join('\u0000') : '',
         tz: s.settings.displayTimezone,
       };
     },
@@ -226,11 +234,20 @@ export function MeteringNotice({ placement = 'receipt', layout = 'section' }: Me
     </InlineNotice>
   ) : null;
 
-  if (!meter && !zero) return null;
+  const zeroNames = view.zeroRows ? view.zeroRows.split('\u0000') : [];
+  const zeroRow =
+    !zero && zeroNames.length > 0 ? (
+      <InlineNotice data-testid="zero-row-notice" data-state="zero-row" action={{ label: t('receiptView.setPrices'), onClick: () => navigate('/settings/prices') }}>
+        {tn('receiptView.zeroRow', zeroNames.length, { names: listWords(zeroNames) })}
+      </InlineNotice>
+    ) : null;
+
+  if (!meter && !zero && !zeroRow) return null;
   return (
     <>
       {meter}
       {zero}
+      {zeroRow}
     </>
   );
 }

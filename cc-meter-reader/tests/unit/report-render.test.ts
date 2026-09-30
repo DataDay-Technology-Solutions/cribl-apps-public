@@ -462,16 +462,17 @@ function parseCsv(csv: string): string[][] {
 }
 
 describe('CSV', () => {
-  it('has a byte-order mark, the header row, CRLF lines and fifteen fields everywhere', () => {
+  it('has a byte-order mark, the header row, CRLF lines and sixteen fields everywhere', () => {
     const card = liveCard();
     const csv = renderReportCsv(card);
     expect(csv.startsWith('\ufeff')).toBe(true);
     expect(csv.endsWith('\r\n')).toBe(true);
     expect(csv.replace(/\r\n/g, '')).not.toMatch(/\n/);
     const rows = parseCsv(csv.slice(1));
-    expect(rows[0]).toEqual(COPY.csv.headers);
+    // R2 core-7 (FINDINGS_R2 #3): the last column says whether the Cribl cost is the list-price estimate.
+    expect(rows[0]).toEqual([...COPY.csv.headers, 'cribl_cost_is_estimate']);
     expect(rows.length).toBe(1 + card.flows.length + card.destinations.rows.length);
-    for (const r of rows) expect(r).toHaveLength(15);
+    for (const r of rows) expect(r).toHaveLength(16);
   });
 
   it('writes plain numbers: dollars with two decimals, GB with three, percent with one', () => {
@@ -498,7 +499,7 @@ describe('CSV', () => {
     const unpriced = rows.find((r) => r[1] === 'Edge CDN, "public"')!;
     expect(unpriced[6]).toBe(COPY.unpriced);
     expect(unpriced.slice(7, 9)).toEqual(['', '']);
-    expect(unpriced.slice(12)).toEqual(['', '', '']);
+    expect(unpriced.slice(12, 15)).toEqual(['', '', '']);
     // No annual column: the report's one annual figure is its run rate.
     expect(COPY.csv.headers.some((h) => /year/i.test(h))).toBe(false);
   });

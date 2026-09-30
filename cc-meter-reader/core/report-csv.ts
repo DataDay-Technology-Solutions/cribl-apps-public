@@ -12,6 +12,7 @@
 
 import type { ReportCard } from './report.ts';
 import { footMoney, fmtPlainDollars, fmtPlainGb, mcToDollarInput } from './format.ts';
+import { REPORT_STRINGS } from './strings.ts';
 
 const BOM = '﻿';
 
@@ -48,10 +49,17 @@ function moneyCells(m: { whpPerDayM: number; paidPerDayM: number; savedPerDayM: 
   return [fmtPlainDollars(f.whpM), fmtPlainDollars(f.paidM), fmtPlainDollars(f.savedM)];
 }
 
-/** The flows and destinations as CSV text (with a byte-order mark). */
+/**
+ * The flows and destinations as CSV text (with a byte-order mark). R2 core-7: the last column says whether the Cribl
+ * cost behind the report is the list-price estimate (FINDINGS_R2 #3; empty with no cost), and a sample card's file ends
+ * with a note row saying so (IC-13; the header stays row 1).
+ */
 export function renderReportCsv(card: ReportCard): string {
   const { copy } = card;
-  const lines: string[] = [copy.csv.headers.map(textCell).join(',')];
+  const C = REPORT_STRINGS.csv;
+  const estimateCell = card.cribl ? (card.cribl.estimate ? C.yes : C.no) : '';
+  const header = [...copy.csv.headers, C.criblCostIsEstimateHeader];
+  const lines: string[] = [header.map(textCell).join(',')];
   for (const f of card.flows) {
     lines.push(
       [
@@ -68,6 +76,7 @@ export function renderReportCsv(card: ReportCard): string {
         fmtPlainGb(f.outBPerDay),
         pctCell(f.volumeRatio),
         ...moneyCells(f, f.unpriced),
+        estimateCell,
       ].join(','),
     );
   }
@@ -88,8 +97,10 @@ export function renderReportCsv(card: ReportCard): string {
         fmtPlainGb(d.outBPerDay),
         pctCell(ratio),
         ...moneyCells(d, d.unpriced),
+        estimateCell,
       ].join(','),
     );
   }
+  if (card.sample) lines.push([textCell(C.noteRecord), textCell(C.sampleNote), ...header.slice(2).map(() => '')].join(','));
   return `${BOM}${lines.join('\r\n')}\r\n`;
 }

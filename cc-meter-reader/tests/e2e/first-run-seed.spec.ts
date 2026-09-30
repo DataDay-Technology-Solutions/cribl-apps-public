@@ -1,6 +1,6 @@
 // tests/e2e/first-run-seed.spec.ts — the documented first run meters up to a day, not an hour (D63; rules round 2).
 //
-// A judge followed README "Try it in 5 minutes" on the release build over the mock: empty KV, then Settings →
+// A judge followed README "Try it" on the release build over the mock: empty KV, then Settings →
 // Prices → Use suggested prices → Start the meter. The first sweep seeded 60 minutes (collectingSince =
 // meteredThrough − 1 h on the 7-route demo preset), because a fresh install has no stored inventory and
 // core/sweep.ts sized the first run from it before the configuration walk. The sweep now sizes a cold first run

@@ -21,7 +21,7 @@ import { formatInt, formatMoney, formatMultiple, formatPct } from '../../lib/for
 import type { ReceiptLine } from '../../components/ReceiptList/ReceiptList.tsx';
 import type { ReceiptBarNet } from '../../components/ReceiptBar/ReceiptBar.tsx';
 import type { ApiErrorInfo } from '../../state/store.ts';
-import { collectingAfterStart, leaderOrigin, pipelineHref, type CriblCostSuggestion, type NetBreakdown, type SaverTotals } from './model.ts';
+import { collectingAfterStart, leaderOrigin, pipelineHref, type CriblCostSuggestion, type NetBreakdown, type SaverTotals, printedNetM } from './model.ts';
 
 export const PERIOD_CAPTION: Record<HeadlinePeriod, () => string> = {
   mtd: () => t('meter.period.mtd'),
@@ -100,10 +100,11 @@ export interface RangePreview {
  * granularity, from the same pure rules the reader applies — the picker previews it, the hero shows its
  * words while the rows are still being read.
  */
-export function rangePreview(spec: RangeSpec, nowMs: number, collectingSinceMs: number | undefined, tz: string): RangePreview {
+export function rangePreview(spec: RangeSpec, nowMs: number, collectingSinceMs: number | undefined, tz: string, minuteRetentionHours?: number): RangePreview {
   const resolved = resolveRange(spec, nowMs, collectingSinceMs);
   if (resolved.future) return { words: rangeWords(resolved, tz), granularity: 'minute', future: true, fromMs: resolved.fromMs, toMs: resolved.toMs };
-  const plan = planRangeReads(resolved.fromMs, resolved.toMs, nowMs);
+  // r3 ui-5 (H9): the reader's own rule, the sweep's minute retention (meta.minuteRetentionHours) included.
+  const plan = planRangeReads(resolved.fromMs, resolved.toMs, nowMs, undefined, minuteRetentionHours !== undefined ? { minuteRetentionHours } : {});
   return { words: rangeWords(plan.window, tz), granularity: plan.granularity, future: false, ...plan.window };
 }
 
@@ -203,7 +204,8 @@ export function receiptNetLine(
 ): ReceiptBarNet | null {
   if (net) {
     return {
-      netM: net.netM,
+      // Printed saved − printed cost (r1 ui-8, m9): the hero's net matches Show the math to the dollar.
+      netM: printedNetM(net.netM, net.costM),
       paybackX: net.paybackX,
       per: net.per,
       paybackText: net.paybackX !== undefined ? (costIsEstimate ? estimatePaybackWords(net.paybackX) : paybackWords(net.paybackX)) : undefined,
@@ -213,7 +215,7 @@ export function receiptNetLine(
   }
   if (!estimate) return null;
   return {
-    netM: estimate.net.netM,
+    netM: printedNetM(estimate.net.netM, estimate.net.costM),
     paybackX: estimate.net.paybackX,
     per: estimate.net.per,
     paybackText: estimate.net.paybackX !== undefined ? estimatePaybackWords(estimate.net.paybackX) : undefined,
@@ -290,7 +292,9 @@ export function footedSavers(savers: TopSaver[], totals: SaverTotals): { saversM
   const rawOthersM = Math.max(0, totals.allM - shownM);
   const hasOthers = (otherCount > 0 || totals.folded !== undefined) && rawOthersM > 0;
   const totalM = Math.max(totals.allM, shownM);
-  const column = footColumn([...savers.map((s) => s.savedPerDayM), ...(hasOthers ? [rawOthersM] : [])], totalM);
+  const exact = [...savers.map((s) => s.savedPerDayM), ...(hasOthers ? [rawOthersM] : [])];
+  // r2 core-10 (IC-4, handoff): a saver that saves something but foots to $0 keeps its exact amount ('< $1').
+  const column = footColumn(exact, totalM).map((m, i) => (m === 0 && exact[i] > 0 ? exact[i] : m));
   return { saversM: column.slice(0, savers.length), othersM: hasOthers ? column[savers.length] : 0, totalM, hasOthers };
 }
 

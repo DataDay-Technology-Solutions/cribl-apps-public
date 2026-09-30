@@ -103,13 +103,29 @@ export function EndpointEditor(props: EndpointEditorProps) {
 }
 
 /** The relay state of the chosen target, with Connect when it is missing. */
-function RelayLine({ relay, targetId, index, disabled, onConnect }: { relay: RelayView; targetId: string; index: number; disabled?: boolean | undefined; onConnect: (targetId: string) => void }) {
+function RelayLine({
+  relay,
+  targetId,
+  index,
+  disabled,
+  onConnect,
+  stored,
+}: {
+  relay: RelayView;
+  targetId: string;
+  index: number;
+  disabled?: boolean | undefined;
+  onConnect: (targetId: string) => void;
+  /** This endpoint is stored with this target (founder-build r1 ui-5, M1): only then do alerts reach it. */
+  stored: boolean;
+}) {
   if (!targetId) return null;
   const testId = `endpoint-${index}-relay`;
   if (relay.status === 'ready') {
+    // Connected in Cribl is not the same as sending here: an unsaved draft never claims delivery (M1).
     return (
-      <p className="mr-ep-relay" data-testid={testId} data-relay="ready">
-        {cc(CHANNEL_COPY.target.ready, { target: targetId })}
+      <p className="mr-ep-relay" data-testid={testId} data-relay="ready" data-saved={stored ? 'true' : 'false'}>
+        {stored ? cc(CHANNEL_COPY.target.ready, { target: targetId }) : CHANNEL_COPY.target.readyUnsaved}
       </p>
     );
   }
@@ -156,7 +172,9 @@ function TargetEndpointEditor(props: EndpointEditorProps) {
   // A target whose relay is missing (or still being checked) cannot take a test yet (P1-G09): the button waits
   // for Connect instead of answering with a red "Connect this target first".
   const needsConnect = relay.status === 'missing';
-  const canTest = !disabled && !testing && targetId !== '' && !needsConnect && relay.status !== 'checking';
+  // Not before the relay is known either (r1 ui-9, FINDINGS_R1 m14): an id whose relay was not yet checked read enabled,
+  // then disabled while the check ran, then enabled again, and a press in that window was silently dropped.
+  const canTest = !disabled && !testing && targetId !== '' && !needsConnect && relay.status !== 'checking' && relay.status !== 'unknown';
   const ids = { name: `${uid}-name`, target: `${uid}-target`, weekly: `${uid}-weekly`, enabled: `${uid}-enabled` };
 
   const runTest = async () => {
@@ -305,7 +323,7 @@ function TargetEndpointEditor(props: EndpointEditorProps) {
             {listCaption ? <p className="mr-ep-host-hint">{listCaption}</p> : null}
             {loadAction ? <span className="mr-ep-targets-action">{loadAction}</span> : null}
           </div>
-          <RelayLine relay={relay} targetId={targetId} index={index} disabled={disabled} onConnect={cribl.onConnect} />
+          <RelayLine relay={relay} targetId={targetId} index={index} disabled={disabled} onConnect={cribl.onConnect} stored={draft.saved && draft.savedTargetId === targetId} />
         </div>
 
         <div className="mr-ep-severity">

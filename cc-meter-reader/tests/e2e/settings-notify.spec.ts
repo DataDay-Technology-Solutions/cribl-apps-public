@@ -43,6 +43,9 @@ async function connectTarget(page: Page, index: number, name: string, targetId =
   await page.getByTestId(`endpoint-${index}-relay`).getByRole('button', { name: 'Connect' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Connect' }).click();
   await expect(page.getByTestId(`endpoint-${index}-relay`)).toHaveAttribute('data-relay', 'ready');
+  // M1 (founder-build r1 ui-5): a Connect that succeeded stores the endpoint at once; nothing is left to save.
+  await expect.poll(async () => (await settingsDoc(page))?.notifications?.some((n) => n.criblTargetId === targetId && n.name === name)).toBe(true);
+  await expect(saveBar(page, 'notifications')).toContainText('No unsaved changes');
 }
 
 /** Opens a section from the rail (desktop) or the section picker (phones). */
@@ -264,7 +267,6 @@ test.describe('settings — where to send alerts (WP-G2)', () => {
     await addEndpoint(page);
     await connectTarget(page, 0, 'Ops Slack');
     const ep = page.getByTestId('endpoint-0');
-    await saveCard(page, 'notifications');
     await page.getByTestId('endpoint-0-test').getByRole('button').click();
     await expect(page.getByTestId('endpoint-0-result')).toContainText('Handed to Cribl for mrd_slack_finops (200)');
     await page.getByTestId('endpoint-bell-test').getByRole('button').click();
@@ -312,7 +314,6 @@ test.describe('settings — where to send alerts (WP-G2)', () => {
     await page.getByTestId('endpoint-0').getByRole('button', { name: 'Remove' }).click();
     await addEndpoint(page);
     await connectTarget(page, 0, 'Ops Slack');
-    await saveCard(page, 'notifications');
     await page.getByTestId('endpoint-0-test').getByRole('button').click();
     await expect(page.getByTestId('endpoint-0-result')).toContainText('Handed to Cribl for mrd_slack_finops (200)');
     await expect.poll(async () => (await settingsDoc(page))?.notifications?.[0]?.lastTest?.status).toBe(200);
@@ -563,7 +564,6 @@ test.describe('settings — WP-G2 screenshots', () => {
     await saveBar(page, 'notifications').getByRole('button', { name: 'Discard' }).click();
     await addEndpoint(page);
     await connectTarget(page, 0, 'Ops Slack');
-    await saveCard(page, 'notifications');
     await page.getByTestId('endpoint-0-test').getByRole('button').click();
     await expect(page.getByTestId('endpoint-0-result')).toContainText('Handed to Cribl for mrd_slack_finops (200)');
     await page.getByText('Target connected').first().waitFor({ state: 'hidden', timeout: 15_000 }).catch(() => undefined);

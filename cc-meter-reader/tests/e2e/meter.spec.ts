@@ -20,7 +20,9 @@ const HERO = '[data-testid="receipt-hero"] [data-callout="saved"]';
 async function openTour(page: Page): Promise<void> {
   await gotoApp(page, '/first-run');
   await resetMock(page);
-  await page.goto('/first-run', { waitUntil: 'domcontentloaded' });
+  // The tour opens on its annualized run rate, a whole-day rate shown still (founder-build r1 ui-2); the ticking figure
+  // this measures is month to date, so the tour starts from a first-run page carrying ?period=mtd (the button keeps it).
+  await page.goto('/first-run?period=mtd', { waitUntil: 'domcontentloaded' });
   await waitForMock(page);
   await waitForHydration(page);
   await page.getByRole('button', { name: 'Tour with sample data' }).click();

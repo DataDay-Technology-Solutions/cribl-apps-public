@@ -16,11 +16,11 @@ import type {
   Snapshot,
   WeeklyReceipt,
 } from './types.ts';
-import { fmtDollars, fmtPct, footMoney, mcToDollarInput } from './format.ts';
+import { fmtDollars, fmtPct, footColumn, footMoney, mcToDollarInput, roundToDollarsM, signedWholePct } from './format.ts';
 import { humanize } from './humanize.ts';
 import { effectivePrices, isDiversion, periodCoverage, priceEntryAt, ratio } from './pricing.ts';
 import { presetById } from './presets.ts';
-import { formatRangeParam, perDayAtRate, rangeSpanLabel, type RangeComparison, type RangeFigures } from './range.ts';
+import { formatRangeParam, perDayAtRate, rangeSpanLabel, type RangeComparison, type RangeFigures, printedDeltaM } from './range.ts';
 import { sumFlowRows } from './rollups.ts';
 import { parseFlowKey } from './flows.ts';
 import { titleFor } from './incidents.ts';
@@ -171,7 +171,8 @@ export function buildWeeklyReceipt(input: WeeklyReceiptInput): WeeklyReceipt {
   if (divertedM > 0) receipt.divertedM = Math.min(divertedM, total.savedM);
   if (priorSavedM !== undefined) {
     receipt.priorSavedM = priorSavedM;
-    if (priorSavedM > 0) receipt.trendPct = Math.round(((total.savedM - priorSavedM) / priorSavedM) * 100);
+    // R2 core-9 (BO-11): half up on the magnitude, as the comparison prints the same change (fmtPct).
+    if (priorSavedM > 0) receipt.trendPct = signedWholePct((total.savedM - priorSavedM) / priorSavedM);
   }
   if (input.basis) {
     receipt.basis = receiptBasis({
@@ -363,10 +364,23 @@ function basisPriceText(p: ReceiptBasisPrice): string {
  */
 export function coverageLine(c: NonNullable<ReceiptBasis['coverage']>): string {
   const metered = Math.min(Math.max(0, c.metered), c.expected);
-  const floorPct = Math.floor((metered / c.expected) * 100);
-  const pct = metered >= c.expected ? fmtPct(1) : metered > 0 && floorPct === 0 ? S.meteredUnder1 : fmtPct(floorPct / 100);
   const unit = c.unit === 'days' ? plural(c.expected, { one: S.units.day, other: S.units.days }) : plural(c.expected, { one: S.units.minute, other: S.units.minutes });
-  return fill(S.metered, { metered: int(metered), expected: int(c.expected), unit, pct });
+  return fill(S.metered, { metered: int(metered), expected: int(c.expected), unit, pct: coveragePct(c) });
+}
+
+/**
+ * The coverage percentage as coverageLine prints it: floored, so it never reads 100% while a minute is missing, and
+ * never 0% while something was metered ("under 1%"). Founder-build r3 core-2: the bell's weekly line prints it too.
+ */
+export function coveragePct(c: NonNullable<ReceiptBasis['coverage']>): string {
+  const metered = Math.min(Math.max(0, c.metered), c.expected);
+  const floorPct = Math.floor((metered / c.expected) * 100);
+  return metered >= c.expected ? fmtPct(1) : metered > 0 && floorPct === 0 ? S.meteredUnder1 : fmtPct(floorPct / 100);
+}
+
+/** R3 core-2: whether a receipt's coverage says part of its period was not metered (an older receipt has none). */
+export function partialCoverage(c: ReceiptBasis['coverage'] | undefined): c is NonNullable<ReceiptBasis['coverage']> {
+  return !!c && Number.isFinite(c.metered) && Number.isFinite(c.expected) && c.expected > 0 && c.metered < c.expected;
 }
 
 /** The Basis block (P0-23): a blank line, 'Basis', then its lines wrapped inside the 48 columns. */
@@ -455,6 +469,11 @@ interface ReceiptBody {
   linesHeader?: string;
   /** P1-F04: appended to each item amount ('/day' for rates) */
   lineSuffix?: string;
+  /**
+   * R2 core-9 (BO-9): the lines are a split of the total (the weekly receipt, a range): they print footed to it
+   * (footColumn, D53), with an "Other" line for the savers beyond the five listed. Rates (the period receipt) are not.
+   */
+  footLines?: true;
   totalLabel: string;
   savedM: number;
   /** "Would have paid …", "Paid …", "N% saved" — joined with ' · ' and wrapped between segments */
@@ -473,8 +492,26 @@ interface ReceiptBody {
   link?: string;
 }
 
+/**
+ * R2 core-9 (BO-9): the item lines as printed under a total they split — the savers beyond the five listed as one
+ * "Other" line (when they come to a printed dollar), then every line footed to the printed total (core/format.ts
+ * footColumn): "$110 + $2 = $112", never "$110 + $3" above "$112". The receipt's data keeps its exact amounts.
+ */
+export function footedReceiptLines<L extends { label: string; savedM: number; diverted?: true }>(lines: readonly L[], totalM: number): { label: string; savedM: number; diverted?: true }[] {
+  const listed: { label: string; savedM: number; diverted?: true }[] = lines.map((l) => (l.diverted ? { label: l.label, savedM: l.savedM, diverted: true as const } : { label: l.label, savedM: l.savedM }));
+  const rest = totalM - listed.reduce((s, l) => s + l.savedM, 0);
+  if (listed.length >= RECEIPT_MAX_LINES && roundToDollarsM(rest) > 0) listed.push({ label: S.otherLine, savedM: rest });
+  const footed = footColumn(
+    listed.map((l) => l.savedM),
+    totalM,
+  );
+  // R2 core-10 (IC-4): a line that saved something but foots to $0 prints '< $1' (its exact amount), never "$0".
+  return listed.map((l, i) => ({ ...l, savedM: footed[i] === 0 && l.savedM > 0 ? l.savedM : footed[i] }));
+}
+
 function renderReceipt(b: ReceiptBody): string {
   const suffix = b.lineSuffix ?? '';
+  if (b.footLines) b = { ...b, lines: footedReceiptLines(b.lines, b.savedM) };
   const amounts = [...b.lines.map((l) => `${fmtDollars(l.savedM)}${suffix}`), fmtDollars(b.savedM)];
   const field = Math.max(8, ...amounts.map((a) => a.length + 2));
   const out: string[] = [...spread(b.title, b.rangeLabel)];
@@ -549,6 +586,7 @@ export function receiptText(r: WeeklyReceipt): string {
     title: S.weeklyTitle,
     rangeLabel: r.label,
     lines: r.lines,
+    footLines: true,
     totalLabel: S.savedLastWeek,
     savedM: r.savedM,
     summary: summarySegments(r.whpM, r.paidM, r.savedM, r.ratio),
@@ -615,7 +653,11 @@ function netSegments(snapshot: Snapshot, period: HeadlinePeriod, opts: PeriodRec
   if (period === 'mtd') {
     let net: { netM: number; paybackX?: number } | null = null;
     if (costKnown) {
-      if (costSet) net = mtdNetOfCribl(h.mtdM, fromIso(snapshot.sweepAt), opts.tz ?? 'UTC', fromIso(snapshot.collectingSince), costCents);
+      if (costSet) {
+        const exact = mtdNetOfCribl(h.mtdM, fromIso(snapshot.sweepAt), opts.tz ?? 'UTC', fromIso(snapshot.collectingSince), costCents);
+        // Printed net = printed saved − printed cost (r1 ui-8, m9, D53's footing rule).
+        net = exact ? { ...exact, netM: roundToDollarsM(h.mtdM) - roundToDollarsM(exact.costM) } : null;
+      }
     } else if (h.netMtdM !== undefined) net = { netM: h.netMtdM, paybackX: h.paybackX };
     if (!net) return undefined;
     return [
@@ -625,7 +667,10 @@ function netSegments(snapshot: Snapshot, period: HeadlinePeriod, opts: PeriodRec
   }
   if (period === 'annualized' && costSet) {
     const yearCostM = (costCents as number) * 1000 * 12;
-    return [fill(S.netAfterCriblYear, { amount: fmtDollars(h.annualizedM - yearCostM) }), fill(S.paidForItself, { multiple: multiple(h.annualizedM / yearCostM) })];
+    return [
+      fill(S.netAfterCriblYear, { amount: fmtDollars(roundToDollarsM(h.annualizedM) - roundToDollarsM(yearCostM)) }),
+      fill(S.paidForItself, { multiple: multiple(h.annualizedM / yearCostM) }),
+    ];
   }
   return undefined;
 }
@@ -759,6 +804,7 @@ export function receiptTextForRange(figures: RangeFigures, opts: RangeReceiptOpt
     title: S.periodTitle,
     rangeLabel: span,
     lines,
+    footLines: true,
     totalLabel,
     savedM: figures.savedM,
     summary,
@@ -941,7 +987,8 @@ export function receiptTextForComparison(cmp: RangeComparison, opts: ComparisonR
     out.push(...spread(fill(S.savedFor, { period: lower(currentName) }), `${fmtDollars(cmp.currentM)}${unit}`));
     out.push(...spread(fill(S.savedFor, { period: lower(baselineName) }), `${fmtDollars(cmp.baselineM)}${unit}`));
     const pct = cmp.pct !== undefined ? ` (${signedPct(cmp.pct)})` : '';
-    out.push(...spread(S.change, `${signedDollars(cmp.deltaM)}${unit}${pct}`));
+    // The change foots with the two figures above it, as printed (r1 ui-8, m11).
+    out.push(...spread(S.change, `${signedDollars(printedDeltaM(cmp))}${unit}${pct}`));
   }
   // Each window's money on two lines, the second indented under its name, the same shape for both windows.
   // Printed money adds up: each window's would have paid − paid = its saved, to the dollar (core/format.ts footMoney).

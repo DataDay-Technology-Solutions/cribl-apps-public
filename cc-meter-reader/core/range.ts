@@ -22,6 +22,7 @@
 // the day's end) is re-read from the finer family (refineRangePlan), so a hole never reads as zero.
 // Pure: no I/O, no DOM. The UI reads the documents through src/state (rangeReader.ts) and sums them here.
 
+import { roundToDollarsM } from './format.ts';
 import type { DayRow, FlowKey, HourRow, MinuteRow, RollDayDoc, RollHourDoc, RollMinuteDoc } from './types.ts';
 import { parseFlowKey } from './flows.ts';
 import { ratio } from './pricing.ts';
@@ -169,6 +170,22 @@ export type RangeGranularity = 'minute' | 'hour' | 'day';
 export const MINUTE_REACH_MS = 24 * HOUR_MS;
 export const HOUR_REACH_MS = 31 * DAY_MS;
 
+/**
+ * Founder-build r2 core-11 (b), r1's H8: the minute family's reach when the sweep keeps minute documents for fewer than
+ * 25 hours (meta.minuteRetentionHours on a large estate, r1 core-7 / M11): that retention less the hour that may be
+ * expiring, never under an hour. Unknown or the default 25 h: MINUTE_REACH_MS.
+ */
+export function minuteReachMs(minuteRetentionHours?: number): number {
+  if (minuteRetentionHours === undefined || !Number.isFinite(minuteRetentionHours) || minuteRetentionHours >= 25) return MINUTE_REACH_MS;
+  return Math.min(MINUTE_REACH_MS, Math.max(1, Math.floor(minuteRetentionHours) - 1) * HOUR_MS);
+}
+
+/** Options for a read plan. */
+export interface RangePlanOptions {
+  /** meta.minuteRetentionHours: the minute family is planned only within it (r2 core-11 b). */
+  minuteRetentionHours?: number;
+}
+
 /** Documents one request may read (the Leader allows ~50 API calls a minute for the App). */
 export const DOC_CAPS: Readonly<Record<RangeGranularity, number>> = { minute: 26, hour: 33, day: 14 };
 
@@ -236,9 +253,8 @@ export function granularityCapMs(granularity: RangeGranularity, nowMs: number): 
  * between, or hour rows at the edges and day rows between — the same window and the same money from far fewer
  * documents. It is chosen only when it reads fewer; without a cursor the plan is the single-family one.
  */
-export function planRangeReads(fromMs: number, toMs: number, nowMs: number, foldedThroughMs?: number): RangePlan {
-  const anchor = minuteFloor(nowMs);
-  const granularity: RangeGranularity = fromMs >= anchor - MINUTE_REACH_MS ? 'minute' : fromMs >= anchor - HOUR_REACH_MS ? 'hour' : 'day';
+export function planRangeReads(fromMs: number, toMs: number, nowMs: number, foldedThroughMs?: number, opts: RangePlanOptions = {}): RangePlan {
+  const granularity = granularityFor(fromMs, nowMs, opts.minuteRetentionHours);
   const snapped = snapRange(fromMs, toMs, granularity);
   const bucket = granularity === 'minute' ? MINUTE_MS : granularity === 'hour' ? HOUR_MS : DAY_MS;
   const window = { fromMs: snapped.fromMs, toMs: Math.max(snapped.fromMs + bucket, Math.min(snapped.toMs, granularityCapMs(granularity, nowMs))) };
@@ -801,10 +817,13 @@ const BUCKETS: Record<RangeGranularity, { ms: number; floor: (ms: number) => num
 };
 const RANK: Record<RangeGranularity, number> = { minute: 0, hour: 1, day: 2 };
 
-/** The granularity planRangeReads gives a window starting at `fromMs` (its reach rule, measured from the last whole minute). */
-export function granularityFor(fromMs: number, nowMs: number): RangeGranularity {
+/**
+ * The granularity planRangeReads gives a window starting at `fromMs` (its reach rule, measured from the last whole
+ * minute); the minute family's reach follows the sweep's minute retention when it is shorter (r2 core-11 b).
+ */
+export function granularityFor(fromMs: number, nowMs: number, minuteRetentionHours?: number): RangeGranularity {
   const anchor = minuteFloor(nowMs);
-  return fromMs >= anchor - MINUTE_REACH_MS ? 'minute' : fromMs >= anchor - HOUR_REACH_MS ? 'hour' : 'day';
+  return fromMs >= anchor - minuteReachMs(minuteRetentionHours) ? 'minute' : fromMs >= anchor - HOUR_REACH_MS ? 'hour' : 'day';
 }
 
 interface AlignedPair {
@@ -854,10 +873,13 @@ export interface ComparisonContext {
   commit?: CompareCommit;
   /** Documents both windows may read together (default COMPARE_DOC_CAP). */
   docCap?: number;
+  /** meta.minuteRetentionHours: both windows plan the minute family only within it (r2 core-11 b). */
+  minuteRetentionHours?: number;
 }
 
 export function planComparison(spec: RangeSpec, vs: CompareSpec, ctx: ComparisonContext): ComparisonPlan | ComparisonRefusal {
-  const { nowMs, collectingSinceMs, foldedThroughMs, commit } = ctx;
+  const { nowMs, collectingSinceMs, foldedThroughMs, commit, minuteRetentionHours } = ctx;
+  const planOpts: RangePlanOptions = minuteRetentionHours !== undefined ? { minuteRetentionHours } : {};
   const docCap = ctx.docCap ?? COMPARE_DOC_CAP;
   const refuse = (reason: CompareRefusalReason, extra: Partial<ComparisonRefusal> = {}): ComparisonRefusal => ({ ok: false, vs, reason, ...extra });
   const resolved = resolveRange(spec, nowMs, collectingSinceMs);
@@ -877,7 +899,7 @@ export function planComparison(spec: RangeSpec, vs: CompareSpec, ctx: Comparison
     const p = alignPair(vs, cur, g, commitAt);
     if (!p) continue;
     // Accept the finest alignment both windows' own families sum exactly at.
-    if (RANK[granularityFor(p.baseline.fromMs, nowMs)] <= RANK[g] && RANK[granularityFor(p.current.fromMs, nowMs)] <= RANK[g]) {
+    if (RANK[granularityFor(p.baseline.fromMs, nowMs, minuteRetentionHours)] <= RANK[g] && RANK[granularityFor(p.current.fromMs, nowMs, minuteRetentionHours)] <= RANK[g]) {
       pair = p;
       alignedTo = g;
       break;
@@ -894,7 +916,7 @@ export function planComparison(spec: RangeSpec, vs: CompareSpec, ctx: Comparison
   // What both reads will cost: the same resolution and hybrid plan the reader makes for each window.
   const planOf = (w: { fromMs: number; toMs: number }): RangePlan => {
     const r = resolveRange({ kind: 'absolute', fromMs: w.fromMs, toMs: w.toMs }, nowMs, collectingSinceMs);
-    return planRangeReads(r.fromMs, r.toMs, nowMs, foldedThroughMs);
+    return planRangeReads(r.fromMs, r.toMs, nowMs, foldedThroughMs, planOpts);
   };
   const a = planOf(pair.current);
   const b = planOf(pair.baseline);
@@ -902,7 +924,7 @@ export function planComparison(spec: RangeSpec, vs: CompareSpec, ctx: Comparison
   if (a.truncated || b.truncated || reads > docCap) return refuse('too-many-reads', { reads: reads + (a.truncated || b.truncated ? 1 : 0), cap: docCap });
 
   // Moved when the window read differs from the one the range alone would sum (24 h minute-exact → whole hours).
-  const own = planRangeReads(cur.fromMs, cur.toMs, nowMs).window;
+  const own = planRangeReads(cur.fromMs, cur.toMs, nowMs, undefined, planOpts).window;
   const realigned = pair.current.fromMs !== own.fromMs || pair.current.toMs !== own.toMs;
   return {
     ok: true,
@@ -959,6 +981,16 @@ export interface RangeComparison {
 }
 
 const HALF_DOLLAR_M = 50_000;
+
+/**
+ * The change as printed (founder-build r1 ui-8, FINDINGS_R1 m11): the difference of the two figures as they print in
+ * whole dollars, so "$169,136 → $183,130 · +$13,994" always foots (the exact delta could print a dollar off). 0 when
+ * there is nothing to compare.
+ */
+export function printedDeltaM(cmp: Pick<RangeComparison, 'currentM' | 'baselineM' | 'basis'>): number {
+  if (cmp.basis === 'none') return 0;
+  return roundToDollarsM(cmp.currentM) - roundToDollarsM(cmp.baselineM);
+}
 
 /** The current window against the baseline: both sums, the signed delta and its basis (P2-W13). Pure. */
 export function compareRanges(current: RangeFigures, baseline: RangeFigures): RangeComparison {

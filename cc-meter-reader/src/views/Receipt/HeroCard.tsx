@@ -29,16 +29,17 @@ import { t, type CopyKey } from '../../copy/en.ts';
 import { InlineNotice } from '../../components/common/InlineNotice.tsx';
 import { HowItWorks } from '../../components/HowItWorks/HowItWorks.tsx';
 import { Meter } from '../../components/Meter/Meter.tsx';
+import { useReducedMotion } from '../../components/Meter/useReducedMotion.ts';
 import { shallowEqual, useAppState } from '../../state/react.tsx';
 import { headlineSplit } from '../../../core/snapshot.ts';
 import { priceBasisSummary } from '../../../core/receipt.ts';
 import { ReceiptBar, type ReceiptBarNet } from '../../components/ReceiptBar/ReceiptBar.tsx';
 import { ReceiptList, type ReceiptLine } from '../../components/ReceiptList/ReceiptList.tsx';
-import { formatMoney } from '../../lib/format.ts';
+import { formatMoney, formatMoneyNeverZero } from '../../lib/format.ts';
 import { prefersReducedMotion } from '../../lib/dom.ts';
 import type { GoalPace } from '../../../core/goal.ts';
 import { formatLocalMonthDay } from '../../../core/time.ts';
-import type { PeriodFigures } from './model.ts';
+import { asideWholeM, type PeriodFigures } from './model.ts';
 import { RangeControl, type PickerCommit } from './RangePicker.tsx';
 import { CompareBars, CompareFigure, CompareMovers, type HeroCompare } from './CompareStrip.tsx';
 
@@ -127,6 +128,8 @@ export interface HeroCardProps {
   aside?: HeroAside;
   /** A savings goal's pace (P2-W20): the strip under the caption on month to date, its room kept on the other periods. */
   goal?: GoalPace;
+  /** Force the reduced-motion path (tests); default follows `prefers-reduced-motion`, as the Meter does. */
+  reducedMotion?: boolean;
 }
 
 /**
@@ -139,7 +142,8 @@ function GoalStrip({ pace, tz, reserved }: { pace: GoalPace; tz: string; reserve
   const scale = Math.max(pace.goalM, end, 1) * 1.08;
   const pct = (m: number) => `${Math.min(100, Math.max(0, (m / scale) * 100)).toFixed(2)}%`;
   const state = pace.onPace === undefined ? 'early' : pace.onPace ? 'ahead' : 'behind';
-  const money = (m: number) => formatMoney(m, { compact: true });
+  // r3 ui-4 (H6): never "$0" for a real figure on a sub-dollar workspace ("< $1", D82).
+  const money = (m: number) => formatMoneyNeverZero(m);
   const words =
     state === 'early'
       ? t('receiptView.goal.early', { goal: money(pace.goalM) })
@@ -193,12 +197,29 @@ const ASIDE_LABEL: Record<HeadlinePeriod, CopyKey> = {
  * dollar ahead of the number it becomes). Under a dotted rule, what a day saves at current rates. Hidden under
  * 1024 px, where the toggle is the control.
  */
-function HeroAsideList({ aside, period, rangeActive, onPeriod }: { aside: HeroAside; period: HeadlinePeriod; rangeActive: boolean; onPeriod: (p: HeadlinePeriod) => void }) {
+function HeroAsideList({
+  aside,
+  period,
+  rangeActive,
+  onPeriod,
+  ticking,
+}: {
+  aside: HeroAside;
+  period: HeadlinePeriod;
+  rangeActive: boolean;
+  onPeriod: (p: HeadlinePeriod) => void;
+  /** Whether a meter showing an accruing period would tick (motion allowed, a rate): the aside floors only then. */
+  ticking: boolean;
+}) {
   const lines: ReceiptLine[] = aside.periods
     .filter(({ period: p }) => rangeActive || p !== period)
     .map(({ period: p, savedM }) => {
       const words = t(ASIDE_LABEL[p]);
-      const wholeM = Math.floor(Math.max(0, savedM) / 100_000) * 100_000;
+      // Founder-build r2 ui-8 (BO-7): what the meter prints for that period — floored like its wheels while it ticks,
+      // half up when it is static (reduced motion, a rate of 0, the run rate: r1 ui-8 m12).
+      // r2 core-10 (IC-4, handoff): real savings under a dollar print '< $1' (fmtDollars), never "$0".
+      const roundedM = asideWholeM(p, savedM, ticking);
+      const wholeM = roundedM === 0 && savedM > 0 ? savedM : roundedM;
       const amount = formatMoney(wholeM) + (p === 'annualized' ? ` ${t('units.perYear')}` : '');
       return {
         id: p,
@@ -255,6 +276,7 @@ function BarSkeleton() {
 export function HeroCard(props: HeroCardProps) {
   const { period, onPeriod, figures, meterLabel, caption, projection, sweepAtMs, ratePerSecM, net, onShowMath, onCopy, copyDisabled, pctBasis, onReportCard, attribution = 'route' } = props;
   const { range, onApplyRange, commits, tz, nowMs, collectingSinceMs, customDisabled, customHint, aside, goal } = props;
+  const reduced = useReducedMotion(props.reducedMotion);
   const [howOpen, setHowOpen] = useState(false);
   // The period the page landed on: only its figure rolls up on first paint (P2-W19).
   const [landedPeriod] = useState(period);
@@ -276,6 +298,8 @@ export function HeroCard(props: HeroCardProps) {
   // The sweep's cursor: the picker plans the same hybrid read the reader will (core/range.ts planRangeReads).
   const meteredThrough = useAppState((s) => s.meta?.meteredThrough);
   const meteredThroughMs = meteredThrough ? fromIso(meteredThrough) : undefined;
+  // r3 ui-5 (H9): the sweep's minute retention, so the picker plans the read the reader will make.
+  const minuteRetentionHours = useAppState((s) => s.meta?.minuteRetentionHours);
   const barFigures = showRange ? rangeFigures : figures;
   // P1-F02 (loaned from WP-H): month to date splits bytes dropped from diversion credits exactly (per-destination
   // month totals); the other periods and a range have no exact split, so their bar keeps one saved segment.
@@ -340,6 +364,7 @@ export function HeroCard(props: HeroCardProps) {
               nowMs={nowMs}
               collectingSinceMs={collectingSinceMs}
               meteredThroughMs={meteredThroughMs !== undefined && Number.isFinite(meteredThroughMs) ? meteredThroughMs : undefined}
+              minuteRetentionHours={minuteRetentionHours}
               customDisabled={customDisabled}
               customHintId={showHint ? hintId : undefined}
             />
@@ -397,12 +422,13 @@ export function HeroCard(props: HeroCardProps) {
                 // period switch eases from wherever the wheels are. data-value-m says the figure from frame one.
                 rollIn={period === landedPeriod ? 'receipt-hero' : undefined}
                 rollInValue="target"
+                reducedMotion={props.reducedMotion}
               />
             )}
           </div>
         )}
 
-        {aside ? <HeroAsideList aside={aside} period={period} rangeActive={showRange} onPeriod={onPeriod} /> : null}
+        {aside ? <HeroAsideList aside={aside} period={period} rangeActive={showRange} onPeriod={onPeriod} ticking={!reduced && ratePerSecM > 0} /> : null}
 
         {showRange ? (
           <p className="mr-hero-range-words" data-testid="hero-range-words">

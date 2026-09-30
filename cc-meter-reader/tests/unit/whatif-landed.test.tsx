@@ -106,7 +106,9 @@ function run(start: DetectInput, minutes: { ws?: number; pay?: number; commits?:
 }
 
 describe('the detector announces a pack under the demo profile (P2-W06)', () => {
-  const pack = [commit('7c2d410aa', T0 - MIN, 'demo: apply the pack on r_ws')];
+  // Founder-build r1 core-3 (row 9): deployed 3 minutes before the first evaluated minute, so the demo profile's settled
+  // good news fires on it (a minute starting < 60 s after the deploy is the Worker reload's, and waits).
+  const pack = [commit('7c2d410aa', T0 - 3 * MIN, 'demo: apply the pack on r_ws')];
 
   it('opens a closed good-news incident for the pack under the demo profile, with the switch off', () => {
     const s = demoProfile();

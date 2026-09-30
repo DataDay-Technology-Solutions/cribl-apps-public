@@ -39,6 +39,8 @@ export function caughtInSeconds(i: Pick<Incident, 'caughtInSec' | 'openedAt' | '
 
 export interface CanonicalOptions {
   incident?: Incident;
+  /** Core-10 (M9): the workspace's dollar floor (thresholds.regressionMinCentsPerDay), named by a below-floor close. */
+  regressionFloorCentsPerDay?: number;
   receipt?: WeeklyReceipt;
   /** workspace name or id */
   workspace: string;
@@ -56,7 +58,13 @@ export function ledgerLink(linkBase: string, objectKey: string): string {
   return `${base}/ledger?object=${encodeURIComponent(objectKey).replace(/%3A/gi, ':')}`;
 }
 
-function toCanonicalIncident(i: Incident, linkBase: string, labels?: Record<string, string>): CanonicalIncident {
+/** Founder-build r1 core-10 (M9): a regression the D26 dollar floor closed — it recovered nowhere (D47). */
+export const BELOW_FLOOR_NOTE = 'below-floor';
+export function closedBelowFloor(i: Pick<CanonicalIncident, 'notes' | 'closedAt' | 'closedReason'> | Pick<Incident, 'notes' | 'closedAt' | 'closedReason'>): boolean {
+  return !!i.closedAt && !i.closedReason && (i.notes ?? []).includes(BELOW_FLOOR_NOTE);
+}
+
+function toCanonicalIncident(i: Incident, linkBase: string, labels?: Record<string, string>, floorCentsPerDay?: number): CanonicalIncident {
   const parsed = parseObjectKey(i.objectKey);
   const id = parsed?.id ?? i.objectKey;
   const isRatio = i.type === 'regression' || i.type === 'goodnews';
@@ -86,7 +94,8 @@ function toCanonicalIncident(i: Incident, linkBase: string, labels?: Record<stri
   if (i.cause) out.cause = i.cause;
   if (i.commit) {
     // An API credential's client id reads 'API client' (NOTIFY-3a issue 8).
-    out.commit = { hash: i.commit.hash, message: i.commit.message, author: displayAuthor(i.commit.author), match: i.commit.match };
+    // An API credential's client id reads as the member's name for it, else 'API client ··1a2b' (C5, row 10).
+    out.commit = { hash: i.commit.hash, message: i.commit.message, author: displayAuthor(i.commit.author, labels), match: i.commit.match };
     if (i.commit.deployedAt) out.commit.deployedAt = i.commit.deployedAt;
   }
   const caught = caughtInSeconds(i);
@@ -94,6 +103,7 @@ function toCanonicalIncident(i: Incident, linkBase: string, labels?: Record<stri
   if (i.closedAt) out.closedAt = i.closedAt;
   if (i.closedAt && i.closedReason) out.closedReason = i.closedReason;
   if (i.closedAt && i.closedBy) out.closedBy = i.closedBy;
+  if (closedBelowFloor(i) && floorCentsPerDay !== undefined && Number.isFinite(floorCentsPerDay)) out.floorPerDay = fmtDollars(floorCentsPerDay * 1000);
   return out;
 }
 
@@ -106,7 +116,7 @@ export function canonicalPayload(event: NotifyEvent, opts: CanonicalOptions): Ca
     sentAt: opts.sentAt ?? new Date().toISOString(),
     workspace: opts.workspace,
   };
-  if (opts.incident) p.incident = toCanonicalIncident(opts.incident, opts.linkBase, opts.labels);
+  if (opts.incident) p.incident = toCanonicalIncident(opts.incident, opts.linkBase, opts.labels, opts.regressionFloorCentsPerDay);
   if (opts.receipt) p.receipt = opts.receipt;
   return p;
 }
@@ -155,6 +165,8 @@ const MEMBER_CLOSED_PREFIX: Record<NonNullable<CanonicalIncident['closedReason']
  */
 export function closedPrefix(i: Pick<CanonicalIncident, 'notes' | 'closedReason'>): string {
   if (i.closedReason) return MEMBER_CLOSED_PREFIX[i.closedReason] ?? S.closedPrefix;
+  // Core-10 (M9): the floor closed it; nothing came back.
+  if ((i.notes ?? []).includes(BELOW_FLOOR_NOTE)) return S.closedPrefix;
   return closedAsNewNormal(i) ? S.newNormalPrefix : S.recoveredPrefix;
 }
 
@@ -168,7 +180,7 @@ export function slackGlyph(p: CanonicalPayload): string {
   if (p.event === 'receipt.weekly') return ':receipt:';
   const i = p.incident;
   if (!i) return ':large_blue_circle:';
-  if ((p.event === 'incident.closed' || i.closedAt) && (closedAsNewNormal(i) || i.closedReason)) return ':large_blue_circle:';
+  if ((p.event === 'incident.closed' || i.closedAt) && (closedAsNewNormal(i) || i.closedReason || (i.notes ?? []).includes(BELOW_FLOOR_NOTE))) return ':large_blue_circle:';
   if (p.event === 'incident.closed' || i.closedAt || i.type === 'goodnews') return ':large_green_circle:';
   if (i.severity === 'high') return ':red_circle:';
   if (i.severity === 'medium') return ':large_orange_circle:';
@@ -195,12 +207,16 @@ function openSeconds(i: Pick<CanonicalIncident, 'openedAt' | 'closedAt'>): numbe
   return Number.isFinite(opened) && Number.isFinite(closed) && closed >= opened ? (closed - opened) / 1000 : undefined;
 }
 
-type ImpactIncident = Pick<CanonicalIncident, 'type' | 'impact' | 'openedAt' | 'closedAt' | 'closedReason'>;
+type ImpactIncident = Pick<CanonicalIncident, 'type' | 'impact' | 'openedAt' | 'closedAt' | 'closedReason'> &
+  Partial<Pick<CanonicalIncident, 'notes' | 'after' | 'floorPerDay'>>;
 
 /** A recovered (or new-normal) incident: closed by the meter, not by a member (P1-F07: a member's close did not end the cost). */
 function endedByItself(i: Pick<CanonicalIncident, 'closedAt' | 'closedReason'>): boolean {
   return !!i.closedAt && !i.closedReason;
 }
+
+/** D26's default dollar floor, $5 a day (core/detector.ts DEFAULT_REGRESSION_MIN_CENTS_PER_DAY). */
+const DEFAULT_FLOOR_CENTS_PER_DAY = 500;
 
 /**
  * What an ended incident came to: its per-day rate over the time it was open (money in millicents), when that time is
@@ -229,6 +245,9 @@ export function impactPhrase(i: ImpactIncident): string {
   const money = { perDay: i.impact.perDay, perYear: i.impact.perYear };
   if (i.type === 'budget') return fill(M.overBudget, money);
   if (i.type === 'goodnews') return fill(M.perDayPerYear, money);
+  // Core-10 (M9): closed by the dollar floor — still down, never "while it lasted", never a year.
+  if (i.closedAt && !i.closedReason && (i.notes ?? []).includes(BELOW_FLOOR_NOTE))
+    return fill(M.belowFloor, { floor: i.floorPerDay ?? fmtDollars(DEFAULT_FLOOR_CENTS_PER_DAY * 1000), after: fmtPct(i.after?.ratio ?? 0) });
   if (endedByItself(i)) {
     const sec = openSeconds(i);
     const realized = realizedImpactM(i);
@@ -243,11 +262,13 @@ export function impactPhrase(i: ImpactIncident): string {
  * The field grid. Open: the money, the commit, before → after. Recovered (D47): the same drop, then where it
  * recovered to and how long it was open; an incident closed before D47 kept no drop, so only the recovery shows.
  */
-function incidentFields(i: CanonicalIncident, closed: boolean): SlackText[] {
-  const commitPair = [field(F.commit, commitText(i)), field(F.by, i.commit ? esc(displayAuthor(i.commit.author)) : '—')];
+function incidentFields(i: CanonicalIncident, closed: boolean, labels?: Record<string, string>): SlackText[] {
+  const commitPair = [field(F.commit, commitText(i)), field(F.by, i.commit ? esc(displayAuthor(i.commit.author, labels)) : '—')];
   const open = closed ? openSeconds(i) : undefined;
+  // Core-10 (M9): closed by the dollar floor — still down: no recovery fields, no year.
+  const underFloor = closed && closedBelowFloor(i);
   // P1-F07: a drop a member accepted (or muted) did not end — its money reads in the present tense.
-  const recovered = closed && !i.closedReason;
+  const recovered = closed && !i.closedReason && !underFloor;
   const openFor = open !== undefined ? [field(F.openFor, fmtDuration(open))] : [];
   // The second money field (D62, rules round 2): only an open regression is projected to a year, as what it costs if
   // left; a recovered incident states what it came to while it was open; a spike and budget pace carry no year.
@@ -283,7 +304,9 @@ function incidentFields(i: CanonicalIncident, closed: boolean): SlackText[] {
     default:
       return [
         field(recovered ? F.wasLosingPerDay : F.lostPerDay, i.impact.perDay),
-        ...(recovered ? cameTo(F.lostWhileOpen) : [field(closed ? F.perYear : F.perYearIfLeft, i.impact.perYear)]),
+        // m15 (#36): an accepted or muted drop reads as open — "a year if left", as its fallback text says; a
+        // below-floor close has no year at all (M9).
+        ...(recovered ? cameTo(F.lostWhileOpen) : underFloor ? [] : [field(F.perYearIfLeft, i.impact.perYear)]),
         ...commitPair,
         field(F.before, fmtPct(i.before.ratio ?? 0)),
         ...(i.after.ratio !== undefined ? [field(F.after, fmtPct(i.after.ratio))] : []),
@@ -339,8 +362,10 @@ export function slackPayload(canonical: CanonicalPayload, opts: SlackOptions = {
     return { text: esc(`${glyph} ${text}`), blocks: [{ type: 'section', text: { type: 'mrkdwn', text: esc(`${glyph} ${text}`) } }] };
   }
 
-  const recovered = canonical.event === 'incident.closed' || !!i.closedAt;
-  const prefix = canonical.event === 'test' ? S.testPrefix : recovered && i.type !== 'goodnews' ? closedPrefix(i) : '';
+  // Good news opens and closes in one minute (a one-shot announcement): it is never a recovery (row 9, PACK_PAYOFF F1),
+  // so it keeps its caught-in line and the time it was found, like an opened alert.
+  const recovered = (canonical.event === 'incident.closed' || !!i.closedAt) && i.type !== 'goodnews';
+  const prefix = canonical.event === 'test' ? S.testPrefix : recovered ? closedPrefix(i) : '';
   const title = `${prefix}${i.title}`;
   const destination = i.object.destination ? humanize(i.object.destination, opts.labels) : i.object.group;
   const when = recovered && i.closedAt ? localTime(i.closedAt, tz) : localTime(i.openedAt, tz);
@@ -351,7 +376,7 @@ export function slackPayload(canonical: CanonicalPayload, opts: SlackOptions = {
     text: esc(fill(S.incidentFallback, { glyph, title, money: impactPhrase(i) })),
     blocks: [
       { type: 'header', text: { type: 'plain_text', text: clip(`${glyph} ${title}`, 150), emoji: true } },
-      { type: 'section', fields: incidentFields(i, recovered) },
+      { type: 'section', fields: incidentFields(i, recovered, opts.labels) },
       { type: 'context', elements: [{ type: 'mrkdwn', text: esc(`${context}${notes}`) }] },
       { type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: S.openLedger }, url: i.link, action_id: 'open_in_ledger' }] },
     ],
@@ -371,7 +396,7 @@ export interface ServiceNowPayload {
  * Plain-text incident summary (ServiceNow description, logs). A recovered incident adds where it recovered to
  * (D47); one closed before D47 kept no drop, so its figure line opens with the baseline instead of an arrow.
  */
-export function incidentPlainText(i: CanonicalIncident): string {
+export function incidentPlainText(i: CanonicalIncident, tz = 'UTC'): string {
   const P = S.plain;
   const money = { money: impactPhrase(i) };
   const lines = [i.title];
@@ -391,8 +416,17 @@ export function incidentPlainText(i: CanonicalIncident): string {
   lines.push(i.commit ? fill(P.commit, { hash: i.commit.hash.slice(0, 7), message: i.commit.message, author: displayAuthor(i.commit.author) }) : S.noChange);
   const line = caughtLine(i);
   const caught = line ? `${line[0].toUpperCase()}${line.slice(1)} · ` : '';
-  const closedWord = i.closedReason ? `${closedPrefix(i).replace(/: $/, '')}${closedByText(i)}` : closedAsNewNormal(i) ? S.closedAsNewNormal : S.recovered;
-  lines.push(`${caught}${fill(P.opened, { at: i.openedAt })}${i.closedAt ? fill(P.closed, { closed: closedWord, at: i.closedAt }) : ''}`);
+  const closedWord = i.closedReason
+    ? `${closedPrefix(i).replace(/: $/, '')}${closedByText(i)}`
+    : closedAsNewNormal(i)
+      ? S.closedAsNewNormal
+      : closedBelowFloor(i)
+        ? S.closed
+        : S.recovered;
+  // Good news closes the minute it opens (one-shot): it has no close to report and never "Recovered" (row 9, F1).
+  // Core-11 (m16, #38): times in the display zone, as Slack prints them (a value that is not a date prints as stored).
+  const closedPart = i.closedAt && i.type !== 'goodnews' ? fill(P.closed, { closed: closedWord, at: localTime(i.closedAt, tz) || i.closedAt }) : '';
+  lines.push(`${caught}${fill(P.opened, { at: localTime(i.openedAt, tz) || i.openedAt })}${closedPart}`);
   lines.push(fill(S.openLedgerAt, { link: i.link }));
   lines.push(CREDIT_STRINGS.signature);
   return lines.join('\n');
@@ -401,7 +435,7 @@ export function incidentPlainText(i: CanonicalIncident): string {
 const URGENCY: Record<string, 1 | 2 | 3> = { high: 1, medium: 2, info: 3 };
 
 /** SPEC 12.2 ServiceNow wrapper: short_description, plain-text description, urgency high→1 medium→2 info→3. */
-export function servicenowPayload(canonical: CanonicalPayload): ServiceNowPayload {
+export function servicenowPayload(canonical: CanonicalPayload, tz = 'UTC'): ServiceNowPayload {
   if (canonical.receipt) {
     return {
       short_description: fill(S.servicenowWeekly, { label: canonical.receipt.label }),
@@ -415,7 +449,7 @@ export function servicenowPayload(canonical: CanonicalPayload): ServiceNowPayloa
     const recovered = canonical.event === 'incident.closed' || !!i.closedAt;
     return {
       short_description: `${recovered && i.type !== 'goodnews' ? closedPrefix(i) : ''}${i.title}`,
-      description: incidentPlainText(i),
+      description: incidentPlainText(i, tz),
       urgency: URGENCY[i.severity] ?? 3,
       u_meter_reader: i,
     };
@@ -434,13 +468,16 @@ export function payloadFor(format: NotifyFormat, canonical: CanonicalPayload, op
     case 'slack':
       return slackPayload(canonical, opts);
     case 'servicenow':
-      return servicenowPayload(canonical);
+      return servicenowPayload(canonical, opts.tz ?? 'UTC');
     default:
       return genericPayload(canonical);
   }
 }
 
-/** SPEC 12.5 — `event: 'test'` with a synthetic, sample-noted incident (the SPEC 12.1 example numbers). */
+/**
+ * SPEC 12.5 — `event: 'test'` with a synthetic, sample-noted incident (the SPEC 12.1 example numbers). Founder-build r1
+ * core-11 (m8): its names are neutral (core/strings.ts testSample) and its link opens the Ledger itself, not an object.
+ */
 export function testPayload(workspace: string, nowIso: ISO, linkBase = ''): CanonicalPayload {
   const openedMs = fromIso(nowIso);
   const at = (deltaSec: number): ISO => new Date((Number.isNaN(openedMs) ? 0 : openedMs) + deltaSec * 1000).toISOString();
@@ -448,9 +485,9 @@ export function testPayload(workspace: string, nowIso: ISO, linkBase = ''): Cano
     id: 'inc_test00',
     type: 'regression',
     severity: 'high',
-    objectKey: 'pipe:default:mrd_pay_sample',
+    objectKey: `pipe:default:${S.testSample.objectId}`,
     label: S.testSample.label,
-    outputId: 'mrd_siem_prod',
+    outputId: S.testSample.outputId,
     openedAt: at(0),
     cause: 'commit',
     commit: {
@@ -469,5 +506,12 @@ export function testPayload(workspace: string, nowIso: ISO, linkBase = ''): Cano
     notes: ['sample'],
     deliveries: [],
   };
-  return canonicalPayload('test', { incident, workspace, linkBase, sentAt: nowIso });
+  const out = canonicalPayload('test', { incident, workspace, linkBase, sentAt: nowIso });
+  if (out.incident) out.incident.link = ledgerRootLink(linkBase);
+  return out;
+}
+
+/** '<linkBase>/ledger': the Ledger itself (core-11 m8: the test alert's link names no object). */
+export function ledgerRootLink(linkBase: string): string {
+  return `${(linkBase ?? '').replace(/\/+$/, '')}/ledger`;
 }

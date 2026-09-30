@@ -136,7 +136,7 @@
   justify-content: flex-end;
 }
 .mr-lt-sort:focus-visible {
-  outline: token('border.focus');
+  outline: 2px solid token('color.foreground.accent.default');
   outline-offset: 2px;
 }
 .mr-lt-sort-icon {
@@ -199,12 +199,12 @@
   box-shadow: inset 3px 0 0 token('color.border.accent.strong');
 }
 .mr-lt-row:focus-visible {
-  box-shadow: inset 0 0 0 2px token('color.border.focus');
+  box-shadow: inset 0 0 0 2px token('color.foreground.accent.default');
 }
 .mr-lt-row.is-highlighted:focus-visible {
   box-shadow:
     inset 3px 0 0 token('color.border.accent.strong'),
-    inset 0 0 0 2px token('color.border.focus');
+    inset 0 0 0 2px token('color.foreground.accent.default');
 }
 
 .mr-lt-td {
@@ -328,7 +328,7 @@
   opacity: 1;
 }
 .mr-lt-link:focus-visible {
-  outline: token('border.focus');
+  outline: 2px solid token('color.foreground.accent.default');
   outline-offset: 2px;
 }
 
@@ -370,8 +370,9 @@
   font: token('typography.body.sm.normal');
   color: token('color.foreground.subtle');
 }
+/* r2 ui-9: the bar spans the figure above it, so the column is exactly as wide as its figure. */
 .mr-lt-card-saved .mr-lt-bar {
-  width: 96px;
+  width: 100%;
   margin-top: token('spacing.xs');
 }
 /* Trend: the 30-minute line, then its last value. */
@@ -534,20 +535,28 @@
 .mr-lt-card-figures {
   display: flex;
   align-items: center;
-  gap: token('spacing.lg');
+  /* r2 ui-9: 12 px between the three (the saved figure, the reduction, the trend) — enough to read them apart at 360 px
+     with each whole. */
+  gap: token('spacing.md');
   min-width: 0;
 }
+/* Founder-build r2 ui-9 (BO-6): the saved column is as wide as its figure ("$2,502 / day" and its bar), never narrower —
+   it used to shrink under its ink and run "/ day" into "Volume reduced diverted" on a phone. The reduction takes what is
+   left and wraps its value under its caption when a narrow card needs the room. */
 .mr-lt-card-saved {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
+  min-width: max-content;
 }
 .mr-lt-card-saved .mr-figure > .mr-num {
   font: token('typography.body.lg.semibold');
 }
 .mr-lt-card-reduction {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  min-width: 0;
   font: token('typography.body.sm.normal');
   color: token('color.foreground.default');
+}
+.mr-lt-card-reduction > * {
   white-space: nowrap;
 }
 .mr-lt-card-caption {
@@ -556,6 +565,14 @@
 .mr-lt-card-trend {
   flex: 0 0 auto;
   display: inline-flex;
+}
+/* Founder-build r3 ui-7 (FINDINGS_R3 #13): at 320 px a saved figure, the unbroken "Volume reduced" and the 48 px trend
+   don't fit one line: the caption ran under the sparkline on every card. Below 340 px the caption wraps between its
+   words (the value stays whole), so the reduction takes two short lines beside the trend instead of one long one. */
+@media (max-width: 340px) {
+  .mr-lt-card-reduction > .mr-lt-card-caption {
+    white-space: normal;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

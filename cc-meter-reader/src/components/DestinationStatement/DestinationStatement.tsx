@@ -8,7 +8,7 @@ import { Button, Drawer } from '@capra/core';
 import { CopyOutlined } from '@capra/icons';
 import type { Counterfactual, OutputMonthTotals } from '../../../core/types.ts';
 import type { Heatmap as HeatmapData } from '../../../core/heatmap.ts';
-import { footMoney } from '../../../core/format.ts';
+import { footedMonth, type MoneyTripleM } from '../../views/Receipt/model.ts';
 import { t } from '../../copy/en.ts';
 import { copyText } from '../../lib/dom.ts';
 import { formatBytes, formatMoney, formatPct } from '../../lib/format.ts';
@@ -59,6 +59,11 @@ export interface DestinationStatementProps {
   budget?: { centsPerMonth: number; projectedM: number; pct: number };
   prices: StatementPrice[];
   history: StatementHistory;
+  /**
+   * Founder-build r2 ui-8 (FINDINGS_R2 #9): this destination's month to date as Show the math prints it
+   * (footedMtdRows), so the statement never reads a dollar apart from the drawer.
+   */
+  footedThisMonth?: MoneyTripleM;
   tz: string;
 }
 
@@ -71,7 +76,7 @@ function counterfactualWords(d: StatementDestination): string {
 }
 
 function StatementBody(props: DestinationStatementProps) {
-  const { destination: d, months, budget, prices, history, tz } = props;
+  const { destination: d, months, budget, prices, history, footedThisMonth, tz } = props;
   // This month: the running totals when read, else the Receipt's own month to date (sample data, a failed read).
   const fromSnapshot: OutputMonthTotals | undefined =
     d.mtdWhpM !== undefined || d.mtdPaidM !== undefined ? { whpM: d.mtdWhpM ?? 0, paidM: d.mtdPaidM ?? 0, savedM: d.mtdSavedM ?? 0 } : undefined;
@@ -82,8 +87,9 @@ function StatementBody(props: DestinationStatementProps) {
     [t('receiptView.statement.paid'), 'paidM'],
     [t('receiptView.statement.saved'), 'savedM'],
   ];
-  // Printed money adds up: would have paid − paid = saved in whole dollars (core/format footMoney, review W2).
-  const footed = (m: OutputMonthTotals | undefined): OutputMonthTotals | undefined => (m ? { ...m, ...footMoney(m) } : undefined);
+  // Printed money adds up: would have paid − paid = saved in whole dollars (core/format footMoney, review W2); the
+  // snapshot's own month reads exactly as Show the math prints it (r2 ui-8, footedMonth).
+  const footed = (m: OutputMonthTotals | undefined): OutputMonthTotals | undefined => footedMonth(m, fromSnapshot, footedThisMonth);
   const cell = (m: OutputMonthTotals | undefined, k: keyof OutputMonthTotals) => {
     const f = footed(m);
     return f ? formatMoney(f[k]) : t('receiptView.statement.noMonth');

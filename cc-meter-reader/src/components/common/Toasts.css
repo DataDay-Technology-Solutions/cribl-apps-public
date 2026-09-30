@@ -12,6 +12,19 @@
   display: contents;
 }
 
+/*
+ * Founder-build r3 ui-8 (FINDINGS_R3 #14): Capra's toast has a 360 px minimum width and is right-aligned in the 16 px
+ * gutter, so at 320 px its first 56 px sat off-screen. Where 360 px no longer fits beside that gutter (375 px and
+ * below: 320, 360, 375 phones) it is the viewport less the two 16 px gutters. From 376 px up it keeps Capra's width and
+ * stays on screen (at 390 px: 14 px to its left, as before).
+ */
+@media (max-width: 375px) {
+  :is([role='status'], [role='alert']):has([data-mr-toast]) {
+    min-inline-size: calc(100vw - 32px);
+    max-inline-size: calc(100vw - 32px);
+  }
+}
+
 /* Every toast fades in and rises 8 px; not at all under reduced motion (DESIGN_BRIEF 4). */
 @media (prefers-reduced-motion: no-preference) {
   :is([role='status'], [role='alert']):has([data-mr-toast]) {
@@ -35,4 +48,13 @@
   body:has(.mr-demo-bottombar) :is([role='status'], [role='alert']):has([data-mr-toast]) {
     translate: 0 calc(-1 * (token('dimension.component.xl') + token('spacing.lg') + 1px));
   }
+}
+
+/*
+ * Founder-build r2 ui-10 (BO-17): while a Settings save bar sticks to the bottom of the viewport (unsaved work, or a
+ * failed save), the toasts rise above it by its height (--mr-savebar-h, set by the bar, src/views/Settings/shared.tsx),
+ * so a "Target connected" never covers the Save changes the member needs next.
+ */
+body:has(.mr-set-savebar:is([data-dirty='true'], [data-failure='true'])) :is([role='status'], [role='alert']):has([data-mr-toast]) {
+  translate: 0 calc(-1 * var(--mr-savebar-h, 0px));
 }

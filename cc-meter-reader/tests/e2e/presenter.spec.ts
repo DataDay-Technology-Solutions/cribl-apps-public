@@ -652,6 +652,39 @@ async function shoot(page: Page, name: string, opts: { fullPage?: boolean; selec
 // ─── Stage layout ────────────────────────────────────────────────────────────
 
 test.describe('presenter view', () => {
+  test('the stage speaks its figure once per 30 s interval: no Meter live region beside the stage announcer (r1 ui-10, m21)', async ({ page }) => {
+    test.skip(test.info().project.name !== 'chromium', 'a 65 s watch: one project covers it');
+    test.setTimeout(120_000);
+    await openPresenter(page, 'dark', 1920, 1080);
+    // Every write to any live region on the stage, from now on, for 65 s.
+    await page.evaluate(() => {
+      const w = window as unknown as { __mrLive: { t: number; text: string; who: string }[] };
+      w.__mrLive = [];
+      const t0 = performance.now();
+      const watch = (el: Element) => {
+        new MutationObserver(() => {
+          const text = (el.textContent ?? '').trim();
+          if (text) w.__mrLive.push({ t: performance.now() - t0, text, who: el.getAttribute('data-testid') ?? el.className });
+        }).observe(el, { childList: true, characterData: true, subtree: true });
+      };
+      document.querySelectorAll('[aria-live]').forEach(watch);
+    });
+    await page.waitForTimeout(65_000);
+    const writes = await page.evaluate(() => (window as unknown as { __mrLive: { t: number; text: string; who: string }[] }).__mrLive);
+    // One voice: the stage announcer (src/components/Shell/StageAnnouncer.tsx), once per 30 s.
+    expect(writes.map((w) => w.who).filter((who) => who !== 'stage-announcer'), JSON.stringify(writes)).toEqual([]);
+    for (const [from, to] of [[0, 30_000], [30_000, 60_000]] as const) {
+      expect(writes.filter((w) => w.t >= from && w.t < to).length, `writes in [${from}, ${to}) ms: ${JSON.stringify(writes)}`).toBeLessThanOrEqual(1);
+    }
+    // The announcer itself spoke (it repeats the same words when the static run rate has not moved, so no new write).
+    await expect(page.getByTestId('stage-announcer')).toHaveText(/^Saved by Cribl: \$[\d,]+, annualized run rate/);
+    // The stage has no Meter status region of its own…
+    expect(await page.locator('.mr-pv-figure [role="status"], .mr-pv-session [role="status"]').count()).toBe(0);
+    // …but its figure stays readable as text (not live): a screen reader reading the stage still finds it (the wheels are
+    // aria-hidden).
+    await expect(page.locator('.mr-pv-figure .mr-meter > .mr-visually-hidden').first()).toHaveText(/: \$[\d,]+$/);
+  });
+
   for (const theme of ['dark', 'light'] as const) {
     test(`meets the 1920 stage checklist (${theme})`, async ({ page }) => {
       const errors = trackConsoleErrors(page);
@@ -1618,7 +1651,7 @@ test.describe('presenter view', () => {
 
 test.describe('incident takeover', () => {
   for (const theme of ['dark', 'light'] as const) {
-    test(`slides up, counts, flips on delivery, dismisses on any key, returns green (${theme}, 1920)`, async ({ page }) => {
+    test(`slides up, holds its catch, flips on delivery, dismisses on any key, returns green (${theme}, 1920)`, async ({ page }) => {
       const errors = trackConsoleErrors(page);
       await openPresenter(page, theme, 1920, 1080);
       const takeover = page.locator('.mr-takeover');
@@ -1638,9 +1671,11 @@ test.describe('incident takeover', () => {
       const clock = takeover.locator('.mr-tk-caught');
       const clockText = takeover.locator('.mr-tk-caught-text');
       await expect(clock).toHaveAttribute('data-live', 'true');
+      // r2 ui-11 (FINDINGS_R2 #14): the measured catch holds while the delivery is on its way (it used to count on past
+      // it and snap back when the delivery landed); data-live still says the delivery is owed.
       const first = await clockText.textContent();
       await page.waitForTimeout(1_300);
-      expect(await clockText.textContent()).not.toBe(first);
+      expect(await clockText.textContent()).toBe(first);
 
       // The QR stays in its corner, uncovered.
       await settled(page);

@@ -5,6 +5,7 @@ import { largestImpact, type CommitImpact } from '../../../core/commitImpacts.ts
 import { flowObjectKeys } from '../../../core/flows.ts';
 import { sameHash } from '../../../core/timeline.ts';
 import type { FlowFigures, Incident } from '../../../core/types.ts';
+import { t } from '../../copy/en.ts';
 import { formatMoney } from '../../lib/format.ts';
 
 export function signedMoney(milliCents: number): string {
@@ -114,4 +115,28 @@ export function largestAttributed(impacts: readonly CommitImpact[], domain: [num
     impacts.filter((i) => isAttributed(i) && !isSettled(i, rev)),
     domain,
   );
+}
+
+/** "Mon 2:04 AM" in the display zone: when a change landed or recovered (the Changes list's meta, the commit card). */
+export function changeWhen(ms: number, tz: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit', timeZone: tz }).format(ms);
+  } catch {
+    return new Date(ms).toISOString();
+  }
+}
+
+/**
+ * "Recovered Mon 2:04 AM, reverted by c8b6350" / "Undid 22d0a5e" for a settled change, else undefined — the Changes
+ * list's row and (founder-build r2 ui-13, BO-15) the commit card both print it.
+ */
+export function settledText(i: CommitImpact, rev: Reversals, tz: string): string | undefined {
+  const short = (hash: string): string => hash.slice(0, 7);
+  const undone = rev.undone.get(i.commit.hash);
+  if (undone) {
+    const time = changeWhen(undone.recoveredAt, tz);
+    return undone.by ? t('ledger.timeline.changes.recoveredBy', { time, hash: short(undone.by) }) : t('ledger.timeline.changes.recovered', { time });
+  }
+  const undid = rev.undoes.get(i.commit.hash);
+  return undid ? t('ledger.timeline.changes.undid', { hash: short(undid) }) : undefined;
 }

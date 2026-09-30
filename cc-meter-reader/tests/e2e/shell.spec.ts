@@ -19,8 +19,9 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   allowClipboard,
   gotoApp,
-  readClipboard,
   mockControl,
+  pinClockFromEnv,
+  readClipboard,
   resetMock,
   seedPrices,
   setTheme,
@@ -169,6 +170,7 @@ test.describe('shell', () => {
 
 /** A priced workspace, so '/' is the Receipt (a never-priced one lands on First run). */
 async function openPriced(page: Page, path = '/'): Promise<void> {
+  await pinClockFromEnv(page);
   await gotoApp(page, '/first-run');
   // Let the view finish loading first: Firefox fails a module import that a navigation cancels, loudly.
   await expect(page.getByTestId('first-run')).toBeVisible();

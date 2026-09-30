@@ -139,12 +139,46 @@ const HOUR_KEY = /^roll\/hour\/(\d{4}-\d{2}-\d{2})$/;
 const DAY_KEY = /^roll\/day\/(\d{4})-(\d{2})$/;
 const INCIDENT_KEY = /^incidents\/(\d{4}-\d{2}-\d{2})$/;
 
+/** SPEC 4: minute documents are kept 25 h (core-7 may keep them shorter on a large estate: minuteRetentionHours). */
+export const MINUTE_RETENTION_MS = 25 * HOUR_MS;
+/** Core-7 (M11): the minute documents may hold about this many keys (a document plus its chunks, per UTC hour)… */
+export const MINUTE_KEY_BUDGET = 400;
+/** …but are never kept under this many hours (the snapshot's hour, late rewrites, folds and a short catch-up need them). */
+export const MIN_MINUTE_RETENTION_HOURS = 6;
+
+/**
+ * Core-7 (M11, #43; DECISIONS text in founder-build OUT/r1-core.md): how many hours of minute documents the store keeps.
+ * 25 h (SPEC 4) while a document is at most ~16 keys; on a larger estate, as many hours as MINUTE_KEY_BUDGET keys allow
+ * (the largest minute document's size, with its chunks), never under MIN_MINUTE_RETENTION_HOURS. At the 2,000-flow
+ * preset a document is ~52 keys: 7 h instead of 25 h (~1,350 keys, over the App KV's 1,000-key cap).
+ */
+export function minuteRetentionHours(keys: readonly string[], chunks: Readonly<Record<string, readonly number[]>>): number {
+  let perDoc = 1;
+  for (const k of keys) if (MIN_KEY.test(k)) perDoc = Math.max(perDoc, 1 + (chunks[k]?.length ?? 0));
+  const hours = Math.floor(MINUTE_KEY_BUDGET / perDoc);
+  return Math.max(MIN_MINUTE_RETENTION_HOURS, Math.min(MINUTE_RETENTION_MS / HOUR_MS, hours));
+}
+
+/** The instant a dated key's bucket starts (oldest-first deletes); NaN for any other key. */
+export function datedKeyStartMs(key: string): number {
+  let m = MIN_KEY.exec(key);
+  if (m) return fromIso(`${m[1]}:00:00.000Z`);
+  m = HOUR_KEY.exec(key);
+  if (m) return fromIso(`${m[1]}T00:00:00.000Z`);
+  m = DAY_KEY.exec(key);
+  if (m) return Date.UTC(Number(m[1]), Number(m[2]) - 1, 1);
+  m = INCIDENT_KEY.exec(key);
+  return m ? fromIso(`${m[1]}T00:00:00.000Z`) : Number.NaN;
+}
+
 /**
  * Keys past retention (SPEC 4): minute docs older than 25 h, hour docs older than 32 days,
  * day docs older than 13 months, incident docs older than 31 days. Anchored patterns, so chunk
  * keys (`<key>/c/<n>`, owned by kv.del) and every other key are never returned.
  */
-export function expiredKeys(allKeys: string[], nowMs: number): string[] {
+export function expiredKeys(allKeys: string[], nowMs: number, opts: { minuteRetentionMs?: number } = {}): string[] {
+  // Founder-build r1 core-7 (M11): the minute documents' retention can be sized to the estate (core/sweep.ts).
+  const minuteRetentionMs = opts.minuteRetentionMs ?? MINUTE_RETENTION_MS;
   const out: string[] = [];
   const now = new Date(nowMs);
   const nowMonthIndex = now.getUTCFullYear() * 12 + now.getUTCMonth();
@@ -152,7 +186,7 @@ export function expiredKeys(allKeys: string[], nowMs: number): string[] {
     let m = MIN_KEY.exec(key);
     if (m) {
       const start = fromIso(`${m[1]}:00:00.000Z`);
-      if (nowMs - start > 25 * HOUR_MS) out.push(key);
+      if (nowMs - start > minuteRetentionMs) out.push(key);
       continue;
     }
     m = HOUR_KEY.exec(key);

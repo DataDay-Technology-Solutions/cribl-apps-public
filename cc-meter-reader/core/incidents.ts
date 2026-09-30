@@ -1,6 +1,7 @@
 // core/incidents.ts — incident identity, titles, notification gating and the per-day incident docs (SPEC 9.4, 12, 17).
 
-import type { BaselinesDoc, ISO, Incident, IncidentType, NotificationEndpoint, Severity, Snapshot } from './types.ts';
+import type { BaselinesDoc, DeliveryRef, ISO, Incident, IncidentType, NotificationEndpoint, Severity, Snapshot } from './types.ts';
+import { classifyStatus } from './adapters/webhook.ts';
 import type { KvDocs } from './kv.ts';
 import { reseedBaseline } from './baseline.ts';
 import { flowObjectKeys, parseObjectKey } from './flows.ts';
@@ -86,26 +87,153 @@ export function incidentReadings(inc: Pick<Incident, 'type' | 'before' | 'after'
   return { before, recoveredTo: after, legacy: true };
 }
 
+/** Core-9 (M8): a failed endpoint waits this long before its first retry (core/sweep.ts FAILED_ATTEMPT_COOLDOWN_MS). */
+export const ENDPOINT_FAILED_RETRY_MS = 2 * 60_000;
+/**
+ * Founder-build r2 core-1 (FINDINGS_R2 #1): the back-off ladder a retryable failure climbs, in multiples of the first
+ * wait: 2 → 4 → 8 minutes. After it, an endpoint whose incident another endpoint delivered waits for the reminder
+ * cadence (the cooldown: the member was told); one nobody has delivered keeps doubling, capped at the cooldown.
+ */
+export const ENDPOINT_RETRY_LADDER_STEPS = 3;
+/** Delivery records kept on one incident (core/sweep.ts). */
+export const MAX_INCIDENT_DELIVERIES = 20;
+
+type EndpointRecord = NonNullable<Incident['notified']>[string];
+
+/** A 2xx. */
+function isOkStatus(status: number): boolean {
+  return status >= 200 && status < 300;
+}
+
+/**
+ * A failed attempt no retry can fix (SPEC 12.3): a 4xx (403 an unauthorized host, 404, 429 …) or a URL refused before
+ * any attempt (`final`, set by the sweep). A network error or a 5xx is retryable. An r1 record (no `final`) is read
+ * by its status.
+ */
+export function isFinalFailure(own: Pick<EndpointRecord, 'status' | 'final'>): boolean {
+  if (isOkStatus(own.status)) return false;
+  return own.final === true || !classifyStatus(own.status).retry;
+}
+
+/**
+ * How long an endpoint whose last `fails` attempts in a row failed (retryably) waits before the next: 2, 4, 8 minutes
+ * (`firstWaitMs` doubling), then the cooldown once another endpoint delivered the incident, else doubling on; never
+ * more than the cooldown.
+ */
+export function endpointRetryWaitMs(fails: number, cooldownMinutes: number, anotherDelivered: boolean, firstWaitMs = ENDPOINT_FAILED_RETRY_MS): number {
+  const cap = Math.max(firstWaitMs, cooldownMinutes * 60_000);
+  const n = Math.max(1, Math.floor(fails) || 1);
+  if (n > ENDPOINT_RETRY_LADDER_STEPS && anotherDelivered) return cap;
+  return Math.min(cap, firstWaitMs * 2 ** Math.min(n - 1, 30));
+}
+
 /**
  * Whether `endpoint` should hear about `incident` now (SPEC 9.4 / 12):
  * the endpoint is enabled and the severity meets its minSeverity; then a first notification always
  * goes, a closed incident (recovery) always goes, a severity rise over `prevSeverity` goes, and
  * otherwise only once `cooldownMinutes` have passed since lastNotifiedAt.
+ *
+ * With the endpoint's own record (r1 core-9, M8): its last attempt failed → a final failure (a 4xx) waits for the
+ * cooldown or a severity rise; a retryable one waits its back-off (endpointRetryWaitMs, r2 core-1). A closure goes
+ * once to each endpoint that has not delivered since the close; one it failed since the close is retried on the same
+ * back-off when retryable, never when final.
  */
 export function shouldNotify(
   incident: Incident,
-  endpoint: Pick<NotificationEndpoint, 'enabled' | 'minSeverity'>,
+  endpoint: Pick<NotificationEndpoint, 'enabled' | 'minSeverity'> & { id?: string },
   nowMs: number,
   cooldownMinutes: number,
   prevSeverity?: Severity,
+  failedRetryMs = ENDPOINT_FAILED_RETRY_MS,
 ): boolean {
   if (!endpoint.enabled) return false;
   if (severityRank(incident.severity) < severityRank(endpoint.minSeverity ?? 'medium')) return false;
+  const rose = prevSeverity !== undefined && severityRank(incident.severity) > severityRank(prevSeverity);
+  // Founder-build r1 core-9 (M8): the endpoint's own record, when it has one.
+  const own = endpoint.id ? incident.notified?.[endpoint.id] : undefined;
+  if (own) {
+    const okAt = own.ok ? fromIso(own.ok) : Number.NaN;
+    const at = fromIso(own.at);
+    const closed = incident.closedAt ? fromIso(incident.closedAt) : Number.NaN;
+    const failed = !isOkStatus(own.status);
+    const others = Object.entries(incident.notified ?? {}).filter(([id]) => id !== endpoint.id);
+    if (Number.isFinite(closed)) {
+      // A closure goes once to each endpoint that has not delivered since it closed.
+      if (okAt >= closed) return false;
+      // Tried since the close and failed: a final failure is not retried; a retryable one waits its back-off.
+      if (failed && at >= closed) {
+        if (isFinalFailure(own)) return false;
+        const toldOfClose = others.some(([, r]) => r.ok !== undefined && fromIso(r.ok) >= closed);
+        return !(nowMs - at < endpointRetryWaitMs(own.fails ?? 1, cooldownMinutes, toldOfClose, failedRetryMs));
+      }
+      return true;
+    }
+    if (failed) {
+      // Its last attempt failed: news (a severity rise) goes at once; otherwise a final failure waits for the reminder
+      // cadence and a retryable one for its back-off (r2 core-1: r1 re-posted every 2 minutes whatever it answered).
+      if (rose) return true;
+      if (isFinalFailure(own)) return !(nowMs - at < cooldownMinutes * 60_000);
+      // Another endpoint delivered it (its own record, or the incident-wide last 2xx newer than this endpoint's own).
+      const lastAny = incident.lastNotifiedAt ? fromIso(incident.lastNotifiedAt) : Number.NaN;
+      const anotherDelivered = others.some(([, r]) => r.ok !== undefined) || (Number.isFinite(lastAny) && !(okAt >= lastAny));
+      return !(nowMs - at < endpointRetryWaitMs(own.fails ?? 1, cooldownMinutes, anotherDelivered, failedRetryMs));
+    }
+    if (rose) return true;
+    return !Number.isFinite(okAt) || nowMs - okAt >= cooldownMinutes * 60_000;
+  }
   if (!incident.lastNotifiedAt) return true;
   if (incident.closedAt) return true;
-  if (prevSeverity !== undefined && severityRank(incident.severity) > severityRank(prevSeverity)) return true;
+  if (rose) return true;
   const last = fromIso(incident.lastNotifiedAt);
   return Number.isNaN(last) || nowMs - last >= cooldownMinutes * 60_000;
+}
+
+/**
+ * The endpoint's record after one more attempt (r2 core-1): a 2xx clears the failure count; a failure counts one more
+ * (restarting at a closure's first attempt, which is a new event) and is marked `final` when no retry can fix it.
+ */
+export function nextEndpointRecord(
+  prev: EndpointRecord | undefined,
+  last: { at: ISO; status: number; error?: string },
+  closedAt?: ISO,
+): EndpointRecord {
+  if (isOkStatus(last.status)) return { at: last.at, status: last.status, ok: last.at };
+  const closed = closedAt ? fromIso(closedAt) : Number.NaN;
+  const prevAt = prev ? fromIso(prev.at) : Number.NaN;
+  // A closure's first attempt starts a new count; an r1 record without `fails` that failed counts as one.
+  const carried = prev && !isOkStatus(prev.status) && !(Number.isFinite(closed) && !(prevAt >= closed)) ? (prev.fails ?? 1) : 0;
+  const final = !classifyStatus(last.status).retry || last.error === 'invalid_url' || last.error === 'host_not_authorized';
+  return { at: last.at, status: last.status, ...(prev?.ok ? { ok: prev.ok } : {}), fails: carried + 1, ...(final ? { final: true as const } : {}) };
+}
+
+/**
+ * An incident's delivery refs after one more attempt (r2 core-1): an endpoint keeps one failed ref (a new failure
+ * replaces its last one, never appends), and beyond `max` the oldest refs go — failed ones before delivered ones —
+ * never an endpoint's last delivered ref or its newest ref. Chronological order is kept.
+ */
+export function recordDeliveryRef(list: readonly DeliveryRef[] | undefined, ref: DeliveryRef, max = MAX_INCIDENT_DELIVERIES): DeliveryRef[] {
+  let out = (list ?? []).slice();
+  if (!isOkStatus(ref.status)) out = out.filter((d) => d.endpointId !== ref.endpointId || isOkStatus(d.status));
+  out.push(ref);
+  if (out.length <= max) return out;
+  const keep = new Set<number>();
+  const lastOk = new Map<string, number>();
+  const newest = new Map<string, number>();
+  out.forEach((d, idx) => {
+    if (isOkStatus(d.status)) lastOk.set(d.endpointId, idx);
+    newest.set(d.endpointId, idx);
+  });
+  for (const idx of [...lastOk.values(), ...newest.values()]) keep.add(idx);
+  let excess = out.length - max;
+  const drop = new Set<number>();
+  for (const okPass of [false, true]) {
+    for (let idx = 0; idx < out.length && excess > 0; idx++) {
+      if (keep.has(idx) || drop.has(idx) || isOkStatus(out[idx].status) !== okPass) continue;
+      drop.add(idx);
+      excess--;
+    }
+  }
+  return out.filter((_, idx) => !drop.has(idx));
 }
 
 function recency(i: Incident): number {

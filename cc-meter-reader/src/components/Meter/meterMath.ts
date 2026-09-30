@@ -11,7 +11,7 @@
 //
 // Money is integer MILLICENTS ($1 = 100,000 mc); the display value is fractional while ticking.
 
-import { MC_PER_CENT, MC_PER_DOLLAR } from '../../../core/format.ts';
+import { MC_PER_CENT, MC_PER_DOLLAR, roundToDollarsM } from '../../../core/format.ts';
 
 /** How long the Meter eases to a new authoritative value (SPEC 13). */
 export const EASE_MS = 900;
@@ -299,6 +299,15 @@ export function nextMove(units: number, unitsPerSecond: number, window: number, 
 }
 
 /** Whole-dollar value announced to screen readers (floor while ticking, like the wheels). */
+/**
+ * A static figure (the annualized run rate) in whole dollars, rounded half-up as fmtDollars prints it everywhere
+ * (founder-build r1 ui-8, FINDINGS_R1 m12): the presenter's wheels and the hero's aside used to floor it, so
+ * 813,684,161,149 m¢ read $8,136,841 there and $8,136,842 everywhere else.
+ */
+export function staticFigureM(valueM: number): number {
+  return roundToDollarsM(Math.max(0, Number.isFinite(valueM) ? valueM : 0));
+}
+
 export function announceDollars(valueM: number): number {
   return Math.floor(Math.max(0, Number.isFinite(valueM) ? valueM : 0) / MC_PER_DOLLAR);
 }

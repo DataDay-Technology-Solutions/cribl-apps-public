@@ -3,6 +3,7 @@ import type { CriblHttp, DemoState, Incident } from '../../core/types.ts';
 import {
   DEFAULT_MEASURED_LAG_SEC,
   IN_FLIGHT_TTL_MS,
+  LEVELS_READ_CALLS,
   LEVER_CALLS,
   LEVER_RETRY_MS,
   MUTE_MS,
@@ -172,10 +173,11 @@ describe('lever gates', () => {
     });
     const lever = { ...w.lever, minuteBudget: undefined };
     const first = ok(await breakTrim(lever, { pipelineId: PIPE }));
-    expect(first.calls).toBe(LEVER_CALLS);
+    // Core-5 (founder-build r1): Break also reads the baselines once, to record the level Restore re-seats.
+    expect(first.calls).toBe(LEVER_CALLS + LEVELS_READ_CALLS);
     expect((await demoState(w)).leverCalls).toEqual({
       minute,
-      calls: LEVER_CALLS,
+      calls: LEVER_CALLS + LEVELS_READ_CALLS,
     });
     const second = await applyPack(lever, {
       routeId: 'mrd_windows_workstations',

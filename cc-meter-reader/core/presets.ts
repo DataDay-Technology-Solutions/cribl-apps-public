@@ -393,6 +393,8 @@ export function suggestPreset(outputType: string, host?: string): PresetId {
 /** What auto-suggest and the unpriced rule may know about a destination (core/types OutputInfo fits it). */
 export interface OutputHint {
   type?: string;
+  /** Core-12 (M12): an Output Router's rules; a router that splits across destinations is not free (isFreeOutput). */
+  rules?: readonly { output: string; disabled?: boolean }[];
   /** The output id, read for vendor words when neither the description nor the type names a paid preset. */
   id?: string;
   /** "… Priced with the splunk_cloud preset …" (the demo rig's wording) names the preset outright. */
@@ -466,6 +468,9 @@ export function isDemoTagged(o: OutputHint): boolean {
  */
 export function isFreeOutput(o: OutputHint | string | undefined): boolean {
   const hint: OutputHint = typeof o === 'string' || o === undefined ? { type: o } : o;
+  // Core-12 (M12, #45): a router whose rules send to more than one destination forwards paid traffic one flow cannot
+  // attribute; it is not free, so its traffic reads unpriced (price it at its destinations' rate) — never a silent $0.
+  if ((hint.type ?? '').trim().toLowerCase() === 'router' && new Set((hint.rules ?? []).filter((r) => r.disabled !== true).map((r) => r.output)).size > 1) return false;
   return isFreeOutputType(hint.type) && !isDemoTagged(hint) && suggestPresetFor(hint) === 'internal';
 }
 

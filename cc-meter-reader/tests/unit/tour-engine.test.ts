@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultSettings, mergeSettings } from '../../core/settings.ts';
 import type { Commit, DeliveryLog, Incident, Settings, Snapshot } from '../../core/types.ts';
 import { localDayKey, localMonthStartMs, toIso } from '../../core/time.ts';
+import { sampleRollups } from '../../core/sampleRollups.ts';
 import type { AppDocs, SweepEngine } from '../../src/state/ports.ts';
 import { createAppServices, type AppServices } from '../../src/state/services.ts';
 import { createAppStore } from '../../src/state/store.ts';
@@ -154,7 +155,17 @@ describe('createTourEngine', () => {
     expect(r.events.at(-1)?.step).toMatchObject({ at: 130, action: 'caption', payload: { id: 'weekly-receipt' } });
     expect(r.events.every((e) => !e.silent)).toBe(true);
     const receipt = r.engine.weeklyReceipt()!;
-    expect(receipt.savedM).toBe(DOC.weeklyReceipt!.savedM);
+    // Founder-build r1 ui-7 (M3): its money is the sample's own hour rows over its week — what a Custom range over the
+    // same week sums on the snapshot on screen — not the recording's week relabelled.
+    const rollups = sampleRollups(snap(r), state(r).settings.displayTimezone);
+    let weekSaved = 0;
+    for (const key of rollups.keys().hour) {
+      for (const rows of Object.values(rollups.hourDoc(key)?.flows ?? {})) {
+        for (const row of rows) if (row.t >= receipt.periodStart && row.t < receipt.periodEnd) weekSaved += row.savedM;
+      }
+    }
+    expect(weekSaved).toBeGreaterThan(0);
+    expect(receipt.savedM).toBe(weekSaved);
     expect(receipt.label).toMatch(/^Mar 1–7, 2027$/);
 
     await vi.advanceTimersByTimeAsync(DOC.durationSec * 1000);
@@ -168,13 +179,16 @@ describe('createTourEngine', () => {
     await vi.advanceTimersByTimeAsync(5_000);
     const before = r.sweep.runLocal.mock.calls.length;
     expect(before).toBeGreaterThan(0); // the 'ui' runtime was metering the (priced, empty) workspace
+    // Founder-build r2 ui-3: that first live sweep stored the settings-less workspace's zone once, before the tour.
+    const writesBefore = [...r.writes];
+    expect(writesBefore).toEqual(['settings']);
 
     r.engine.start();
     await vi.advanceTimersByTimeAsync(180_000);
     expect(r.sweep.runLocal.mock.calls.length).toBe(before);
     expect(state(r).status.sweep.metering).toBe(false);
     expect(await r.services.actions.saveSettings(DEFAULTS)).toEqual({ ok: false, reason: 'not-live' });
-    expect(r.writes).toEqual([]);
+    expect(r.writes).toEqual(writesBefore); // nothing written while the tour owns the screen
 
     r.engine.stop();
     expect(state(r).source).toBe('live');

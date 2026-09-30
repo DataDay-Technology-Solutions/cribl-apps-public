@@ -181,29 +181,44 @@ export function splitInputValue(value: string): { type?: string; id: string } {
   return i > 0 ? { type: value.slice(0, i), id: value.slice(i + 1) } : { id: value };
 }
 
-function isDemoTagged(obj: { id: string; description?: string }): boolean {
-  return obj.id.startsWith('mrd_') || (obj.description ?? '').includes(DEMO_TAG);
-}
-
 /**
- * Internal plumbing (hidden unless includeInternal): Cribl's own inputs/outputs, and Datagen
- * inputs that are not demo-tagged (SPEC 7 step 3: datagen counts as external only when tagged;
- * the `mrd_` id prefix is accepted as the tag too).
+ * Internal plumbing (hidden unless includeInternal): Cribl's own system inputs (INTERNAL_TYPES), nothing else.
+ * A Datagen Source is external, tagged or not (founder-build r1, contract C3 option A, overriding SPEC 7 step 3's
+ * "datagen counts as external only when tagged"): a member who routed a Datagen through a pipeline to a destination
+ * they priced asked for it to be metered — CLEAN_INSTALL_TEST 0.3's own recommended workspace read $0 with no
+ * explanation (FINDINGS_R1 B2 #40, FINDINGS_EXTRA RW-1). The demo rig's Datagens are tagged anyway, so it is unchanged.
  */
 export function isInternalInput(input: Pick<InputInfo, 'id' | 'type' | 'description'>): boolean {
-  const t = (input.type ?? '').toLowerCase();
-  if (INTERNAL_TYPES.includes(t)) return true;
-  return t === 'datagen' && !isDemoTagged(input);
+  return INTERNAL_TYPES.includes((input.type ?? '').toLowerCase());
 }
 export function isInternalOutput(output: Pick<OutputInfo, 'type'>): boolean {
   return INTERNAL_TYPES.includes((output.type ?? '').toLowerCase());
 }
 
-/** The destination a route delivers to: route.output → the pipeline's conf.output → 'default', resolving 'default' through its defaultId. */
+/**
+ * Founder-build r1 core-12 (M12, #45): the one destination an Output Router sends everything to — its enabled rules all
+ * name the same output — else undefined (no rules known, or a router that splits traffic across destinations).
+ */
+export function routerSingleTarget(out: Pick<OutputInfo, 'type' | 'rules'> | undefined): string | undefined {
+  if (!out || (out.type ?? '').toLowerCase() !== 'router') return undefined;
+  const targets = new Set((out.rules ?? []).filter((r) => r.disabled !== true && r.output).map((r) => r.output));
+  return targets.size === 1 ? [...targets][0] : undefined;
+}
+
+/**
+ * The destination a route delivers to: route.output → the pipeline's conf.output → 'default', resolving 'default'
+ * through its defaultId and (core-12, M12) an Output Router through the one destination all its rules lead to — so a
+ * Splunk-bound stream behind a router is priced at Splunk, as the direct route is. A router that splits is the end.
+ */
 export function resolveRouteOutput(route: Pick<RouteInfo, 'output' | 'pipeline'>, group: GroupInventory): string {
   let id = route.output || group.pipelines?.find((p) => p.id === route.pipeline)?.output || 'default';
-  for (let hops = 0; hops < 3; hops++) {
+  for (let hops = 0; hops < 4; hops++) {
     const out = group.outputs?.find((o) => o.id === id);
+    const routed = routerSingleTarget(out);
+    if (routed && routed !== id) {
+      id = routed;
+      continue;
+    }
     const isDefault = out ? out.type === 'default' : id === 'default';
     if (!isDefault || !out?.defaultId || out.defaultId === id) break;
     id = out.defaultId;
@@ -326,6 +341,28 @@ export function apportion(total: number, weights: number[]): number[] {
   const order = raw.map((x, i) => ({ i, frac: x - Math.floor(x) })).sort((a, b) => b.frac - a.frac || a.i - b.i);
   for (let k = 0; deficit > 0 && k < order.length; k++, deficit--) out[order[k].i] += 1;
   return out;
+}
+
+/**
+ * Founder-build r2 core-8 (BO-8): apportion, but a total with no positive weight to follow stays unattributed (all
+ * zeros) instead of being split evenly — an idle flow is never handed bytes it could not have carried.
+ */
+function apportionByWeight(total: number, weights: number[]): number[] {
+  return weights.some((x) => Number.isFinite(x) && x > 0) ? apportion(total, weights) : weights.map(() => 0);
+}
+
+/**
+ * Founder-build r2 core-8 (BO-2): whether a flow's bytes OUT come from a series the minute carries — its route's (route
+ * mode) or its pipeline's (pipeline mode), as attributeEstimates reads them. Such a series that reads 0 is a real 0
+ * (the pipeline dropped everything); a flow without one (QuickConnect, proportional, or a route the series lack) has
+ * only its bytes in to go by.
+ */
+function outSeriesPresent(f: Flow, metrics: MetricsWindow): boolean {
+  const routeMode = metrics.has?.routeBytes === true;
+  const pipeMode = !routeMode && metrics.has?.pipelineBytes === true;
+  if (routeMode && f.routeId !== '-') return (metrics.routesOut ?? {})[`${f.groupId}:${f.routeId}`] !== undefined;
+  if (pipeMode && f.pipelineId !== '-' && f.routeId !== '-') return (metrics.pipelinesOut ?? {})[`${f.groupId}:${f.pipelineId}`] !== undefined;
+  return false;
 }
 
 /** Normalizes a metrics map so `${gid}:${type}:${id}` keys are also reachable as `${gid}:${id}`. */
@@ -463,7 +500,9 @@ export function reconcileWindow(
     // A passthrough flow the minute's series still show reduced (a deploy on its way to the workers) is not pinned.
     const isPinned = (f: Flow): boolean => passthrough.has(`${f.groupId}:${f.pipelineId}`) && !stillReduced(estimated[f.key]);
     const pinned = group.filter(isPinned);
-    const rest = group.filter((f) => !isPinned(f));
+    // R2 core-8 (BO-8): an idle flow with no estimate (0 in, 0 out, no out series) takes no part in the split.
+    const idle = (f: Flow): boolean => out[f.key].inB <= 0 && out[f.key].outB <= 0 && !outSeriesPresent(f, metrics);
+    const rest = group.filter((f) => !isPinned(f) && !idle(f));
     const estTotal = group.reduce((a, f) => a + (isPinned(f) ? out[f.key].inB : out[f.key].outB), 0);
     const estEvents = group.reduce((a, f) => a + (isPinned(f) ? out[f.key].inE : out[f.key].outE), 0);
     // Only reconcile when the destination's traffic is (essentially) these flows: a destination that also
@@ -490,10 +529,15 @@ export function reconcileWindow(
       remaining = 0;
     }
     if (rest.length === 0) continue;
-    const weights = rest.map((f) => (out[f.key].outB > 0 ? out[f.key].outB : out[f.key].inB));
-    const outB = apportion(remaining, weights);
+    // R2 core-8 (BO-2): the flow's out estimate; an out series that reads 0 is a real 0 (weight 0); only a flow with no
+    // out series falls back to its bytes in. The events weight follows the same rule. With no positive weight the
+    // destination's leftover stays unattributed (BO-8: never an even split onto flows that carried nothing).
+    const weights = rest.map((f) => (out[f.key].outB > 0 ? out[f.key].outB : outSeriesPresent(f, metrics) ? 0 : out[f.key].inB));
+    if (!weights.some((x) => x > 0)) continue;
+    const outB = apportionByWeight(remaining, weights);
     const pinnedEvents = pinned.reduce((a, f) => a + out[f.key].outE, 0);
-    const outE = apportion(Math.max(0, measured.events - pinnedEvents), rest.map((f) => out[f.key].outE || 1));
+    const eventWeights = rest.map((f) => (out[f.key].outE > 0 ? out[f.key].outE : outSeriesPresent(f, metrics) ? 0 : out[f.key].inE));
+    const outE = apportionByWeight(Math.max(0, measured.events - pinnedEvents), eventWeights);
     rest.forEach((f, i) => {
       out[f.key].outB = outB[i];
       out[f.key].outE = outE[i];

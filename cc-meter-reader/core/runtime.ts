@@ -106,12 +106,17 @@ export function workspaceFromUrl(url: string | undefined): string {
   return cloud ? cloud[1] : o.host;
 }
 
-/** `https://<leader>` + the App's base path (e.g. `/app-ui/meter-reader`), the Ledger deep-link base. */
-export function linkBaseFrom(apiUrl: string | undefined, basePath: string | undefined): string {
+/**
+ * The Ledger deep-link base: `https://<leader>/apps/a/meter-reader`, the shell's own path, whatever the iframe's base
+ * path is (founder-build r1 core-8, FINDINGS_R1 M10 #34, contract C2). The iframe's `/app-ui/meter-reader` answers a
+ * cross-site click (Slack's web client, Gmail, PagerDuty) with the bare iframe page, where the App cannot start; the
+ * shell's path works from anywhere, as the runner's links always did. Without a Leader origin: the path alone.
+ * `basePath` is kept in the signature so every caller compiles unchanged; it no longer shapes the link.
+ */
+export function linkBaseFrom(apiUrl: string | undefined, basePath?: string | undefined): string {
+  void basePath;
   const o = originOf(apiUrl);
-  if (!o) return (basePath ?? '').replace(/\/+$/, '');
-  const path = (basePath && basePath.trim() !== '' ? basePath : `/app-ui/${APP_ID}`).replace(/\/+$/, '');
-  return `${o.origin}${path.startsWith('/') ? path : `/${path}`}`;
+  return o ? `${o.origin}/apps/a/${APP_ID}` : `/apps/a/${APP_ID}`;
 }
 
 function globalFetch(): FetchLike | undefined {

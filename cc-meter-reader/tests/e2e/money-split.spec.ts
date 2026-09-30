@@ -111,7 +111,7 @@ test.describe('P1-F02 / P1-F03 · measured vs assumed dollars, and the cost a pi
   });
 
   test('Receipt: the bar splits bytes dropped from the diversion credit, and Show the math says which is which', async ({ page }) => {
-    await openApp(page, '/');
+    await openApp(page, '/?period=mtd'); // r2 ui-2: pinned to month to date
     const errors = trackConsoleErrors(page, BENIGN);
     const split = page.getByTestId('receipt-split');
     await expect(split).toBeVisible();
@@ -143,7 +143,7 @@ test.describe('P1-F02 / P1-F03 · measured vs assumed dollars, and the cost a pi
 
   test('Copy receipt: the diverted line is tagged and the total is split', async ({ page, context, browserName }) => {
     await allowClipboard(context, browserName);
-    await openApp(page, '/');
+    await openApp(page, '/?period=mtd'); // r2 ui-2: pinned to month to date
     await page.getByRole('button', { name: 'Copy receipt' }).click();
     await expect.poll(() => readClipboard(page)).toContain('(diverted)');
     const text = await readClipboard(page);

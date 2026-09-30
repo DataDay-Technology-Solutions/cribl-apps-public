@@ -659,6 +659,10 @@ function tourSettings(budgets: Settings['budgets'], criblCostCentsPerMonth: numb
   return {
     ...s,
     updatedAt: toIso(savedAtMs),
+    // The sample opens its Receipt on the annualized run rate (founder-build r1 ui-2, FINDINGS_EXTRA (a)): the enterprise
+    // sample's headline is "about $8.1M a year", and the first number a viewer reads is never a small partial period.
+    // The Report card keeps its own month-to-date default (src/views/Report/index.tsx): a CFO document is a real period.
+    headlinePeriodDefault: 'annualized',
     criblCostCentsPerMonth,
     budgets,
     thresholds: { ...s.thresholds, recoveryMinutes: 1, spikeMinCentsPerHour: SPIKE_MIN_CENTS_PER_HOUR },

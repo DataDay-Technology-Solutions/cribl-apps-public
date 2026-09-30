@@ -21,7 +21,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { defaultSettings } from '../../core/settings.ts';
 import { injectLedgerDocs, loadDemoFixture } from './ledger-fixture.ts';
-import { gotoApp, kvGet, mockCalls, mockControl, resetCalls, resetMock, setTheme, trackConsoleErrors, waitForHydration, waitForMock, type Theme } from './helpers/index.ts';
+import { e2eNow, gotoApp, kvGet, mockCalls, mockControl, resetCalls, resetMock, setTheme, trackConsoleErrors, waitForHydration, waitForMock, type Theme } from './helpers/index.ts';
 
 const MINUTE = 60_000;
 const DAY = 86_400_000;
@@ -34,7 +34,14 @@ const ALLOW = [/Outdated Optimize Dep/, /\/system\/messages/];
  * Faults this spec injects on purpose: the browser logs every refused request as a console error, and the sweep
  * logs the failure it records (core/sweep.ts `logger.error('sweep failed', …)`).
  */
-const FAULTS = [/Failed to load resource: the server responded with a status of (401|403|429|500)/, /\[meter-reader\] sweep(:| failed| stopped)/];
+const FAULTS = [
+  /Failed to load resource: the server responded with a status of (401|403|429|500)/,
+  /\[meter-reader\] sweep(:| failed| stopped)/,
+  // r3 ui-9: on a fresh install inside the weekly window the tab's automatic weekly receipt also meets a 401 / 403 this
+  // spec injects and logs it (a transient 429 / 500 only warns). core-2 ends that send on a fresh install; until then it
+  // is the injected fault, reported by a second job, not a new failure.
+  /\[meter-reader\] weekly receipt failed: KV GET \S+ failed: HTTP (401|403)\b/,
+];
 
 test.describe.configure({ mode: 'default' });
 
@@ -103,7 +110,8 @@ async function advanceUntil(page: Page, until: () => Promise<boolean>, maxFakeMs
 
 /** A fresh emulated org with prices, the Receipt open and this tab's first sweep landed (chip "Live"). */
 async function openMetering(page: Page, path = '/'): Promise<number> {
-  await page.clock.install();
+  // MR_E2E_NOW pins the start (r3 ui-9's Monday-after-12:00-UTC run); otherwise the real time.
+  await page.clock.install(e2eNow() ? { time: e2eNow() } : undefined);
   await openFresh(page);
   const now = await page.evaluate(() => Date.now());
   await putKv(page, { prices: pricesDoc(now) });
@@ -297,8 +305,13 @@ test.describe('P1-D01 the chip after hydration', () => {
     await expect(chip(page)).toContainText('Signed out');
     // The chip carries Reload where it has room; a phone's chip is only a dot, and the page says so instead.
     if ((page.viewportSize()?.width ?? 0) > 640) await expect(chip(page).getByRole('button', { name: 'Reload' })).toBeVisible();
-    const notice = page.getByTestId('metering-notice');
-    await expect(notice).toHaveAttribute('data-state', 'signed-out');
+    // r3 ui-9: either notice says it. When the snapshot read's 401 lands first, the Receipt shows its own "Your session
+    // has expired" over the last good figures and the metering notice stands aside (MeteringNotice: by design, one
+    // notice per page); when meta's lands first, the metering notice says it.
+    const notice = page.getByTestId('metering-notice').or(page.locator('.mr-receipt-notice--top'));
+    await expect(notice).toHaveCount(1);
+    if ((await notice.getAttribute('data-testid')) === 'metering-notice') await expect(notice).toHaveAttribute('data-state', 'signed-out');
+    else await expect(notice).toContainText('Your session has expired');
     await expect(notice).toContainText('Reload the page to sign in to Cribl again.');
     await expect(notice.getByRole('button', { name: 'Reload' })).toBeVisible();
     await shoot(page, 'signed-out', { focus: '[data-testid="metering-notice"]' });

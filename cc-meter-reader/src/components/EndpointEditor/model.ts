@@ -330,7 +330,11 @@ export async function sendCriblTest(p: CriblTestParams): Promise<{ result: TestR
   return { result: describeCriblTest(channel, last, p.endpoint.criblTargetId ?? '', last?.at ?? new Date(now()).toISOString()), logs };
 }
 
-/** The plain text a Cribl target receives for the test alert (the preview under a target test). */
+/**
+ * The plain text a Cribl target receives for the test alert (the preview under a target test), in the display zone the
+ * delivery uses (founder-build r2 ui-11, FINDINGS_R2 #13: the preview printed "Opened 8:02 PM UTC" beside a target that
+ * received "4:02 PM").
+ */
 export function testTargetText(opts: TestMessageOptions): string {
-  return renderAlert(testCanonical(opts)).text;
+  return renderAlert(testCanonical(opts), opts.tz || 'UTC').text;
 }

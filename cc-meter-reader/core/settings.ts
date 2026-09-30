@@ -66,13 +66,17 @@ export const DEFAULT_THRESHOLDS: Readonly<Thresholds> = {
  * SPEC 5 defaults, plus `thresholds.recoveryMinutes` 5 and `runtime` 'ui' (DECISIONS D11/D12b). The
  * Enterprise backend variant (`VITE_MR_RUNTIME=backend`, scripts/package.mjs) passes `runtime` 'backend'.
  * A stored settings document still wins over this default (mergeSettings).
+ *
+ * `headlinePeriodDefault` is 'annualized' (founder-build r2 ui-2, named item (a)): a new install opens the Receipt on
+ * the annualized run rate, labelled a projection until a full day is in (the Receipt's Projection pill, D63). A stored
+ * 'mtd' is the member's choice and is never migrated (a first save stored the defaults of its day).
  */
 export function defaultSettings(nowIso: string, tz: string, runtime: Settings['runtime'] = 'ui'): Settings {
   return {
     schemaVersion: SETTINGS_SCHEMA_VERSION,
     updatedAt: nowIso,
     displayTimezone: isValidTimeZone(tz) ? tz : 'UTC',
-    headlinePeriodDefault: 'mtd',
+    headlinePeriodDefault: 'annualized',
     presenter: { headlinePeriod: 'annualized', qrUrl: DEFAULT_QR_URL },
     live: { pollSeconds: 10, presenterPollSeconds: 5 },
     budgets: {},
@@ -95,6 +99,15 @@ export function defaultSettings(nowIso: string, tz: string, runtime: Settings['r
  */
 export function goodNewsActive(settings: Pick<Settings, 'goodNewsEnabled' | 'demo'>): boolean {
   return settings.goodNewsEnabled === true || (settings.demo?.enabled === true && settings.demo?.profile === true);
+}
+
+/**
+ * Whether the demo profile's good news waits for a settled minute (founder-build r1, FOUNDER_PLAN row 9): on unless a
+ * member (or `scripts/lever.ts settle off`) stored `demo.settle: false`. It only matters under the demo profile
+ * (core/detector.ts); the release's 3-minute streak never reads it.
+ */
+export function demoSettleOn(settings: { demo?: Partial<Settings['demo']> }): boolean {
+  return settings.demo?.settle !== false;
 }
 
 // ─── Validation ──────────────────────────────────────────────────────────────
@@ -572,6 +585,8 @@ export function mergeSettings(stored: unknown, defaults: Settings): Settings {
       enabled: pick(demo.enabled, defaults.demo.enabled),
       replayMode: pick(demo.replayMode, defaults.demo.replayMode),
       profile: pick(demo.profile, defaults.demo.profile),
+      // Row 9: only a stored boolean is kept (absent = on, demoSettleOn), so a document written before it reads the same.
+      ...(typeof demo.settle === 'boolean' ? { settle: demo.settle } : typeof defaults.demo.settle === 'boolean' ? { settle: defaults.demo.settle } : {}),
     },
     runtime: s.runtime === 'backend' || s.runtime === 'ui' ? s.runtime : defaults.runtime,
   };

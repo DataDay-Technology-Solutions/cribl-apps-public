@@ -39,6 +39,20 @@ Rows are numbered 1–9 in the order they ran; every time is UTC on 2026-09-26. 
 
 **Across the nine:** caught in 1:27 to 2:13 (median 1:43); closed itself 79 to 131 seconds after the restore deployed (median 110 s; row 4, the recorded run, is the fastest).
 
+## Who Cribl records as the commit author (read 28 Sep, 07:35 UTC)
+
+A GET-only read of the demo org's version log (`GET /m/default/version?count=1000`: 46 commits from 24 Sep 00:09Z to 27 Sep 16:46Z) through `scripts/cribl-api.mjs`. Only the **shape** of each author field is recorded here, never a value: no name, email address or client id.
+
+| Commit | How it was made | `author_name` (what the App prints first, `core/adapters/version.ts`) | `author_email` |
+|---|---|---|---|
+| `805b12c` break, `0d7af2d` restore (row 6) | the Demo Console in the Cribl shell, signed in as the member | the member's **full name** | an email address |
+| `5943ac6`, `e9e18e0` (27 Sep, the two Dispensary packs applied) | Cribl's Routes editor, as the member | the same member's **full name** | the same email address |
+| the other eight breaks (rows 1–5, 7–9, including the latest, `86238cf`), and every other `demo:` commit | `scripts/lever.ts` with the org credential in `.env` | an **API client** (`<id>@clients`, one client id) | a single token |
+
+- **What an alert names.** A break pressed from the Demo Console is recorded under the member who pressed it, both in Cribl's version control and in the timeline entry the Demo Console writes (the member's name from `getCriblUser`). The same holds for a change made in Cribl's own editors.
+- **The terminal lever is different.** `scripts/lever.ts` writes its own timeline entry under `MR_DEMO_AUTHOR` (default `s.koelpin`), which is why rows 1–5 and 7–9 read "s.koelpin". Cribl recorded those commits under the API client.
+- **Where the email address shows.** On these commits it is only in `author_email`, which the App shows only when `author_name` is empty.
+
 ## Enterprise variant: the packaged bundles, run locally (27 Sep; not the platform runtime)
 
 The build organization has no App backend compute, so the Enterprise variant has never run on a Cribl backend. The scaffold's `backendPreviewPlugin` cannot stand in: it runs endpoints only in the engine that Cribl's Live Preview page sends over its websocket (`@cribl/apps/lib/preview/preview.js`, the `deploy` message carries `LocalComputeEngine`), which needs a Cribl organization with backend compute. What was run instead, on the packaged bundles of `meter-reader-1.1.0-backend.tgz` as built from `484d9b4`; the committed package, rebuilt from `495a0a6` for a README change, carries byte-identical bundles (`cmp`, 27 Sep):
@@ -55,14 +69,27 @@ The build organization has no App backend compute, so the Enterprise variant has
 
 Every invocation stays under the 50 calls a minute an App backend gets by default. Durations against the emulator (5–26 ms) say nothing about a real Leader and are not claimed; the closest live figure is the runner's, about 23 calls and about 1 second a sweep on the build organization, running the same `core/` sweep.
 
-## Still to run (as of 9/27)
+## Clean installs through the Cribl UI (a second organization, 27–28 Sep)
+
+The release installed the way a judge or customer installs it, through the Cribl UI, on a fresh Standard-plan Cribl.Cloud organization separate from the build org, one that had never had Meter Reader (no Apps, no traffic before). The package was `meter-reader-1.1.0.tgz` as first built (sha256 `d3126f7c…5a6c`); the committed 1.1.0 package (`34d4ada6…`) was rebuilt from it for a README change only, and every later release carries the same `default/policies.yml` (`config/policies.yml` unchanged since 1.1.0). Run as an Organization administrator.
+
+| When (UTC) | What | Result |
+|---|---|---|
+| 09-28 02:24 | Install 1: **Apps → Build my own App ▾ → Import from File** (the empty Apps page has no **Add App** yet), App ID blank, Overwrite off → **Import** → Review App → **Install** | Review App: "17 Cribl API permissions", the same list as `config/policies.yml` (the reads, the metrics query, the preview and the four notification writes, the relay read on its literal path). Listed as Meter Reader · meter-reader · 1.1.0; the first run opened on the first-run card, "Not metering yet", every first KV read a 404 (an empty store). The tour (9 beats), Story mode, every view on sample data, and the empty state after **Clear sample data** checked |
+| 09-28 03:00–03:25 | On install 1: a Datagen Source (`syslog.log`, 100 then 1,000 events a second) → a pipeline with one Drop (`Math.random() < 0.5`) → DevNull, on a Final route above the default route, one Commit & Deploy; DevNull priced by hand in **Settings → Prices**; the bell's **Send a test alert** | The untagged Datagen read nothing saved: 1.1.0 metered a Datagen only when its description held `[meter-reader-demo]` or its id started `mrd_` (fixed in 1.1.1, D67). Tagged, the flow was priced about 80 s after the deploy, 50% saved, its would-have-paid, paid and saved consistent with bytes × price to the dollar. The bell test answered 200 and showed in the bell within about 35 s (Cribl's own poll). Prices, the Cribl cost and the bell settings survived four reloads |
+| 09-28 03:25–03:29 | Delete (typed DELETE) → install 2, the same file and path | "App deleted."; the uninstall cleared the App's KV (every first-run read a 404 again). Review App: 17 permissions. Import → listed in 55 s including the review; the first real flow in the Ledger 8.9 s after **Start the meter** |
+| 09-28 03:29–03:31 | Delete → install 3, the same file and path | 17 permissions; listed 18 s after **Import**; first real flow 8.7 s after **Start the meter**; left installed |
+
+Not covered by these runs: a non-admin member the App is shared with, a notification target, and an import of 1.1.1 or later (below).
+
+## Still to run (as of 9/29)
 
 Checks that need a second workspace, a non-admin member or a measurement. An administrator bypasses the policy matcher (`docs/PLATFORM_NOTES.md`, "Runtime frame"), so a grant is proven only by a **non-admin** member the App is shared with; the stage demo, run as an administrator, does not depend on these results. The owner's clean-install kit covers the first three.
 
 | Check | How | Closes | Status |
 |---|---|---|---|
 | The **literal relay grants** are accepted at install | Install a build whose `default/policies.yml` names the three literal `default_search` paths | EPIC_AUDIT P1-N01 | **Done 9/27–28**: demo 1.0.11, 1.0.12, 1.0.13, 1.0.14, 1.0.15 and 1.0.16 installed with them (Installs above) |
-| The current **release** `.tgz` installs in a clean workspace | **Add App → Import from File** with `release/meter-reader-1.1.0.tgz` (sha256 in `release/SHA256SUMS`), as the release (not the demo build), in a second organization that has never had Meter Reader; screenshot the Review App screen into `docs/evidence/` | P1-N04, the README checklist | owner's clean-install test |
+| The current **release** `.tgz` installs in a clean workspace | **Apps → Import from File** (under **Build my own App ▾** on a workspace with no Apps, **Add App** otherwise) with the current `release/meter-reader-X.Y.Z.tgz` (sha256 in `release/SHA256SUMS`), as the release (not the demo build), in a second organization that has never had Meter Reader; screenshot the Review App screen into `docs/evidence/` | P1-N04, the README checklist | **Done for 1.1.0, 27–28 Sep**: three UI imports on a fresh second organization (Clean installs through the Cribl UI, above). 1.1.4, whose grants are the same, still to be imported the same way: the owner's clean-install test |
 | The relay grants are honored **for a non-admin member** | As a member the App is shared with: Settings → Where to send alerts → the bell's **Send a test alert**; a target endpoint's connection check (the literal GET); **Connect** on a target without a relay notification yet (the literal notification POST); **Send a test alert** on that target (the forward). Record each status | P1-N01, P1-N04 | owner's clean-install test, step 8 |
 | **Sharing survives an upgrade** | Note who the App is shared with, upgrade, check again | the README's upgrade note | not run here; Cribl's Apps admin guide says an upgrade preserves the App's Share settings (`docs/platform/insights-and-apps-docs.md`) |
 | The **member-context Leader rate** | From a non-admin member's open App, in the developer console of the App's frame, a read-only loop that reads the App's `meta` KV document (`${window.CRIBL_API_URL}/kvstore/meta`, the way the App reads it) about 150 times inside one minute; log each status and any `Retry-After`: the first 429, if any, is the ceiling. The `?diag=1` panel only displays state and calls nothing | P1-N05 (`docs/PLATFORM_NOTES.md` §8 Q6) | not run |

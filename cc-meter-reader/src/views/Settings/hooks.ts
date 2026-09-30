@@ -2,7 +2,7 @@
 // (hasHydrated gate, SPEC 13), the per-section draft, the current-settings reader, the inventory read, and
 // the Settings frame's contexts (unsaved sections, the save failure each bar keeps; EPIC_AUDIT P1-G07).
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { InventoryDoc, Settings } from '../../../core/types.ts';
 import { t } from '../../copy/en.ts';
 import { notify } from '../../components/common/notify.tsx';
@@ -191,7 +191,7 @@ interface InventoryRead {
 
 /** One shared read per services instance and sweep (EPIC_AUDIT P1-G02). */
 interface InventoryCacheEntry {
-  /** The last sweep this read belongs to ('' before the first sweep). */
+  /** The last sweep this read belongs to ('unswept#<epoch>' before the first sweep, r3 ui-3). */
   key: string;
   promise: Promise<InventoryRead>;
   /** Set once the read answers, so a remount starts from it without a loading flash. */
@@ -230,6 +230,60 @@ function sharedInventoryRead(docs: AppDocs, key: string): InventoryCacheEntry {
   return entry;
 }
 
+// ─── Before the first sweep: re-read on a clock and on focus (founder-build r3 ui-3, FINDINGS_R3 #8) ──────────────────
+//
+// A never-priced workspace is never swept (the tab waits for prices, REVIEW-3a #3), so a read keyed on the last sweep
+// would keep the first Leader walk for the whole session: destinations added while Prices is open never appeared. While
+// no sweep is known, the key also carries an epoch that moves about once a minute and when the window gains focus, and
+// every mounted section shares it (one timer, one focus listener), so each move is one Leader walk, not one per section.
+
+/** How often a never-swept workspace re-reads its destinations (the caption promises "within a minute"). */
+export const UNSWEPT_INVENTORY_REFRESH_MS = 60_000;
+/** A focus within this long of the last re-read does not start another. */
+const FOCUS_MIN_GAP_MS = 5_000;
+
+let unsweptEpoch = 0;
+let lastEpochAt = 0;
+const epochListeners = new Set<() => void>();
+let epochTimer: ReturnType<typeof setInterval> | undefined;
+
+function bumpUnsweptEpoch(): void {
+  unsweptEpoch += 1;
+  lastEpochAt = Date.now();
+  for (const listener of [...epochListeners]) listener();
+}
+
+function onEpochFocus(): void {
+  if (Date.now() - lastEpochAt < FOCUS_MIN_GAP_MS) return;
+  bumpUnsweptEpoch();
+}
+
+function onEpochVisibility(): void {
+  if (document.visibilityState === 'visible') onEpochFocus();
+}
+
+function subscribeUnsweptEpoch(listener: () => void): () => void {
+  epochListeners.add(listener);
+  if (epochListeners.size === 1 && typeof window !== 'undefined') {
+    lastEpochAt = Date.now();
+    epochTimer = setInterval(bumpUnsweptEpoch, UNSWEPT_INVENTORY_REFRESH_MS);
+    window.addEventListener('focus', onEpochFocus);
+    document.addEventListener('visibilitychange', onEpochVisibility);
+  }
+  return () => {
+    epochListeners.delete(listener);
+    if (epochListeners.size === 0 && typeof window !== 'undefined') {
+      clearInterval(epochTimer);
+      epochTimer = undefined;
+      window.removeEventListener('focus', onEpochFocus);
+      document.removeEventListener('visibilitychange', onEpochVisibility);
+    }
+  };
+}
+
+const noSubscription = (): (() => void) => () => undefined;
+const readUnsweptEpoch = (): number => unsweptEpoch;
+
 /** The answered read for this sweep, if there is one (a remount starts from it). */
 function settledInventory(docs: AppDocs, key: string): InventoryState | undefined {
   const hit = inventoryCache.get(docs);
@@ -248,7 +302,10 @@ export function useInventory(): InventoryState {
   const { docs } = useServices();
   const lastSweepAt = useAppState((s) => s.meta?.lastSweepAt ?? s.snapshot?.sweepAt ?? null);
   const source = useAppState((s) => s.source);
-  const key = lastSweepAt ?? '';
+  // r3 ui-3: before the first sweep the read also follows the minute / focus epoch (see subscribeUnsweptEpoch).
+  const unswept = source === 'live' && lastSweepAt === null;
+  const epoch = useSyncExternalStore(unswept ? subscribeUnsweptEpoch : noSubscription, readUnsweptEpoch, readUnsweptEpoch);
+  const key = lastSweepAt ?? `unswept#${epoch}`;
   const [state, setState] = useState<InventoryState>(() => (source === 'live' ? settledInventory(docs, key) : undefined) ?? { inventory: null, phase: 'loading' });
 
   useEffect(() => {

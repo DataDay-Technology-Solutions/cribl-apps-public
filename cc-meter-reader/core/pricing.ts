@@ -271,6 +271,7 @@ export function computeHeadline(
   collectingSinceMs: number,
   criblCostCentsPerMonth?: number,
   meteredThroughMs?: number,
+  opts: { pricedSinceMs?: number; emptyMinutesBeforePriced?: number } = {},
 ): Headline {
   const byDay = totals?.byDay ?? {};
   const todayKey = localDayKey(nowMs, tz);
@@ -288,8 +289,12 @@ export function computeHeadline(
     if (key >= d30FirstKey) addDay(d30, d);
   }
 
-  // Whole local days since collecting began, ending yesterday.
-  const since = Number.isFinite(collectingSinceMs) ? collectingSinceMs : nowMs;
+  // Whole local days since collecting began, ending yesterday. Founder-build r1 core-6 (#42): since the first minute that
+  // carried priced traffic when that is later — a first run meters a day of history, and traffic that began minutes
+  // before the install must not be annualized over the empty hours before it.
+  const collecting = Number.isFinite(collectingSinceMs) ? collectingSinceMs : nowMs;
+  const priced = opts.pricedSinceMs !== undefined && Number.isFinite(opts.pricedSinceMs) ? (opts.pricedSinceMs as number) : collecting;
+  const since = Math.max(collecting, priced);
   const sinceKey = localDayKey(since, tz);
   const firstWholeKey = localMidnightMs(since, tz) === since ? sinceKey : addDaysToKey(sinceKey, 1);
   const yesterdayKey = addDaysToKey(todayKey, -1);
@@ -299,10 +304,43 @@ export function computeHeadline(
   const recent = zero();
   const firstKey = sinceKey > d30FirstKey ? sinceKey : d30FirstKey;
   for (const [key, d] of Object.entries(byDay)) if (key >= firstKey && key <= todayKey) addDay(recent, d);
+  // Core-6: the metered minutes of the first day that came before the traffic carried nothing; they leave the basis.
+  // Founder-build r2 core-5 (FINDINGS_R2 #7): only the METERED ones. The day keeps the minutes from `since` to its end
+  // (or the cursor) — at most what it metered, at least one — so a metering gap before the first priced minute (never
+  // metered, never counted) no longer shrinks the basis (1.77× in the gap case, 25× where the floor was 1 minute).
+  // Founder-build r3 core-5 (FINDINGS_R3 #3): when the sweep recorded how many of that day's metered minutes came before
+  // the first priced minute (Snapshot.pricedSinceEmptyMinutes), exactly those leave the basis — nothing is inferred, so
+  // a gap after the first priced minute (the tab closed soon after it) no longer keeps the empty minutes in (0.48–0.75×).
+  // Without the count (an older snapshot, a zone change since), r2's arithmetic below.
+  const recorded = opts.emptyMinutesBeforePriced;
+  if (since > collecting && firstKey === sinceKey && recorded !== undefined && Number.isFinite(recorded) && recorded >= 0) {
+    const firstDay = byDay[firstKey]?.minutes ?? 0;
+    // Never more than the day held before its first priced minute (a stale count cannot empty the basis).
+    const emptyBefore = Math.min(Math.floor(recorded), Math.max(0, firstDay - 1));
+    recent.minutes = Math.max(firstDay > 0 ? 1 : 0, recent.minutes - emptyBefore);
+  } else if (since > collecting && firstKey === sinceKey) {
+    const firstDay = byDay[firstKey]?.minutes ?? 0;
+    const dayEnd = localDayStartMs(addDaysToKey(firstKey, 1), tz);
+    const through = meteredThroughMs !== undefined && Number.isFinite(meteredThroughMs) ? Math.min(meteredThroughMs, nowMs) : nowMs;
+    const trafficMinutes = Math.min(firstDay, Math.max(firstDay > 0 ? 1 : 0, Math.floor((Math.min(dayEnd, through) - since) / MINUTE_MS)));
+    const emptyBefore = Math.max(0, firstDay - trafficMinutes);
+    recent.minutes = Math.max(trafficMinutes, recent.minutes - emptyBefore);
+  }
+  // 1.1.4 (judge path g): nothing saved over the basis leaves no saved figure for the Receipt to scale would-have-paid
+  // and paid by (src/views/Receipt/model.ts annualizedParts), which printed "You would have paid $0 · You paid $0" for a
+  // plain Datagen whose Ledger showed $22 a day paid. Then they are their own run rates over the same minutes. Only in
+  // that case: a saved rate above 0 keeps the headline (and the committed sample tour) exactly as before.
+  let zeroSavedRates: { annualizedWhpM: number; annualizedPaidM: number } | undefined;
   if (recent.minutes > 0) {
     annualizedM = Math.round((recent.savedM / recent.minutes) * MINUTES_PER_YEAR);
     const n = Math.min(30, wholeDays);
     annualizedFromDays = n >= 1 ? n : recent.minutes / 1440;
+    if (annualizedM === 0) {
+      zeroSavedRates = {
+        annualizedWhpM: Math.round((recent.whpM / recent.minutes) * MINUTES_PER_YEAR),
+        annualizedPaidM: Math.round((recent.paidM / recent.minutes) * MINUTES_PER_YEAR),
+      };
+    }
   }
 
   const headline: Headline = {
@@ -311,6 +349,7 @@ export function computeHeadline(
     d30M: d30.savedM,
     annualizedM,
     annualizedFromDays,
+    ...zeroSavedRates,
     whpMtdM: mtd.whpM,
     paidMtdM: mtd.paidM,
     ratioMtd: ratio(mtd.savedM, mtd.whpM),

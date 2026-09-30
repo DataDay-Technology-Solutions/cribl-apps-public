@@ -661,7 +661,7 @@ test.describe('What if view', () => {
     await expect(basis).toContainText('Windows DC security events');
     await expect(page.getByTestId('whatif-results')).toContainText('Saved / day');
     await expect(page.getByTestId('whatif-hero')).toContainText('Saved by Cribl would read');
-    await expect(page.getByTestId('whatif-hero')).toContainText(/annualized, \+\$[\d,]+/);
+    await expect(page.getByTestId('whatif-hero')).toContainText(/a year at current rates, \+\$[\d,]+/); // r2 ui-7 (IC-2): the hero names its basis
     await expect(page.getByTestId('projection-chip')).toBeVisible();
     // the stream is re-routed to the pack pipeline its similar stream runs, drawn dashed
     const projected = page.locator('[data-ribbon="default|mrd_windows_workstations|mrd_windows_workstations|mrd_siem_prod"]');

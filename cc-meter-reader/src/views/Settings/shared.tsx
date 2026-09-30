@@ -7,7 +7,7 @@
 // unloading. The card's footer sticks to the bottom of the viewport while its bar is dirty or shows a failed
 // save (Settings.css), and a failed save keeps its line in the bar until the next attempt.
 
-import { createContext, useContext, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { Button } from '@capra/core';
 import { LoadingBlock } from '../../components/common/Loading.tsx';
 import { t, tn } from '../../copy/en.ts';
@@ -77,12 +77,49 @@ export interface SaveBarProps {
   dirtyNote?: ReactNode;
 }
 
+/**
+ * Founder-build r2 ui-10 (FINDINGS_EXTRA BO-17): the height of the save bar that sticks to the viewport's bottom while a
+ * section has unsaved work (or a failed save), as `--mr-savebar-h` on the document, so the toast stack rises above it
+ * (Toasts.css) instead of covering Save changes. The tallest sticking bar wins; none sticking removes the variable.
+ */
+const stickingBars = new Map<object, number>();
+function publishSaveBarHeight(): void {
+  if (typeof document === 'undefined') return;
+  const h = Math.max(0, ...stickingBars.values());
+  if (h > 0) document.documentElement.style.setProperty('--mr-savebar-h', `${Math.ceil(h)}px`);
+  else document.documentElement.style.removeProperty('--mr-savebar-h');
+}
+function useStickingBarHeight(sticks: boolean) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!sticks || !el) return;
+    const key = {};
+    // The card's foot is what sticks (Settings.css); its box holds the bar and its padding.
+    const box = (el.parentElement ?? el) as HTMLElement;
+    const measure = () => {
+      stickingBars.set(key, box.getBoundingClientRect().height);
+      publishSaveBarHeight();
+    };
+    measure();
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null;
+    ro?.observe(box);
+    return () => {
+      ro?.disconnect();
+      stickingBars.delete(key);
+      publishSaveBarHeight();
+    };
+  }, [sticks]);
+  return ref;
+}
+
 export function SaveBar({ dirty, errors, saving, writable, onSave, onDiscard, note, failure: failureProp, saveLabel, dirtyNote }: SaveBarProps) {
   const section = useContext(SectionIdContext);
   const registry = useContext(SettingsFrameContext);
   const failures = useContext(SettingsFailuresContext);
   const failure = failureProp ?? (section ? failures[section] : undefined) ?? null;
   const isDirty = dirty > 0;
+  const barRef = useStickingBarHeight(isDirty || !!failure);
   useEffect(() => {
     if (section && registry) registry.setDirty(section, isDirty);
   }, [section, registry, isDirty]);
@@ -104,7 +141,7 @@ export function SaveBar({ dirty, errors, saving, writable, onSave, onDiscard, no
   else if (isDirty) status = <span className="mr-set-status mr-set-status--dirty">{dirtyNote ?? tn('settings.unsaved', dirty)}</span>;
   else status = <span className="mr-set-status">{note ?? t('settings.noChanges')}</span>;
   return (
-    <div className="mr-set-savebar" data-dirty={isDirty ? 'true' : undefined} data-failure={failure ? 'true' : undefined}>
+    <div className="mr-set-savebar" data-dirty={isDirty ? 'true' : undefined} data-failure={failure ? 'true' : undefined} ref={barRef}>
       <div className="mr-set-savebar-status" aria-live="polite">
         {status}
       </div>

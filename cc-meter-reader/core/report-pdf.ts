@@ -20,7 +20,7 @@
 // WinAnsi codes 32–255, so right-aligned money and truncated labels land where they should.
 
 import type { ReportCard } from './report.ts';
-import { alertLine, fill, fmtPricePerGb } from './report.ts';
+import { alertLine, fill, fmtPricePerGb, reportIncidentTone } from './report.ts';
 import { fmtBytes, fmtDollars, fmtDollarsCompact, fmtPct } from './format.ts';
 
 // ─── Fonts ───────────────────────────────────────────────────────────────────
@@ -931,9 +931,11 @@ function protectionSection(l: Layout): void {
     const y = l.y;
     const { r } = c;
     p.rect(M, y, CONTENT_W, c.h, C.panel);
-    p.rect(M, y, 2.5, c.h, r.status === 'open' ? C.dangerText : C.saved);
+    // R2 core-6: a close that was not a recovery is neutral, never the recovered green.
+    const tone = reportIncidentTone(r.status);
+    p.rect(M, y, 2.5, c.h, tone === 'open' ? C.dangerText : tone === 'recovered' ? C.saved : C.subtle);
     p.text(M + 12, y + 13.5, r.title, { font: 'bold', size: 9, maxWidth: CONTENT_W - 110 });
-    p.text(PAGE_W - M - 10, y + 13.5, r.statusText, { font: 'bold', size: 8, color: r.status === 'open' ? C.dangerText : C.savedText, align: 'right' });
+    p.text(PAGE_W - M - 10, y + 13.5, r.statusText, { font: 'bold', size: 8, color: tone === 'open' ? C.dangerText : tone === 'recovered' ? C.savedText : C.subtle, align: 'right' });
     drawLines(p, M + 12, y + 25, c.second, 10, { size: 8 });
     drawLines(p, M + 12, y + 25 + (c.second.length - 1) * 10 + 10, c.cause, 9.5, { size: 7.5, color: C.subtle });
     l.y += c.h + 5;

@@ -115,6 +115,11 @@ const PriceTableRow = memo(function PriceTableRow({ row, draft, errors, dirty, c
         <span className="mr-pt-meta" title={t('settings.prices.meta', { id: row.outputId, type: row.type, group: row.groupId })}>
           {destinationMeta(row)}
         </span>
+        {row.type === 'router' && row.unpriced ? (
+          <span className="mr-pt-meta" data-testid={`price-router-hint-${row.outputId}`}>
+            {t('settings.prices.routerHint')}
+          </span>
+        ) : null}
         {row.history && row.history.length > 0 ? (
           <button
             type="button"

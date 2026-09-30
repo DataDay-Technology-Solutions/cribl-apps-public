@@ -24,10 +24,11 @@
 // Close), so a keyboard can scroll the drawer's body (WCAG 2.1.1; it has no other focusable content).
 
 import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { Button, Drawer, Modal } from '@capra/core';
+import { Button, Drawer, Link, Modal } from '@capra/core';
 import type { Attribution, Counterfactual, HeadlinePeriod } from '../../../core/types.ts';
-import { fmtBytes, fmtDollarsCents, footMoney, mcToDollarInput } from '../../../core/format.ts';
-import type { RangeComparison, RangeFigures } from '../../../core/range.ts';
+import { fmtBytes, fmtDollars, fmtDollarsCents, footMoney, mcToDollarInput } from '../../../core/format.ts';
+import { printedDeltaM, type RangeComparison, type RangeFigures } from '../../../core/range.ts';
+import { footedMtdRows, type AnnualizedDerivation } from '../../views/Receipt/model.ts';
 import { formatLocalDateTime, formatLocalMonthDay, formatLocalTime, localMidnightMs } from '../../../core/time.ts';
 import { t, tn, type CopyKey } from '../../copy/en.ts';
 import { formatInt, formatMoney, formatMultiple, formatPct } from '../../lib/format.ts';
@@ -41,6 +42,13 @@ import { presetById } from '../../../core/presets.ts';
 import { useOptionalStoreApi } from '../../state/react.tsx';
 import './MathDrawer.css';
 
+/** Show the math's note under the annualized run rate: how would-have-paid and paid were derived (annualizedParts). */
+const ANNUALIZED_NOTES: Record<AnnualizedDerivation, CopyKey> = {
+  trend: 'receiptView.math.annualizedTrendNote',
+  ratio: 'receiptView.math.annualizedRatioNote',
+  rate: 'receiptView.math.annualizedRateNote',
+};
+
 export interface MathFigures {
   period: HeadlinePeriod;
   savedM: number;
@@ -48,7 +56,7 @@ export interface MathFigures {
   paidM: number;
   ratio: number;
   accrues: boolean;
-  derivedFrom?: 'trend' | 'ratio';
+  derivedFrom?: AnnualizedDerivation;
   annualizedDays?: number;
 }
 
@@ -93,6 +101,13 @@ export interface MathNet {
   savedM: number;
   costM: number;
   netM: number;
+  /** Printed saved − printed cost (r1 ui-8, m9): the hero's net line to the dollar (src/views/Receipt/mathNet.ts). */
+  printedNetM: number;
+  /**
+   * Founder-build r2 ui-8 (BO-5): the cost is Cribl's list-price estimate — none is set (`basis`: the GB/day × $/GB line
+   * the hero shows), or the one set was saved from that estimate. The section says so and links to the contract cost.
+   */
+  estimate?: { href: string; basis?: string };
   paybackX?: number;
   /** Cribl's cost per day at the monthly figure (× 12 ÷ 365), millicents. */
   costPerDayM: number;
@@ -109,6 +124,18 @@ export interface MathNet {
   bytesInPerDay?: number;
   /** Cribl's published list price per GB received (core/net.ts). */
   listMcPerGb: number;
+}
+
+/**
+ * "At your scale" (founder-build r1 ui-3, src/views/Receipt/atScale.ts): the workspace's saved per GB received at
+ * current rates, and what it comes to a year at the rungs above what the workspace receives. Annualized only.
+ */
+export interface MathAtScale {
+  savedPerDayM: number;
+  bytesInPerDay: number;
+  /** millicents per GB received (a multiple of 100: a tenth of a cent) */
+  savedPerGbM: number;
+  rungs: { gbPerDay: number; tb: number; exactPerYearM: number; amount: string }[];
 }
 
 /** A custom range (core/range.ts) showing on the hero: its sum and the window in words. */
@@ -151,6 +178,8 @@ export interface MathDrawerProps {
   net?: MathNet;
   /** Whether a Cribl cost is set in Settings (the net section says how to add one when it isn't). */
   criblCostSet?: boolean;
+  /** The annualized run rate's "At your scale" line, when the Receipt shows it (founder-build r1 ui-3). */
+  atScale?: MathAtScale;
 }
 
 const BASIS_KEYS: Record<Attribution, CopyKey> = {
@@ -306,13 +335,14 @@ function CompareSection({ compare }: { compare: MathCompare }) {
             values={slot(t('receiptView.math.compareValues'), {
               current: money(c.currentM),
               baseline: money(c.baselineM),
-              change: <strong className={c.direction === 'down' ? 'mr-math-down' : 'mr-saved'}>{money(c.deltaM, true)}</strong>,
+              // The change as printed foots with the two figures (r1 ui-8, m11).
+              change: <strong className={c.direction === 'down' ? 'mr-math-down' : 'mr-saved'}>{money(printedDeltaM(c), true)}</strong>,
             })}
           />
           {c.pct !== undefined ? (
             <Formula
               text={t('receiptView.math.comparePctFormula', { name: compare.name })}
-              values={t('receiptView.math.comparePctValues', { change: money(c.deltaM, true), baseline: money(c.baselineM), pct: formatPct(c.pct, { signed: true }) })}
+              values={t('receiptView.math.comparePctValues', { change: money(printedDeltaM(c), true), baseline: money(c.baselineM), pct: formatPct(c.pct, { signed: true }) })}
             />
           ) : null}
         </>
@@ -351,17 +381,26 @@ function NetSection({ net, tz, criblCostSet, range }: { net?: MathNet; tz: strin
   const monthly = fmtDollarsCents(net.monthlyCostCents * 1000);
   const cost = formatMoney(net.costM);
   return (
-    <Section title={t('receiptView.math.netTitle')}>
-      <div data-testid="math-net">
+    <Section title={t(net.estimate ? 'receiptView.math.netTitleEstimate' : 'receiptView.math.netTitle')}>
+      <div data-testid="math-net" data-estimate={net.estimate ? 'true' : undefined}>
         <Formula
           text={t('receiptView.math.netFormula')}
           values={slot(t('receiptView.math.netValues'), {
             saved: formatMoney(net.savedM),
             cost,
-            net: <strong className={net.netM < 0 ? undefined : 'mr-saved'}>{formatMoney(net.netM)}</strong>,
+            // Printed saved − printed cost (r1 ui-8, m9): the line adds up to the dollar, and reads what the hero reads.
+            net: <strong className={net.netM < 0 ? undefined : 'mr-saved'}>{formatMoney(net.printedNetM)}</strong>,
           })}
         />
       </div>
+      {net.estimate ? (
+        <p className="mr-math-body mr-math-tnum" data-testid="math-net-estimate">
+          {net.estimate.basis ? <>{net.estimate.basis} </> : null}
+          <Link href={net.estimate.href} data-testid="math-net-estimate-link">
+            {t('receiptView.estimate.link')}
+          </Link>
+        </p>
+      ) : null}
       {net.paybackX !== undefined ? (
         <Formula
           text={t('receiptView.math.paybackFormula')}
@@ -488,10 +527,28 @@ function MeasuredSection({ snapshot, period }: { snapshot: Snapshot | null; peri
   );
 }
 
+/** The arithmetic behind the Receipt's "At your scale" line: every figure it prints, and that it is a projection. */
+function AtScaleSection({ atScale }: { atScale: MathAtScale }) {
+  const perGb = price(atScale.savedPerGbM);
+  return (
+    <Section title={t('receiptView.math.atScaleTitle')}>
+      <p className="mr-math-body mr-math-tnum" data-testid="math-at-scale-rate">
+        {t('receiptView.math.atScaleRate', { saved: fmtDollarsCents(atScale.savedPerDayM), volume: fmtBytes(atScale.bytesInPerDay), perGb })}
+      </p>
+      {atScale.rungs.map((r) => (
+        <p key={r.gbPerDay} className="mr-math-body mr-math-tnum" data-testid={`math-at-scale-${r.tb}tb`}>
+          {t('receiptView.math.atScaleRung', { tb: String(r.tb), perGb, gb: formatInt(r.gbPerDay), exact: fmtDollars(r.exactPerYearM), amount: r.amount })}
+        </p>
+      ))}
+      <p className="mr-math-body">{t('receiptView.math.atScaleNote')}</p>
+    </Section>
+  );
+}
+
 function MathContent(props: MathDrawerProps) {
   const snapshot = useSnapshot();
   const pricesDoc = usePrices();
-  const { destinations, attribution, periodCaption, sweepAtMs, ratePerSecM, tz, range, reconciliation, net, criblCostSet = false } = props;
+  const { destinations, attribution, periodCaption, sweepAtMs, ratePerSecM, tz, range, reconciliation, net, criblCostSet = false, atScale } = props;
   // With a range showing, the formulas substitute its figures; the period's own annualized notes step aside.
   const figures: MathFigures = range ? { ...props.figures, savedM: range.figures.savedM, whpM: range.figures.whpM, paidM: range.figures.paidM, ratio: range.figures.ratio, accrues: false, derivedFrom: undefined, annualizedDays: undefined } : props.figures;
   const priced = destinations.filter((d) => !d.unpriced);
@@ -500,6 +557,10 @@ function MathContent(props: MathDrawerProps) {
   const days = Math.round(figures.annualizedDays ?? 0);
   // Month to date (and no range): the rows are the month's own totals, which add up to the hero.
   const mtd = !range && figures.period === 'mtd' && reconciliation !== undefined;
+  // m10 (r1 ui-8): when the rows are the month, each column is footed to the sentence under them, so the rows as
+  // printed add up to it to the dollar (every row still reads would have paid − paid = saved).
+  // r2 ui-8 (R2 #9/#10): one selector for the drawer and each destination's statement (footedMtdRows).
+  const footedMtd = mtd ? footedMtdRows(priced, reconciliation) : undefined;
   return (
     <div className="mr-math" data-testid="math-drawer" tabIndex={0} role="region" aria-label={t('receiptView.math.regionLabel')}>
       <p className="mr-math-intro">{t(range ? 'receiptView.math.introRange' : 'receiptView.math.intro', { period: periodCaption })}</p>
@@ -570,8 +631,9 @@ function MathContent(props: MathDrawerProps) {
                 <>
                   <dl className="mr-math-grid" data-testid="math-dest-mtd">
                     {(() => {
-                      // Printed money adds up: $5,809 − $4,409 = $1,400, never − $4,408 (core/format footMoney, review W2).
-                      const f = footMoney({ whpM: d.mtdWhpM ?? 0, paidM: d.mtdPaidM ?? 0, savedM: d.mtdSavedM ?? 0 });
+                      // Printed money adds up: $5,809 − $4,409 = $1,400, never − $4,408 (core/format footMoney, review W2);
+                      // and down each column to the sentence under the rows (m10).
+                      const f = footedMtd?.get(d.key) ?? footMoney({ whpM: d.mtdWhpM ?? 0, paidM: d.mtdPaidM ?? 0, savedM: d.mtdSavedM ?? 0 });
                       return (
                         <>
                           <dt>{t('receiptView.trend.tipWhp')}</dt>
@@ -665,10 +727,12 @@ function MathContent(props: MathDrawerProps) {
               : t('receiptView.math.annualizedPartialLine', { amount: formatMoney(figures.savedM) })}
           </p>
           <p className="mr-math-body">
-            {t(figures.derivedFrom === 'ratio' ? 'receiptView.math.annualizedRatioNote' : 'receiptView.math.annualizedTrendNote')}
+            {t(ANNUALIZED_NOTES[figures.derivedFrom ?? 'trend'])}
           </p>
         </Section>
       ) : null}
+
+      {figures.period === 'annualized' && !range && atScale ? <AtScaleSection atScale={atScale} /> : null}
 
       <Section title={t('receiptView.math.liveTitle')}>
         {range ? (

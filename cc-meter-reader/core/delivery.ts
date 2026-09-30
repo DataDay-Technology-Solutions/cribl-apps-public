@@ -26,10 +26,10 @@ import { forwardViaTarget, postBell, relayState, BELL_SEVERITY, type NotifyOutco
 import { defaultSleep } from './http.ts';
 import { caughtLine, closedPrefix, impactPhrase, incidentPlainText, isCatchUp, payloadFor, testPayload } from './payloads.ts';
 import { displayAuthor } from './humanize.ts';
-import { receiptText } from './receipt.ts';
+import { coveragePct, partialCoverage, receiptText } from './receipt.ts';
 import { fmtDollars, fmtPct, footMoney } from './format.ts';
 import { fromIso } from './time.ts';
-import { CREDIT_STRINGS } from './strings.ts';
+import { CREDIT_STRINGS, PAYLOAD_STRINGS, fill } from './strings.ts';
 
 // ─── Channels ────────────────────────────────────────────────────────────────
 export type Channel = NonNullable<NotificationEndpoint['channel']>;
@@ -115,14 +115,17 @@ function commitLine(i: CanonicalIncident): string {
 }
 
 /** The bell title, the one-line summary and the target text for one canonical payload. */
-export function renderAlert(c: CanonicalPayload): RenderedAlert {
+export function renderAlert(c: CanonicalPayload, tz = 'UTC'): RenderedAlert {
   if (c.event === 'receipt.weekly' && c.receipt) {
     const r = c.receipt;
     // The bell line prints the same footed triple as the receipt text (W3-RECEIPT-1): would have paid − paid = saved.
     const f = footMoney({ whpM: r.whpM, paidM: r.paidM, savedM: r.savedM });
+    // Founder-build r3 core-2 (FINDINGS_R3 #1): a week metered in part says how much, as the receipt's own Basis does.
+    const cov = r.basis?.coverage;
+    const coverage = partialCoverage(cov) ? ` · ${fill(PAYLOAD_STRINGS.weeklyCoverage, { pct: coveragePct(cov) })}` : '';
     return {
       title: `Weekly receipt · ${r.label}`,
-      line: `Saved by Cribl ${fmtDollars(f.savedM)} · would have paid ${fmtDollars(f.whpM)} · paid ${fmtDollars(f.paidM)} · ${fmtPct(r.ratio)} saved · ${CREDIT_STRINGS.signature}`,
+      line: `Saved by Cribl ${fmtDollars(f.savedM)} · would have paid ${fmtDollars(f.whpM)} · paid ${fmtDollars(f.paidM)} · ${fmtPct(r.ratio)} saved${coverage} · ${CREDIT_STRINGS.signature}`,
       text: receiptText(r),
       severity: 'info',
     };
@@ -132,20 +135,22 @@ export function renderAlert(c: CanonicalPayload): RenderedAlert {
     const title = c.event === 'test' ? 'Meter Reader test notification' : `Meter Reader ${c.event}`;
     return { title, line: title, text: title, severity: 'info' };
   }
-  const recovered = isRecovered(c, i);
-  const prefix = c.event === 'test' ? 'Test: ' : recovered && i.type !== 'goodnews' ? closedPrefix(i) : '';
+  // Good news is a one-shot announcement, never a recovery (row 9, PACK_PAYOFF F1); its bell id keeps isRecovered's form.
+  const recovered = isRecovered(c, i) && i.type !== 'goodnews';
+  const prefix = c.event === 'test' ? 'Test: ' : recovered ? closedPrefix(i) : '';
   const title = `${prefix}${i.title}`;
   // D62 (rules round 2): the same money wording as the incident card and every other channel (payloads.ts impactPhrase).
   const money = impactPhrase(i);
   const caught = !recovered && isCatchUp(i) ? ` · ${caughtLine(i)}` : '';
   // The bell names its sender, as Slack's context line does: the builder's signature ends the line.
   const line = `${i.type === 'budget' ? money : `${money} · ${commitLine(i)}`}${caught} · ${CREDIT_STRINGS.signature}`;
-  const body = incidentPlainText(i).split('\n').slice(1);
+  const body = incidentPlainText(i, tz).split('\n').slice(1);
   return {
     title,
     line,
     text: [title, ...body].join('\n'),
-    severity: recovered || i.type === 'goodnews' ? 'info' : i.severity,
+    // Core-11 (m2, #5): a test posts as info, whatever its sample's severity (README: tests post as info).
+    severity: c.event === 'test' || recovered || i.type === 'goodnews' ? 'info' : i.severity,
   };
 }
 
@@ -239,7 +244,7 @@ export function createDeliveryRouter(deps: DeliveryDeps): DeliveryRouter {
   async function bell(req: DeliverRequest): Promise<DeliveryLog[]> {
     const ep = req.endpoint;
     if (ep.implicit && bellUnavailable) return bellSkipped(req, deps.clock.now(), bellUnavailable);
-    const r = renderAlert(req.canonical);
+    const r = renderAlert(req.canonical, req.tz ?? 'UTC');
     const msg = {
       id: bellMessageId(req.canonical),
       severity: BELL_SEVERITY[r.severity],
@@ -282,7 +287,7 @@ export function createDeliveryRouter(deps: DeliveryDeps): DeliveryRouter {
       return [logEntry(req, 1, at, { status: 404, error: 'relay_missing', detail: 'connect this target in Settings → Where to send alerts' })];
     }
     if (s.state === 'error') return [logEntry(req, 1, at, { status: s.status, error: s.error, ...(s.detail ? { detail: s.detail } : {}) })];
-    const r = renderAlert(req.canonical);
+    const r = renderAlert(req.canonical, req.tz ?? 'UTC');
     const sendAt = deps.clock.now();
     const out = await forwardViaTarget(deps.http, {
       targetId,

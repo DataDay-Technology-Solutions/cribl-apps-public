@@ -862,6 +862,27 @@
   margin-bottom: token('spacing.lg');
 }
 
+/* Founder-build r1 ui-3: "At your scale" under the hero, annualized only. One quiet line in the page's own gutter (the
+   hero's height never changes as the periods toggle: P1-F12); it wraps on a phone, never scrolls sideways. */
+.mr-at-scale {
+  margin: token('spacing.md') 0 0;
+  max-width: 80ch;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: token('color.foreground.subtle');
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.mr-at-scale-rung {
+  white-space: nowrap;
+}
+.mr-at-scale-amount {
+  font-weight: 600;
+  color: token('color.foreground.default');
+}
+
 /* ── Ghost (waiting for the first sweep / snapshot unreadable, BEAUTY F14) ── */
 .mr-hero-dash {
   display: block;

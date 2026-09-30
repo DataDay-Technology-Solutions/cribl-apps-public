@@ -142,3 +142,31 @@ export function toMs(at: number | string | undefined | null): number {
   if (at === undefined || at === null) return Number.NaN;
   return toEpoch(at);
 }
+
+// ─── Small money on dense labels (founder-build r3 ui-4, FINDINGS_R3 #18 ui half, H6; contract C2) ─────────────────────
+
+/** Below this axis maximum a tick that is not whole dollars keeps its cents ($10). */
+const CENTS_AXIS_MAX_M = 10 * MC_PER_DOLLAR;
+
+/**
+ * A money axis tick. Compact whole dollars as before, except on a small axis: under $10 a tick that is not a whole
+ * dollar keeps its cents ("$0.25", "$1.50"), so a sub-dollar workspace's chart never reads "$0 · $0 · $0" and a $3
+ * axis never labels its $1.50 midline "$2". Zero is "$0".
+ */
+export function formatAxisMoney(milliCents: number, axisMaxM: number): string {
+  if (!Number.isFinite(milliCents)) return t('common.dash');
+  if (milliCents === 0) return fmtDollars(0);
+  const small = Number.isFinite(axisMaxM) && Math.abs(axisMaxM) < CENTS_AXIS_MAX_M;
+  if (small && Math.round(milliCents) % MC_PER_DOLLAR !== 0) return fmtDollarsCents(milliCents);
+  return fmtDollarsCompact(milliCents);
+}
+
+/**
+ * Compact money that never prints "$0" for a real amount: a non-zero figure the compact form would round to "$0"
+ * reads "< $1", as every other figure does (fmtDollars, D82). Exactly zero is "$0".
+ */
+export function formatMoneyNeverZero(milliCents: number): string {
+  if (!Number.isFinite(milliCents)) return t('common.dash');
+  const compact = fmtDollarsCompact(milliCents);
+  return milliCents !== 0 && !/[1-9]/.test(compact) ? fmtDollars(milliCents) : compact;
+}

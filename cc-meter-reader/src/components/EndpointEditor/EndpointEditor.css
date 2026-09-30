@@ -266,7 +266,9 @@
   font: token('typography.body.sm.normal');
   font-family: token('core.fontFamily.mono');
   color: token('color.foreground.default');
-  white-space: pre;
+  /* r2 ui-11 (BO-16): the plain text wraps, so a 390 px card never cuts a line on the right. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* ── Channels (DECISIONS D23): send-through choice, the bell row, target connection ── */

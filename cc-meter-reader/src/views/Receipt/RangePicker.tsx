@@ -44,6 +44,7 @@ import {
   RELATIVE_PRESETS,
   WEEK_MS,
   commitAfterWindow,
+  minuteReachMs,
   planComparison,
   planRangeReads,
   presetKeyOf,
@@ -127,10 +128,16 @@ function measureLayout(root: HTMLElement): PanelLayout {
 }
 
 /** How many history documents a spec's read plans, or undefined when it reads none (a future window). */
-function plannedReads(spec: RangeSpec, nowMs: number, collectingSinceMs: number | undefined, meteredThroughMs: number | undefined): number | undefined {
+function plannedReads(
+  spec: RangeSpec,
+  nowMs: number,
+  collectingSinceMs: number | undefined,
+  meteredThroughMs: number | undefined,
+  minuteRetentionHours: number | undefined,
+): number | undefined {
   const resolved = resolveRange(spec, nowMs, collectingSinceMs);
   if (resolved.future) return undefined;
-  return planRangeReads(resolved.fromMs, resolved.toMs, nowMs, meteredThroughMs).keys.length;
+  return planRangeReads(resolved.fromMs, resolved.toMs, nowMs, meteredThroughMs, minuteRetentionHours !== undefined ? { minuteRetentionHours } : {}).keys.length;
 }
 
 export interface RangeControlProps {
@@ -154,6 +161,8 @@ export interface RangeControlProps {
   collectingSinceMs?: number;
   /** The sweep's cursor (meta.meteredThrough): the preview's read count plans the same hybrid read the reader will. */
   meteredThroughMs?: number;
+  /** meta.minuteRetentionHours: the preview, the read count and a comparison plan the minute family only within it (r3 ui-5, H9). */
+  minuteRetentionHours?: number;
   /** Sample data: Custom is disabled (the hint beside the toggle is the card's, described by `customHintId`). */
   customDisabled?: boolean;
   customHintId?: string;
@@ -209,6 +218,7 @@ interface PanelProps {
   nowMs?: number;
   collectingSinceMs: number | undefined;
   meteredThroughMs: number | undefined;
+  minuteRetentionHours: number | undefined;
   labelId: string;
   /** A phone: the panel spans the hero card (PanelLayout.width). */
   width?: number;
@@ -223,23 +233,32 @@ function draftComparison(
   nowMs: number,
   collectingSinceMs: number | undefined,
   meteredThroughMs: number | undefined,
+  minuteRetentionHours: number | undefined,
 ): ComparisonPlan | ComparisonRefusal | undefined {
   if (!spec || !vs) return undefined;
   const commit = vs.kind === 'commit' ? commits.find((c) => c.hash.toLowerCase().startsWith(vs.hash) || vs.hash.startsWith(c.hash.toLowerCase())) : undefined;
-  return planComparison(spec, vs, { nowMs, collectingSinceMs, foldedThroughMs: meteredThroughMs, ...(commit ? { commit: { hash: commit.hash, atMs: commit.atMs } } : {}) });
+  return planComparison(spec, vs, {
+    nowMs,
+    collectingSinceMs,
+    foldedThroughMs: meteredThroughMs,
+    ...(minuteRetentionHours !== undefined ? { minuteRetentionHours } : {}),
+    ...(commit ? { commit: { hash: commit.hash, atMs: commit.atMs } } : {}),
+  });
 }
 
-function RangePanel({ draft, onDraft, onApply, onCancel, tz, nowMs: fixedNowMs, collectingSinceMs, meteredThroughMs, labelId, width, commits }: PanelProps) {
+function RangePanel({ draft, onDraft, onApply, onCancel, tz, nowMs: fixedNowMs, collectingSinceMs, meteredThroughMs, minuteRetentionHours, labelId, width, commits }: PanelProps) {
   const tick = useNow();
   const nowMs = fixedNowMs ?? tick;
   const rootRef = useRef<HTMLDivElement | null>(null);
   const { spec, status } = specOf(draft, tz);
   const max = formatLocalDateTimeInput(nowMs, tz);
-  const cmp = draftComparison(spec, draft.vs, commits, nowMs, collectingSinceMs, meteredThroughMs);
+  const cmp = draftComparison(spec, draft.vs, commits, nowMs, collectingSinceMs, meteredThroughMs, minuteRetentionHours);
   // With a comparison the preview describes the window as the comparison reads it (aligned when it must be).
   const previewSpec: RangeSpec | undefined = cmp?.ok ? { kind: 'absolute', ...cmp.current } : spec;
-  const preview = previewSpec ? rangePreviewLine(rangePreview(previewSpec, nowMs, collectingSinceMs, tz)) : undefined;
-  const reads = cmp?.ok ? cmp.reads : spec && !cmp ? plannedReads(spec, nowMs, collectingSinceMs, meteredThroughMs) : undefined;
+  const preview = previewSpec ? rangePreviewLine(rangePreview(previewSpec, nowMs, collectingSinceMs, tz, minuteRetentionHours)) : undefined;
+  const reads = cmp?.ok ? cmp.reads : spec && !cmp ? plannedReads(spec, nowMs, collectingSinceMs, meteredThroughMs, minuteRetentionHours) : undefined;
+  // The note names where minute-exact ends: 24 h by default, less on a short minute retention (r3 ui-5).
+  const minuteHours = Math.round(minuteReachMs(minuteRetentionHours) / 3_600_000);
   // "A week earlier" compares windows of 7 days or less.
   const resolved = spec ? resolveRange(spec, nowMs, collectingSinceMs) : undefined;
   const weekTooLong = resolved !== undefined && resolved.toMs - resolved.fromMs > WEEK_MS;
@@ -336,7 +355,13 @@ function RangePanel({ draft, onDraft, onApply, onCancel, tz, nowMs: fixedNowMs, 
         />
       </div>
       <p className="mr-range-panel-note" data-invalid={status === 'ok' ? 'false' : 'true'} data-testid="range-note">
-        {status === 'invalid' ? t('meter.range.invalid') : status === 'incomplete' ? t('meter.range.incomplete') : t('meter.range.timezoneNote', { tz: canonicalZoneName(tz) })}
+        {status === 'invalid'
+          ? t('meter.range.invalid')
+          : status === 'incomplete'
+            ? t('meter.range.incomplete')
+            : minuteHours === 24
+              ? t('meter.range.timezoneNote', { tz: canonicalZoneName(tz) })
+              : t('meter.range.timezoneNoteHours', { tz: canonicalZoneName(tz), hours: String(minuteHours) })}
       </p>
       <div className="mr-range-compare" data-testid="range-compare">
         <SelectField
@@ -382,7 +407,21 @@ function RangePanel({ draft, onDraft, onApply, onCancel, tz, nowMs: fixedNowMs, 
 }
 
 /** The five-item period toggle and the custom range picker it opens. */
-export function RangeControl({ period, range, vs, commits = [], onPeriod, onApplyRange, tz, nowMs, collectingSinceMs, meteredThroughMs, customDisabled = false, customHintId }: RangeControlProps) {
+export function RangeControl({
+  period,
+  range,
+  vs,
+  commits = [],
+  onPeriod,
+  onApplyRange,
+  tz,
+  nowMs,
+  collectingSinceMs,
+  meteredThroughMs,
+  minuteRetentionHours,
+  customDisabled = false,
+  customHintId,
+}: RangeControlProps) {
   // The live clock when none is pinned, read only when the picker opens or applies (never on a render).
   const clock = (): number => nowMs ?? Date.now();
   const [open, setOpen] = useState(false);
@@ -412,7 +451,7 @@ export function RangeControl({ period, range, vs, commits = [], onPeriod, onAppl
   const apply = () => {
     const { spec } = specOf(draft, tz);
     if (!spec) return;
-    const cmp = draftComparison(spec, draft.vs, commits, clock(), collectingSinceMs, meteredThroughMs);
+    const cmp = draftComparison(spec, draft.vs, commits, clock(), collectingSinceMs, meteredThroughMs, minuteRetentionHours);
     if (cmp && !cmp.ok) return;
     setOpen(false);
     if (draft.vs) onApplyRange(spec, draft.vs);
@@ -467,6 +506,7 @@ export function RangeControl({ period, range, vs, commits = [], onPeriod, onAppl
               nowMs={nowMs}
               collectingSinceMs={collectingSinceMs}
               meteredThroughMs={meteredThroughMs}
+              minuteRetentionHours={minuteRetentionHours}
               labelId={labelId}
               width={layout.width}
               commits={commits}

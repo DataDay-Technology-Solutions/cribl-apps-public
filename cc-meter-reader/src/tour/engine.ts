@@ -17,9 +17,10 @@
 // (the SAMPLE DATA band's "Clear sample data" calls `clearSample` directly), the engine notices on its
 // store subscription and stops itself with reason 'cleared'.
 
-import type { Commit, DeliveryLog, DeliveryRef, FlowFigures, Incident, Meta, Settings, Snapshot, TourStep, WeeklyReceipt } from '../../core/types.ts';
+import type { Commit, DeliveryLog, DeliveryRef, FlowFigures, FlowKey, HourRow, Incident, Meta, Settings, Snapshot, TourStep, WeeklyReceipt } from '../../core/types.ts';
 import { flowObjectKeys } from '../../core/flows.ts';
-import { previousWeek } from '../../core/receipt.ts';
+import { buildWeeklyReceipt, previousWeek } from '../../core/receipt.ts';
+import { sampleRollups } from '../../core/sampleRollups.ts';
 import { fromIso, weekRangeLabel } from '../../core/time.ts';
 import { summarizeInventory } from '../state/hydrate.ts';
 import type { Timers } from '../state/ports.ts';
@@ -127,21 +128,48 @@ export function applyStepToSnapshot(snapshot: Snapshot, step: Pick<TourStep, 'ac
   }
 }
 
+/** The history a weekly receipt is rebuilt from: the sample snapshot on screen and its labels. */
+export interface WeeklyHistory {
+  snapshot: Snapshot;
+  labels?: Record<string, string>;
+}
+
+/** One rebuild per snapshot and week (the sample's hour rows take ~60 ms to synthesize). */
+const weeklyCache = new WeakMap<Snapshot, Map<string, WeeklyReceipt>>();
+
 /**
- * The fixture's weekly receipt as it would read at `nowMs`: the same amounts, labelled with the
- * previous complete local week (the week a Monday send would cover), so the preview never names a
- * week from the day the fixture was generated.
+ * The fixture's weekly receipt as it would read at `nowMs`, labelled with the previous complete local week (the week
+ * a Monday send would cover). With the sample's `history` (founder-build r1 ui-7, FINDINGS_R1 M3) its money is rebuilt
+ * from the same rebased hour rows a Custom range over that week sums (core/sampleRollups.ts), so the preview and the
+ * range agree on every day of the week the tour is opened — relabelling the recorded week agreed only when the rebase
+ * moved it by whole weeks. The recording's open alerts travel with it. Without a history (or with none in that week)
+ * the recording is relabelled, as before.
  */
-export function weeklyReceiptAt(receipt: WeeklyReceipt | undefined, nowMs: number, tz: string): WeeklyReceipt | undefined {
+export function weeklyReceiptAt(receipt: WeeklyReceipt | undefined, nowMs: number, tz: string, history?: WeeklyHistory): WeeklyReceipt | undefined {
   if (!receipt) return undefined;
   try {
     const week = previousWeek(nowMs, tz);
-    return {
+    const relabelled: WeeklyReceipt = {
       ...receipt,
       periodStart: new Date(week.startMs).toISOString(),
       periodEnd: new Date(week.endMs).toISOString(),
       label: weekRangeLabel(week.startMs, week.endMs, tz),
     };
+    if (!history) return relabelled;
+    const key = `${tz}|${week.startMs}|${week.endMs}`;
+    const cached = weeklyCache.get(history.snapshot)?.get(key);
+    if (cached) return cached;
+    const rollups = sampleRollups(history.snapshot, tz);
+    const rowsByFlow: Record<FlowKey, HourRow[]> = {};
+    for (const hourKey of rollups.keys().hour) {
+      for (const [flow, rows] of Object.entries(rollups.hourDoc(hourKey)?.flows ?? {})) (rowsByFlow[flow] ??= []).push(...rows);
+    }
+    const rebuilt = buildWeeklyReceipt({ periodStartMs: week.startMs, periodEndMs: week.endMs, tz, rowsByFlow, ...(history.labels ? { labels: history.labels } : {}) });
+    const out: WeeklyReceipt = rebuilt.whpM > 0 ? { ...rebuilt, openIncidents: receipt.openIncidents } : relabelled;
+    const perSnapshot = weeklyCache.get(history.snapshot) ?? new Map<string, WeeklyReceipt>();
+    perSnapshot.set(key, out);
+    weeklyCache.set(history.snapshot, perSnapshot);
+    return out;
   } catch {
     return receipt;
   }
@@ -420,7 +448,12 @@ export function createTourEngine(opts: TourEngineOptions): TourEngine {
 
     weeklyReceipt() {
       if (!shown) return undefined;
-      return weeklyReceiptAt(shown.weeklyReceipt, now(), tz);
+      // Story keeps the recording's money (rebaseMoney: false; its captions quote it), so its receipt is relabelled only.
+      if (opts.rebaseMoney === false) return weeklyReceiptAt(shown.weeklyReceipt, now(), tz);
+      // The snapshot on screen (the script moves it; its past days are the base's): the Custom range sums the same.
+      const state = store.getState();
+      const snapshot = ownsScreen() && state.snapshot ? state.snapshot : shown.snapshot;
+      return weeklyReceiptAt(shown.weeklyReceipt, now(), tz, { snapshot, labels: shown.settings.humanize });
     },
 
     isActive: active,

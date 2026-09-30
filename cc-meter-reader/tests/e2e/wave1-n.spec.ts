@@ -27,7 +27,7 @@ const THEMES: readonly Theme[] = ['light', 'dark'];
 /** The copy this package wrote (src/copy/en.ts), as the screen must show it. */
 const WATCHING = 'Meter Reader never changes a pipeline, route, source or destination.';
 const RECEIPT = 'A weekly receipt goes to leadership. They never open Cribl.';
-const TOAST_BODY = 'Leadership gets this in Slack, without opening Cribl.';
+const TOAST_BODY = 'Leadership gets this without opening Cribl.'; // r2 ui-11 (IC-14 residue): no "in Slack"
 const DIALOG_CAPTION = 'Sent after Monday 12:00 UTC while Meter Reader is metering. Leadership never opens Cribl.';
 const DEMO_SUBTITLE = 'Share this build only with the people running the demo: its write grants cover every pipeline, route and source in the workspace.';
 /** What the copy must never say again (the P0-12 overclaims). */

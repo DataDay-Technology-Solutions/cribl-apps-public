@@ -1,6 +1,8 @@
 // core/humanize.ts — Cribl object IDs → plain-words labels (SPEC 13 "Humanizing IDs").
 // Lookup order: user overrides (settings.humanize) → DEMO_LABELS → the dictionary.
 
+import { AUTHOR_STRINGS, fill } from './strings.ts';
+
 /** Exact labels for the demo rig's ids (SPEC 14.2), which the dictionary alone cannot produce. */
 export const DEMO_LABELS: Readonly<Record<string, string>> = {
   mrd_pay_sample: 'Payments API sampling',
@@ -52,6 +54,38 @@ export const HUMANIZE_DICTIONARY: Readonly<Record<string, string>> = {
   prod: 'prod',
 };
 
+/**
+ * Founder-build r1 core-14 (m19, #47): tokens of Cribl's default Source and destination ids (`in_splunk_hec`,
+ * `in_syslog_tls`, `out_splunk`), as the Ledger already reads them (src/components/LedgerTable/model.ts), so the Flow
+ * map, the top savers and every alert say "Splunk HEC", never "In splunk hec".
+ */
+export const BUILTIN_ID_TOKENS: Readonly<Record<string, string>> = {
+  cribl: 'Cribl',
+  http: 'HTTP',
+  tcp: 'TCP',
+  udp: 'UDP',
+  tls: '(TLS)',
+  json: 'JSON',
+  hec: 'HEC',
+  splunk: 'Splunk',
+  elastic: 'Elasticsearch API',
+  syslog: 'Syslog',
+  otel: 'OpenTelemetry',
+  kafka: 'Kafka',
+  datadog: 'Datadog',
+  datagen: 'Datagen',
+  agent: 'Agent',
+  s3: 'S3',
+};
+
+/** "Splunk HEC" for `in_splunk_hec`, "Splunk HEC 0" for `out_splunk_hec_0`; undefined when any word is unknown. */
+export function builtinIdLabel(id: string): string | undefined {
+  const m = /^(?:in|out)_([a-z0-9_]+)$/.exec(id);
+  if (!m) return undefined;
+  const words = m[1].split('_').filter((t) => t.length > 0).map((t) => BUILTIN_ID_TOKENS[t] ?? (/^\d+$/.test(t) ? t : undefined));
+  return words.length > 0 && words.every((w): w is string => w !== undefined) ? words.join(' ') : undefined;
+}
+
 /** Strips the demo/object prefixes `mrd_` and `mr_`. */
 function stripPrefix(id: string): string {
   return id.replace(/^mrd?_/i, '');
@@ -89,6 +123,8 @@ export function humanize(id: string, overrides?: Record<string, string>): string
   if (demo !== undefined) return demo;
   const pack = /^pack:(.+)$/i.exec(id);
   if (pack) return packLabel(pack[1]);
+  const builtin = builtinIdLabel(id);
+  if (builtin) return builtin;
   const tokens = (stripped || id)
     .split(/[_\-\s]+/)
     .filter((t) => t.length > 0)
@@ -119,20 +155,42 @@ export function humanizeObjectKey(key: string, overrides?: Record<string, string
   return humanize(m ? m[1] : key, overrides);
 }
 
+const API_CLIENT = /^([^@\s]+)@clients$/i;
+/** The prefix of an API client's name in the workspace's labels (settings.humanize): "client:1r2s". */
+export const API_CLIENT_LABEL_PREFIX = 'client:';
+
+/** Whether a commit author is an API client ("<client id>@clients"), not a person. */
+export function isApiClientAuthor(author: string | undefined | null): boolean {
+  return typeof author === 'string' && API_CLIENT.test(author.trim());
+}
+
+/** The label key an API client's name is kept under ("client:1r2s", the id's last four characters), or undefined for a person. */
+export function apiClientKey(author: string | undefined | null): string | undefined {
+  const m = typeof author === 'string' ? API_CLIENT.exec(author.trim()) : null;
+  return m ? `${API_CLIENT_LABEL_PREFIX}${m[1].slice(-4)}` : undefined;
+}
+
+/** "API client ··1r2s": how an unnamed API client reads, from its label key. */
+export function apiClientFallback(key: string): string {
+  return fill(AUTHOR_STRINGS.apiClient, { tail: key.slice(API_CLIENT_LABEL_PREFIX.length) });
+}
+
 /**
- * A commit author as people should read it (NOTIFY-3a issue 8). Commits made with an API credential carry the
- * OAuth client id as the author (`Zx9Q…gE@clients`): an opaque id that means nothing to a reader and need not
- * travel to Slack whole. Those read 'API client ··gE6x', the id's last four characters, so two automations (a GitOps
- * pipeline and a CI job, rules round 2) read apart without printing the id; a short id reads 'API client'. Anything
- * else is returned trimmed; empty reads 'unknown'.
+ * A commit author as every surface prints it — the one author function (founder-build r1 core-4, FOUNDER_PLAN row 10,
+ * contract C5; before it the cards used src/lib/author.ts and the channels this, without the label lookup). Commits
+ * made with an API credential carry the OAuth client id as the author (`Zx9Q…gE@clients`): an opaque id that means
+ * nothing to a reader and must not travel. Such an author reads as the name a member gave that client under
+ * Settings → Alerts → API clients (kept in `labels`, settings.humanize, under "client:<last four>"; a label, never a
+ * credential: core/settings.ts screens every label), else "API client ··gE6x" (the id's last four characters, so two
+ * automations — a GitOps pipeline and a CI job — read apart). Anyone else reads as Cribl recorded them, trimmed; empty
+ * reads "unknown author". The bell, notification targets, Slack, ServiceNow, the canonical JSON, the Report and every
+ * in-App card print this.
  */
-export function displayAuthor(author: string | undefined | null): string {
+export function displayAuthor(author: string | undefined | null, labels?: Readonly<Record<string, string>>): string {
   const a = typeof author === 'string' ? author.trim() : '';
-  if (a === '') return 'unknown';
-  const client = /^([^@\s]+)@clients$/i.exec(a);
-  if (client) {
-    const id = client[1].replace(/[^A-Za-z0-9]/g, '');
-    return id.length >= 12 ? `API client ··${id.slice(-4)}` : 'API client';
-  }
-  return a;
+  if (a === '') return AUTHOR_STRINGS.unknownAuthor;
+  const key = apiClientKey(a);
+  if (!key) return a;
+  const named = labels?.[key]?.trim();
+  return named ? named : apiClientFallback(key);
 }

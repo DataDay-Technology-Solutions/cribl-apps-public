@@ -7,7 +7,7 @@
 import type { CommitImpact } from '../../../core/commitImpacts.ts';
 import { t, tn } from '../../copy/en.ts';
 import { commitAuthor } from '../../lib/author.ts';
-import { NO_REVERSALS, isSettled, isUnattributedShift, signedMoney, type Reversals } from './money.ts';
+import { NO_REVERSALS, changeWhen as when, isSettled, isUnattributedShift, settledText, signedMoney, type Reversals } from './money.ts';
 import './ChangesList.css';
 
 export interface ChangesListProps {
@@ -24,27 +24,6 @@ export interface ChangesListProps {
   reversals?: Reversals;
   /** settings.humanize: an API client's name, when a member gave it one (src/lib/author.ts) */
   labels?: Record<string, string>;
-}
-
-function when(ms: number, tz: string): string {
-  try {
-    return new Intl.DateTimeFormat('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit', timeZone: tz }).format(ms).replace(/ /g, ' ');
-  } catch {
-    return new Date(ms).toISOString();
-  }
-}
-
-const short = (hash: string): string => hash.slice(0, 7);
-
-/** "Recovered at 6:44 PM, reverted by 9a9a4c6" / "Undid 22d0a5e" for a settled row, else undefined. */
-function settledText(i: CommitImpact, rev: Reversals, tz: string): string | undefined {
-  const undone = rev.undone.get(i.commit.hash);
-  if (undone) {
-    const time = when(undone.recoveredAt, tz);
-    return undone.by ? t('ledger.timeline.changes.recoveredBy', { time, hash: short(undone.by) }) : t('ledger.timeline.changes.recovered', { time });
-  }
-  const undid = rev.undoes.get(i.commit.hash);
-  return undid ? t('ledger.timeline.changes.undid', { hash: short(undid) }) : undefined;
 }
 
 function amountText(i: CommitImpact): string {
@@ -119,7 +98,7 @@ export function ChangesList({ impacts, timeZone, selected, onSelect, truncated, 
                     <span className={`mr-changes-amount mr-num is-${tone}`}>{amount}</span>
                     {i.status === 'priced' ? <span className="mr-changes-per">{t('units.perDay')}</span> : null}
                   </span>
-                  <span className="mr-changes-meta">
+                  <span className="mr-changes-meta" title={[meta, basis, settledNote].filter(Boolean).join(' · ')}>
                     {meta}
                     {basis ? ` · ${basis}` : ''}
                     {settledNote ? (

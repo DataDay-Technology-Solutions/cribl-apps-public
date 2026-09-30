@@ -107,6 +107,8 @@ export function createMeterLoop(deps: MeterDeps): MeterController {
   const firstDelayMs = deps.firstDelayMs ?? FIRST_SWEEP_DELAY_MS;
 
   let started = false;
+  /** stop() ran (and start() has not run since): a sweep or weekly send still out when it did touches nothing (r3 ui-9). */
+  let stopped = false;
   let metering = false;
   /** Why the loop was not metering at the last evaluation ('stopped' before start / after stop). */
   let lastBlocker: MeterBlocker | 'stopped' | null = 'stopped';
@@ -151,6 +153,9 @@ export function createMeterLoop(deps: MeterDeps): MeterController {
     const finishedAt = now();
     const sweep = store.getState().status.sweep;
     patchSweep(store, { running: false, lastRunAt: finishedAt, lastResult: summary, ...(local ? streakAfter(sweep, summary, finishedAt) : {}) });
+    // r3 ui-9 (FT-R111-2): a meter stopped while this sweep was out (services.stop(): test hooks only) holds the store
+    // still: it adopts no documents and asks for no refresh.
+    if (stopped) return;
     // Only live data may be replaced; a tour that started mid-sweep keeps the screen.
     if (store.getState().source === 'live' && (summary.snapshot || summary.meta)) {
       store.setState({
@@ -199,8 +204,8 @@ export function createMeterLoop(deps: MeterDeps): MeterController {
       .then(async (outcome) => {
         const attempt: WeeklyAttempt = { at: now(), mode, outcome };
         patchSweep(store, { lastWeekly: attempt });
-        // An automatic send stamps meta.lastWeeklySentAt; read it back so the store agrees.
-        if (mode === 'ui' && deps.refresh) await deps.refresh().catch(() => undefined);
+        // An automatic send stamps meta.lastWeeklySentAt; read it back so the store agrees (not once stopped, r3 ui-9).
+        if (mode === 'ui' && !stopped && deps.refresh) await deps.refresh().catch(() => undefined);
         return outcome;
       })
       .finally(() => {
@@ -215,7 +220,9 @@ export function createMeterLoop(deps: MeterDeps): MeterController {
     const state = store.getState();
     if (state.source !== 'live' || state.settings.runtime !== 'ui') return;
     const t = now();
-    if (!shouldAutoSendWeekly(state.meta, t)) return;
+    // r3 core-2 (D83): in the zone this workspace meters in, so a week that ended before metering started is not attempted.
+    const zone = state.snapshot?.zone ?? state.settings.displayTimezone;
+    if (!shouldAutoSendWeekly(state.meta, t, zone ? { timeZone: zone } : {})) return;
     const week = mondayNoonUtc(t);
     if (weeklyHandledFor === week) return;
     if (isRunnerFresh(state.status.sweep.runnerSeenAt, t)) return;
@@ -223,7 +230,8 @@ export function createMeterLoop(deps: MeterDeps): MeterController {
     // Another sweep held the lock, or the Leader said slow down: try again on a later tick. Anything else
     // (sent, nothing to send, already sent, an error) settles this week for this tab, so a workspace with
     // no weekly endpoints doesn't re-read four KV documents every 30 s all Monday.
-    if (outcome.skipped === 'locked' || outcome.skipped === 'rate_limited') return;
+    // r2 core-11 (a): 'unavailable' is a transient Leader failure (a timeout, a 5xx): a later tick sends it too.
+    if (outcome.skipped === 'locked' || outcome.skipped === 'rate_limited' || outcome.skipped === 'unavailable') return;
     weeklyHandledFor = week;
   };
 
@@ -271,12 +279,14 @@ export function createMeterLoop(deps: MeterDeps): MeterController {
     start() {
       if (started) return;
       started = true;
+      stopped = false;
       if (engine.ownerId && store.getState().status.sweep.ownerId !== engine.ownerId) patchSweep(store, { ownerId: engine.ownerId });
       unsubscribe = store.subscribe(evaluate);
       evaluate();
     },
     stop() {
       started = false;
+      stopped = true;
       unsubscribe?.();
       unsubscribe = null;
       evaluate();

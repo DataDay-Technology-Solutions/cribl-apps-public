@@ -28,10 +28,9 @@
 // Frame (BEAUTY F7): the view renders in the Shell's <Page> (the app's one page width), with no page title of
 // its own — the hero's "Saved by Cribl" is the page's h1 (DESIGN_BRIEF 5.1).
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { HeadlinePeriod, Snapshot } from '../../../core/types.ts';
-import { CRIBL_LIST_MC_PER_GB, impliedCostPerGbM } from '../../../core/net.ts';
 import {
   commitAtMs,
   compareRanges,
@@ -43,12 +42,13 @@ import {
   type CompareSpec,
   type RangeSpec,
 } from '../../../core/range.ts';
-import { comparisonLines, receiptTextForComparison, receiptTextForPeriod, receiptTextForRange } from '../../../core/receipt.ts';
-import { DAY_MS, fromIso, isValidTimeZone, localDayKey } from '../../../core/time.ts';
+import { comparisonLines, priceBasisSummary, receiptTextForComparison, receiptTextForPeriod, receiptTextForRange } from '../../../core/receipt.ts';
+import { DAY_MS, fromIso, localDayKey } from '../../../core/time.ts';
 import { t } from '../../copy/en.ts';
 import { ErrorNotice, MeteringNotice } from '../../components/common/ErrorNotice.tsx';
 import { notify } from '../../components/common/notify.tsx';
 import { MathDrawer, type MathNet } from '../../components/MathDrawer/MathDrawer.tsx';
+import { mathNetFor } from './mathNet.ts';
 import { Page } from '../../components/Shell/Page.tsx';
 import { copyText } from '../../lib/dom.ts';
 import { hrefWithStickyParams, useAppParams } from '../../lib/params.ts';
@@ -62,9 +62,11 @@ import {
   bytesInPerDay,
   destinationRows,
   landingPeriod,
+  receiptZone,
   mathDestinations,
   moneyDestinations,
   mtdReconciliation,
+  footedMtdRows,
   listPriceEstimate,
   netFigures,
   openIncidents,
@@ -88,7 +90,6 @@ import {
   PERIOD_CAPTION,
   heroCaption,
   heroIsProjection,
-  netSpanWords,
   receiptNetLine,
   rangeCaption,
   rangePreview,
@@ -106,6 +107,13 @@ import { compareNames, compareNotes, refusalText } from './compareText.ts';
 /** Commits the picker offers: deployed after collecting began and before the last whole minute, newest first. */
 const PICKER_COMMITS = 8;
 import './Receipt.css';
+import { browserTimeZone } from '../../lib/zone.ts';
+import { atScaleFromSnapshot, type AtScale } from './atScale.ts';
+import { slot } from '../../components/ReceiptBar/slot.tsx';
+import { useTourTakeover } from '../../tour/status.ts';
+
+/** The tour's savings drop as the takeover card (FOUNDER_PLAN row 11): its own chunk, loaded only when one lands. */
+const TourTakeover = lazy(() => import('../../tour/TourTakeover.tsx'));
 
 /**
  * This week so far (P2-W20). Live: the range reader sums Monday 00:00 → the sweep (the current bucket re-read each
@@ -190,6 +198,29 @@ function useStatementHistory(row: DestinationRow | null, ranged: boolean, sweepM
   return state && state.key === row.key ? state.history : { status: 'loading' };
 }
 
+/**
+ * "At your scale" under the hero (founder-build r1 ui-3): each rung stays on one line and its amount carries the weight;
+ * the basis words are the hero's own price qualifier (at typical list prices / at your contract rates).
+ */
+function AtScaleLine({ atScale, basis }: { atScale: AtScale; basis: 'contract' | 'preset' | undefined }) {
+  const rungs = atScale.rungs.map((r, i) => (
+    <Fragment key={r.gbPerDay}>
+      {i > 0 ? ' · ' : null}
+      <span className="mr-at-scale-rung" data-testid={`receipt-at-scale-${r.tb}tb`}>
+        {slot(t('receiptView.atScale.rung'), { tb: String(r.tb), amount: <strong className="mr-at-scale-amount">{r.amount}</strong> })}
+      </span>
+    </Fragment>
+  ));
+  return (
+    <p className="mr-at-scale" data-testid="receipt-at-scale">
+      {slot(t('receiptView.atScale.line'), {
+        rungs,
+        basis: t(basis === 'contract' ? 'receiptView.priceBasis.contract' : 'receiptView.priceBasis.preset'),
+      })}
+    </p>
+  );
+}
+
 function ReceiptContent({ snapshot, source }: { snapshot: Snapshot; source: DataSource }) {
   const navigate = useNavigate();
   const { search } = useLocation();
@@ -199,6 +230,7 @@ function ReceiptContent({ snapshot, source }: { snapshot: Snapshot; source: Data
       prices: s.prices,
       defaultPeriod: s.settings.headlinePeriodDefault,
       tzSetting: s.settings.displayTimezone,
+      settingsStored: s.settingsStored,
       criblCost: s.settings.criblCostCentsPerMonth,
       // A cost saved from "Use this estimate" (core's Settings.criblCostEstimate, rules round 2) still reads as one.
       costIsEstimate: (s.settings as { criblCostEstimate?: true }).criblCostEstimate === true,
@@ -210,7 +242,10 @@ function ReceiptContent({ snapshot, source }: { snapshot: Snapshot; source: Data
   );
   const [mathOpen, setMathOpen] = useState(false);
 
-  const tz = view.tzSetting && isValidTimeZone(view.tzSetting) ? view.tzSetting : 'UTC';
+  // B1 / C1' / C1'' (r2 ui-3): the stored zone (written at the first save or the first live sweep), else the zone the
+  // workspace was metered in (snapshot.zone), else this browser's zone — never UTC by default.
+  // A tour or replay shows its own sample settings: their zone is the sample's, stored or not.
+  const tz = receiptZone({ settingsStored: view.settingsStored || source !== 'live', displayTimezone: view.tzSetting }, snapshot.zone, browserTimeZone());
   const period: HeadlinePeriod = params.period ?? landingPeriod(snapshot, view.defaultPeriod);
   const sweepAtMs = fromIso(snapshot.sweepAt);
   const todayKey = Number.isFinite(sweepAtMs) ? localDayKey(sweepAtMs, tz) : undefined;
@@ -221,6 +256,7 @@ function ReceiptContent({ snapshot, source }: { snapshot: Snapshot; source: Data
   // (core/sampleRollups.ts, P2-W05); a replay has none, so ?range= is ignored there.
   const live = source === 'live';
   const ranged = live || source === 'sample';
+  const tourTakeover = useTourTakeover();
   const rangeSpec = ranged ? params.range : undefined;
   // The clock ticks the view only while a custom range shows (its planned words, a comparison's refusal read it); the
   // Receipt otherwise re-renders once a sweep, and the leaves that print the time tick themselves (P1-B05).
@@ -230,6 +266,9 @@ function ReceiptContent({ snapshot, source }: { snapshot: Snapshot; source: Data
   const meteredThrough = useAppState((s) => s.meta?.meteredThrough);
   const meteredThroughMs = meteredThrough ? fromIso(meteredThrough) : Number.NaN;
   const through = Number.isFinite(meteredThroughMs) ? meteredThroughMs : undefined;
+  // r3 ui-5 (H9): the sweep's minute retention (meta): comparisons and the range's words plan the reader's own read.
+  const minuteRetentionHours = useAppState((s) => s.meta?.minuteRetentionHours);
+  const retention = minuteRetentionHours !== undefined ? { minuteRetentionHours } : {};
   const timeline = snapshot.timeline;
   const vsCommit = vs?.kind === 'commit' ? findCommit(timeline ?? [], vs.hash) : undefined;
   const vsCommitAt = vsCommit ? commitAtMs(vsCommit) : undefined;
@@ -238,9 +277,16 @@ function ReceiptContent({ snapshot, source }: { snapshot: Snapshot; source: Data
     const commit = vsCommit && vsCommitAt !== undefined && Number.isFinite(vsCommitAt) ? { hash: vsCommit.hash, atMs: vsCommitAt } : undefined;
     return {
       key: `${formatCompareParam(vs)}@${commit?.atMs ?? ''}`,
-      plan: (at: number) => planComparison(rangeSpec, vs, { nowMs: at, collectingSinceMs: since, foldedThroughMs: through, ...(commit ? { commit } : {}) }),
+      plan: (at: number) =>
+        planComparison(rangeSpec, vs, {
+          nowMs: at,
+          collectingSinceMs: since,
+          foldedThroughMs: through,
+          ...(minuteRetentionHours !== undefined ? { minuteRetentionHours } : {}),
+          ...(commit ? { commit } : {}),
+        }),
     };
-  }, [rangeSpec, vs, vsCommit, vsCommitAt, since, through]);
+  }, [rangeSpec, vs, vsCommit, vsCommitAt, since, through, minuteRetentionHours]);
   const { state: rangeState, result: rangeResult, compare: compareView, retry: retryRange } = useRange(rangeSpec, rangeSpec !== undefined, snapshot.sweepAt, compareRequest);
   const pickerCommits: PickerCommit[] = useMemo(() => {
     const out: PickerCommit[] = [];
@@ -285,7 +331,8 @@ function ReceiptContent({ snapshot, source }: { snapshot: Snapshot; source: Data
   const heroReading = rangeSpec !== undefined && rangeState.status !== 'ready';
   const weekReads = ranged && weekSeen && !heroReading;
   const week = useWeek(snapshot, weekReads, live, tz, since, view.labels, ranged && !(rangeSpec !== undefined && rangeState.status === 'error'));
-  const netBreakdown = useMemo(() => netFigures(snapshot, period, view.criblCost, tz), [snapshot, period, view.criblCost, tz]);
+  // r2 ui-12 (BO-12): the tour's sample is frozen — its net covers the span its savings cover, not the wall clock's.
+  const netBreakdown = useMemo(() => netFigures(snapshot, period, view.criblCost, tz, { frozen: source === 'sample' }), [snapshot, period, view.criblCost, tz, source]);
   // No Cribl cost set: the same line at Cribl's list price on the measured ingest, labelled as an estimate, with the
   // link to enter the contract cost (usefulness review, round 2). Never stored: Settings saves only what an admin enters.
   const estimate = useMemo(
@@ -293,6 +340,11 @@ function ReceiptContent({ snapshot, source }: { snapshot: Snapshot; source: Data
     [netBreakdown, view.criblCost, snapshot, period, tz],
   );
   const net = useMemo(() => receiptNetLine(netBreakdown, estimate, view.costIsEstimate), [netBreakdown, estimate, view.costIsEstimate]);
+  // Founder-build r1 ui-3 (FINDINGS_EXTRA (b)): "At your scale" under the hero, on the annualized run rate only — this
+  // workspace's measured rate projected to 1, 5 and 10 TB a day, with the hero's own price qualifier (atScale.ts).
+  const atScale = useMemo(() => atScaleFromSnapshot(snapshot), [snapshot]);
+  const priceKind = useMemo(() => priceBasisSummary(snapshot, view.prices)?.kind, [snapshot, view.prices]);
+  const showAtScale = atScale !== undefined && period === 'annualized' && rangeSpec === undefined;
   const periodWords = PERIOD_CAPTION[period]();
   // P1-F11: entitlement-billed destinations realize their share at renewal; one line says so when one carries money.
   const entitlementNote = useMemo(() => entitlementLine(snapshot, view.prices), [snapshot, view.prices]);
@@ -300,9 +352,18 @@ function ReceiptContent({ snapshot, source }: { snapshot: Snapshot; source: Data
   // The words are known before the read (the same pure rules the reader applies), so the card can show them
   // throughout; once the rows are in, the summed window's words take over. A comparison plans its windows the
   // same way (the current one aligned when it must be), so its words show while both are read.
-  const plannedCompare = rangeSpec && vs ? planComparison(rangeSpec, vs, { nowMs, collectingSinceMs: since, foldedThroughMs: through, ...(vsCommit && vsCommitAt !== undefined ? { commit: { hash: vsCommit.hash, atMs: vsCommitAt } } : {}) }) : undefined;
+  const plannedCompare =
+    rangeSpec && vs
+      ? planComparison(rangeSpec, vs, {
+          nowMs,
+          collectingSinceMs: since,
+          foldedThroughMs: through,
+          ...retention,
+          ...(vsCommit && vsCommitAt !== undefined ? { commit: { hash: vsCommit.hash, atMs: vsCommitAt } } : {}),
+        })
+      : undefined;
   const plannedSpec: RangeSpec | undefined = plannedCompare?.ok ? { kind: 'absolute', ...plannedCompare.current } : rangeSpec;
-  const plannedWords = plannedSpec && !rangeResult ? rangePreview(plannedSpec, nowMs, since, tz).words : undefined;
+  const plannedWords = plannedSpec && !rangeResult ? rangePreview(plannedSpec, nowMs, since, tz, minuteRetentionHours).words : undefined;
   // A 429 (api-budget F2): when the range reads again; useRange retries by itself then.
   const rangeRetryAt = rangeState.status === 'ready' || rangeState.status === 'error' ? rangeState.retryAtMs : undefined;
   const range: HeroRange | undefined = useMemo(() => {
@@ -331,7 +392,7 @@ function ReceiptContent({ snapshot, source }: { snapshot: Snapshot; source: Data
     const plan = compareView.status === 'ready' || compareView.status === 'error' ? compareView.plan : plannedCompare?.ok ? plannedCompare : undefined;
     // The windows' length names the baseline ("the previous 7 days"): the planned windows, else the range as read,
     // else the range as it will be read (a refused comparison before its read lands has neither of the others).
-    const namesWindow = plan?.current ?? rangeResult?.figures ?? (rangeSpec ? rangePreview(rangeSpec, nowMs, since, tz) : { fromMs: 0, toMs: 0 });
+    const namesWindow = plan?.current ?? rangeResult?.figures ?? (rangeSpec ? rangePreview(rangeSpec, nowMs, since, tz, minuteRetentionHours) : { fromMs: 0, toMs: 0 });
     const names = compareNames(vs, namesWindow);
     if (compareView.status === 'refused') return { status: 'refused', names, notice: refusalText(compareView.refusal, tz, since, nowMs) };
     if (compareView.status === 'error') {
@@ -367,18 +428,17 @@ function ReceiptContent({ snapshot, source }: { snapshot: Snapshot; source: Data
   const mathPeriod = range ? 'custom' : period;
   const mathRows = useMemo(() => mathDestinations(allRows, mathPeriod), [allRows, mathPeriod]);
   const reconciliation = mathPeriod === 'mtd' ? mtdReconciliation(mathRows, figures.savedM) : undefined;
-  const mathNet: MathNet | undefined = useMemo(() => {
-    if (!netBreakdown) return undefined;
-    const received = bytesInPerDay(snapshot);
-    return {
-      ...netBreakdown,
-      savedM: figures.savedM,
-      spanWords: netSpanWords(netBreakdown.minutes),
-      impliedMcPerGb: received !== undefined ? impliedCostPerGbM(netBreakdown.monthlyCostCents, received) : undefined,
-      bytesInPerDay: received,
-      listMcPerGb: CRIBL_LIST_MC_PER_GB,
-    };
-  }, [netBreakdown, snapshot, figures.savedM]);
+  // Founder-build r2 ui-8 (BO-5): the drawer's net is the hero's — the set cost, or with none set the list-price
+  // estimate, labelled as one (src/views/Receipt/mathNet.ts).
+  const mathNet: MathNet | undefined = useMemo(
+    () => mathNetFor({ netBreakdown, estimate, costIsEstimate: view.costIsEstimate, savedM: figures.savedM, bytesInPerDay: bytesInPerDay(snapshot) }),
+    [netBreakdown, estimate, view.costIsEstimate, snapshot, figures.savedM],
+  );
+  // Founder-build r2 ui-8 (R2 #9/#10): a destination's statement prints its month to date as Show the math does.
+  const statementFooted = useMemo(() => {
+    const rows = mathDestinations(allRows, 'mtd');
+    return footedMtdRows(rows, mtdReconciliation(rows, snapshot.headline.mtdM));
+  }, [allRows, snapshot.headline.mtdM]);
 
   // A destination's statement (P2-W25): opened from its name; on open it reads the running totals and the last
   // seven days of hour rollups once (live only).
@@ -418,6 +478,12 @@ function ReceiptContent({ snapshot, source }: { snapshot: Snapshot; source: Data
 
   return (
     <Page className="mr-receipt-view" data-period={range ? 'custom' : period}>
+      {/* The tour's savings drop (+25 s) lands here, first under the SAMPLE DATA band (row 11). */}
+      {tourTakeover && source === 'sample' ? (
+        <Suspense fallback={null}>
+          <TourTakeover landing={tourTakeover} />
+        </Suspense>
+      ) : null}
       <HeroCard
         period={period}
         onPeriod={onPeriod}
@@ -445,6 +511,8 @@ function ReceiptContent({ snapshot, source }: { snapshot: Snapshot; source: Data
         goal={range ? undefined : goal}
       />
 
+      {showAtScale ? <AtScaleLine atScale={atScale} basis={priceKind} /> : null}
+
       {live ? <MeteringNotice /> : null}
 
       <UnpricedNotice count={(snapshot.unpricedOutputIds ?? []).length} onSetPrices={() => navigate('/settings/prices')} />
@@ -466,6 +534,7 @@ function ReceiptContent({ snapshot, source }: { snapshot: Snapshot; source: Data
           budget={snapshot.destinations?.find((d) => `${d.groupId}:${d.outputId}` === statementRow.key)?.budget}
           prices={statementPrices(view.prices, statementRow.groupId, statementRow.outputId)}
           history={statementHistory}
+          footedThisMonth={statementFooted.get(statementRow.key)}
           tz={tz}
         />
       ) : null}
@@ -479,6 +548,7 @@ function ReceiptContent({ snapshot, source }: { snapshot: Snapshot; source: Data
         reconciliation={range ? undefined : reconciliation}
         net={range ? undefined : mathNet}
         criblCostSet={view.criblCost !== undefined && view.criblCost > 0}
+        atScale={showAtScale ? atScale : undefined}
         attribution={snapshot.attributionSummary ?? 'route'}
         sweepAtMs={sweepAtMs}
         ratePerSecM={snapshot.ratePerSecM}

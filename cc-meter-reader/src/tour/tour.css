@@ -39,6 +39,13 @@
   border-radius: token('radius.xl');
   overflow-x: auto;
 }
+/* Founder-build r1 ui-7 (m1): what a Cribl target received is plain text whose lines are not the receipt's 48 columns,
+   so it wraps inside the frame instead of scrolling sideways. */
+.mr-tour-receipt.mr-tour-target {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .mr-tour-receipt {
   margin: 0;
   font-family: token('core.fontFamily.mono');
@@ -48,4 +55,14 @@
   color: token('color.foreground.default');
   white-space: pre;
   font-variant-numeric: tabular-nums;
+}
+
+/* ── The savings drop as the takeover card (FOUNDER_PLAN row 11) ──────────── */
+/* In the Receipt's flow, first under the SAMPLE DATA band (TourTakeover.tsx); it fades out when dismissed. */
+.mr-tour-takeover {
+  min-width: 0;
+  transition: opacity 200ms ease-in;
+}
+.mr-tour-takeover[data-leaving='true'] {
+  opacity: 0;
 }

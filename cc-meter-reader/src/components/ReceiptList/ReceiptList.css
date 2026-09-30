@@ -149,7 +149,7 @@
   cursor: pointer;
 }
 .mr-rlist-line--button:focus-visible {
-  outline: token('border.focus');
+  outline: 2px solid token('color.foreground.accent.default');
   outline-offset: 1px;
 }
 /* A secondary line ("4 other flows"): the words step back; the amount keeps its colour. */

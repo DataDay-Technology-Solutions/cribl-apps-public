@@ -369,7 +369,10 @@ function Hero({ preview, range, noRunRateM, bar }: { preview: HeadlinePreview; r
   const p = useTweened(preview, lerpPreview);
   // The bar takes the new figures at once (its segments ease by CSS): a legend whose amounts rolled would change
   // length mid-roll, wrap, and move the page — and the Flow map fitted under it — while the figure rolls.
-  const projected = bar && preview.hasBasis ? projectBar(bar, preview.deltaM) : null;
+  // Founder-build r2 ui-7 (IC-2): the bar rests on the figure's own basis — today's rates, the strip's — so the hero,
+  // its bar and the strip read one saved share; the Receipt's run rate only when nothing is priced at current rates.
+  const base = preview.basis === 'current' ? preview.bar : bar;
+  const projected = base && preview.hasBasis ? projectBar(base, preview.deltaM) : null;
   return (
     <HeroShell
       variant="projection"
@@ -381,7 +384,7 @@ function Hero({ preview, range, noRunRateM, bar }: { preview: HeadlinePreview; r
       caption={
         p.hasBasis ? (
           <>
-            <span className="mr-whatif-hero-line">{t('whatif.hero.caption', { delta: signedMoney(p.deltaM) })}</span>{' '}
+            <span className="mr-whatif-hero-line">{t(p.basis === 'current' ? 'whatif.hero.captionCurrent' : 'whatif.hero.caption', { delta: signedMoney(p.deltaM) })}</span>{' '}
             <span className="mr-whatif-hero-line mr-whatif-hero-from">{t('whatif.hero.from', { amount: formatMoney(p.beforeM) })}</span>
             {range ? (
               <>
@@ -501,8 +504,14 @@ export function WhatIfPanel({ model, humanizeOverrides, headingId }: WhatIfPanel
       {applied ? (
         <AppliedResults model={model} />
       ) : model.alreadyRuns ? (
-        <p className="mr-whatif-empty" data-testid="whatif-already">
-          {t('whatif.alreadyRuns', { pct: formatPct(stream.flow.inBPerDay > 0 ? 1 - stream.flow.outBPerDay / stream.flow.inBPerDay : 0) })}
+        // Row 2b: a Pack attached alone that is only part of the treatment says which pack it runs, never "this treatment".
+        <p className="mr-whatif-empty" data-testid="whatif-already" data-runs={model.runsPackId ? 'pack' : 'treatment'}>
+          {model.runsPackId
+            ? t('whatif.alreadyRunsPack', {
+                pack: humanize(`pack:${model.runsPackId}`, humanizeOverrides).replace(/ pack$/, ''),
+                pct: formatPct(stream.flow.inBPerDay > 0 ? 1 - stream.flow.outBPerDay / stream.flow.inBPerDay : 0),
+              })
+            : t('whatif.alreadyRuns', { pct: formatPct(stream.flow.inBPerDay > 0 ? 1 - stream.flow.outBPerDay / stream.flow.inBPerDay : 0) })}
         </p>
       ) : ok ? (
         <>

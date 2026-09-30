@@ -80,7 +80,7 @@ const PROPER = new Set(
     'October November December Payments Analytics Archive Innovators Network Datagen Steve Koelpin Chicago New York Coordinated Universal Time ' +
     'I OK Q Copilot GitHub Git Cribl.Cloud Capra Block Kit Webhook QR CriblCon Monitoring Insights Docs Logs ' +
     // UI labels a sentence points at, as they read on screen: views, Settings sections, toggles and buttons.
-    'What Prices Budgets Alerts Demo Console Runtime Where Weekly External Access Reset Replay Abort Enter Escape Esc Shift Tab'
+    'What Prices Budgets Alerts Demo Console Runtime Where Weekly External Access Reset Replay Abort Enter Escape Esc Shift Tab Nowhere'
   ).split(/\s+/),
 );
 /** An acronym, a unit, a number, a placeholder or an identifier (mrd_siem_prod, x-api-key): never case-checked. */

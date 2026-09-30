@@ -1,12 +1,159 @@
 # Changelog
 
-All notable changes to Meter Reader are recorded here. Versions follow [Semantic Versioning](https://semver.org/); the release tag is `vX.Y.Z` and the packaged App is `release/meter-reader-X.Y.Z.tgz`. Demo builds carry their own plain numeric versions (`meter-reader-1.0.N-demo.tgz`, DECISIONS D22) and are never the primary asset.
+All notable changes to Meter Reader are recorded here. Versions follow [Semantic Versioning](https://semver.org/); the release tag is `meter-reader-vX.Y.Z` and the packaged App is `release/meter-reader-X.Y.Z.tgz`. Demo builds carry their own plain numeric versions (`meter-reader-1.0.N-demo.tgz`, DECISIONS D22) and are never the primary asset.
 
 ## [Unreleased]
 
+## [v1.1.4] - 2026-09-29
+
+The release that replaces 1.1.0 as the submission package: 1.1.3 (founder-build rounds 1–3, never published) plus the fixes a judge-path validation of 1.1.0 asked for on 29 September (the published 1.1.0 installed, but read $0 for a plain Datagen, the likeliest way a judge tests it, and had three other first-run traps). `release/meter-reader-1.1.4.tgz` is built from this tree. The release grants (`config/policies.yml`, sha256 `c59ae750…`) are byte-identical to 1.1.0's, so the Review App screen asks for the same 17 Cribl API permissions and nothing new. The 1.1.0–1.1.3 packages stay beside it in `release/SHA256SUMS`.
+
+Packages, built with `scripts/package.mjs --ref 2939139` (the commit before the packages): `release/meter-reader-1.1.4.tgz` sha256 `2ead5bcfa83b140b5bcc6b27c8ffee83e921e862c5e3f68eda6d366196b27b45` (105 files) and the Enterprise variant `release/meter-reader-1.1.4-backend.tgz` `53a3ba22906f60d0ac4d7fc94de4866031bf9d2c8c96c0a3441e739f41c9eaac` (110 files), both in `release/SHA256SUMS` (10 lines, `shasum -a 256 -c` all OK). Their `default/policies.yml` is sha256 `c59ae750…fdbf2`, byte-identical to 1.1.0's and to `config/policies.yml`. Demo build 1.0.20 (`059cefc5…`) is git-ignored and not deployed.
+
+### Fixed
+
+- **The Annualized headline never zeroes real spend (judge-path scenario g).** On a flow whose pipeline removes nothing (a plain Datagen through the stock route, no Drop), the annualized run rate saves $0, and the Receipt scaled would-have-paid and paid by that saved figure, so the Annualized line read "You would have paid $0 · You paid $0" while Flow and the Ledger showed $22 a day paid. `core/pricing.ts` `computeHeadline` now records two optional `Headline` fields (`core/types.ts`), `annualizedWhpM` and `annualizedPaidM`, only when the rate saved nothing over metered minutes: each part's own total ÷ the same metered minutes × 525,600. `src/views/Receipt/model.ts` `annualizedParts` reads them as a third derivation, `'rate'`, with its own Show the math note (`receiptView.math.annualizedRateNote`). A rate that saved anything is computed exactly as before (the sample tour is byte-identical), and a snapshot written before 1.1.4 keeps the old arithmetic until the next sweep rewrites it (`tests/unit/r114-annualized-zero-saved.test.tsx`, 8 tests).
+- **Show the math and the Report never print "Paid $0" or a line that does not add up beside real spend** (FINDINGS_R4 #1 and hunt r3 #7):
+  - when would have paid and saved print the same dollar, a spend under a dollar prints `< $1` ("$2 − < $1 = $2"; it read "$2 − $1 = $2" and "$100 − $1 = $100"), in the formula line (`core/format.ts` `footMoney`, new `shownUnderOneDollar`), the receipt bar, and a column under a `< $1` total (`footColumn`);
+  - Show the math's month-to-date destination rows and each destination's statement (`footRows`) print that spend as `< $1`, never "Paid $0"; a spend of a dollar or more moves a dollar of the row's saved to the row with the most room, so the columns still add up;
+  - a destination row whose saved is exactly $0.50 read "$1 − $1 = $1" (or "$4 − $4 = $1"): its paid is now the printed difference ("$1 − < $1 = $1", "$4 − $3 = $1", as the formula line prints the same figures). Already in 1.1.3; found at random by the new footRows property test, which it made flaky;
+  - a row whose real spend is under a dollar may give its printed paid dollar to a row with a dollar or more of spend that would otherwise print "Paid $0", and then prints `< $1` itself. Without it, a $1.00 spend beside a fraction of a cent took its dollar off the saved column, which no longer added up to its sentence (the m10 property in `tests/unit/r1-ui-net-foot.test.ts` failed about once in 50,000 runs, so a fresh clone's `npm test` could fail at random);
+  - the Report's destination totals row counts a figure printed `< $1` at its exact amount (three rows of $0.70 paid totalled "$1" against a real $2.10; they total "$2").
+- **Leaving Settings right after Start the meter** no longer leaves a stuck "Leave Settings with unsaved changes?" dialog over an empty list: once the save in flight lands, the dialog closes and you arrive where you clicked (hunt r3 #0; `src/views/Settings/index.tsx`).
+- **A period switch is announced at once:** the hero's screen-reader line kept the previous period's name for up to 30 seconds after a switch between MTD, Today and 30 days; a new label is now spoken straight away with its figure (JUDGE_PATH_VALIDATION §7.3; `src/components/Meter/Meter.tsx`).
+- **`npm test` is green on a fresh clone.** The committed 1.1.0 package predated its own README (and then the video link), so `npm test`, `npm run compliance` and `npm run audit` failed on a clone with "the packaged README is stale"; the 1.1.4 package carries this tree's README.
+- **What changed for a judge since 1.1.0** (1.1.1–1.1.3 were checkpoints and never published; details in their entries below):
+  - A Datagen Source you price is metered like any other Source, with no `[meter-reader-demo]` tag (v1.1.1, D67); 1.1.0 read "No money flows yet" for a plain Datagen.
+  - Today and the month are counted in the workspace's zone from the first sweep, not in UTC, so a US-evening install reads the right Today (v1.1.1 and v1.1.2, D68).
+  - A confirmed **Connect** keeps the notification-target endpoint at once, and leaving Settings with unsaved changes asks first (v1.1.1, M1; every direction in v1.1.3, D86).
+  - No automatic weekly receipt for a week metering never reached, so a Monday install posts no $0 receipt to the bell (v1.1.3, D83).
+  - The bell's test alert posts as info (v1.1.1); a new install opens on the annualized run rate, labelled a projection (v1.1.2, D75); real money under a dollar prints `< $1`, never "$0" (v1.1.2 and v1.1.3, D82).
+
+### Added
+
+- README: the link to the 6-minute walkthrough video (dev `bbdd2ef`, which round1 lacked).
+- README: **No traffic yet? A Datagen test flow** under Try it: a Datagen Source → a pipeline with one Drop (`Math.random() < 0.5`) or Sampling function → `devnull:devnull` on a Final route above the default route, one Commit & Deploy, then DevNull priced by hand, because its suggested **Internal / free** preset is $0. Linked from Before you install, step 4, Install and the Troubleshooting row "Saved by Cribl stays at $0" (which now also covers "No money flows yet" and names the 1.1.0 tag rule).
+- `docs/LIVE_VALIDATION.md`: **Clean installs through the Cribl UI**, the three imports of 1.1.0 on a fresh second Standard-plan organization (27–28 Sep): 17 permissions each time, a fresh first run, the uninstall clearing the App's KV, the first real flow about 9 seconds after **Start the meter**.
+
 ### Changed
 
-- Docs: the README, `PITCH.md` and `docs/POSTS.md` follow the launch numbers rule. The README opens on the at-scale projection with its math, the "projected" label, the 1 / 5 / 10 TB/day ladder and the footnote; the demo org's dollars and GB a day are gone from these three files (the live proof is the percent); the install steps say how to meter a Datagen Source; and the README links the Cribl Innovators Network.
+- README, the install path as Cribl shows it: **Apps → Import from File**, under **Build my own App ▾** on a workspace with no Apps and under **Add App** otherwise, App ID blank, Overwrite off, **Import**, Review App (17 Cribl API permissions), **Install**; sharing starts from **Apps** (there is no "Apps → Installed"). Also in `docs/RUNBOOK.md` and `docs/LIVE_VALIDATION.md`.
+- README step 6, `docs/RUNBOOK.md` and `docs/NOTIFICATIONS.md`: a confirmed **Connect** keeps the endpoint; **Save changes** is for later edits (the old "then Save changes to keep the endpoint" described 1.1.0).
+- README: the Cribl Core API reference link goes to the reference's Cribl Core page (the old Diagnostics and Monitoring deep link answers 404); the demo build is described as never committed here rather than "attached to Releases" (no GitHub Release exists: the packages are in this repository's `release/` folder); the install step names that folder; Evidence report states Node.js 22.22.2 or newer (Node 20 cannot start the jsdom tests) and `npx playwright install chromium`.
+- README Stage One checklist: the release's install through the Cribl UI on a clean second organization is ticked (1.1.0, three times); the non-admin member's grants and the 1.1.4 import stay open. Known limitations and `docs/LIVE_VALIDATION.md` "Still to run (as of 9/29)" say the same.
+- One headline number on every judge surface: the README, `PITCH.md` (v1.8) and `docs/POSTS.md` carry the numbers standard's hero, math and ladder since v1.1.3 (D88), held by the compliance test; re-verified for this release.
+- Docs carried from [Unreleased]: the README, `PITCH.md` and `docs/POSTS.md` follow the launch numbers rule (the at-scale projection with its math, the "projected" label, the 1 / 5 / 10 TB/day ladder and the footnote; no demo-org dollars or GB a day), and the README links the Cribl Innovators Network.
+- `.gitignore`: Playwright's regenerated report (`tests/report/playwright-html/`, `tests/report/playwright-results.json`, `tests/report/screens/`), so a clone that runs `npx playwright test` stays clean; the private build force-adds its evidence run.
+- CHANGELOG: "the published Release" reads "the published package" (no GitHub Release exists; the only tag is `meter-reader-v1.1.0`).
+- `package.json` and `package-lock.json`: version 1.1.4.
+
+### Tests
+
+- Compliance: Try it step 6 is held to "a confirmed **Connect** keeps the endpoint at once" and may no longer say "Save changes to keep the endpoint" (it held the 1.1.0 wording).
+- New: `tests/unit/r114-annualized-zero-saved.test.tsx` (8), `tests/unit/r114-footrows-integration.test.ts` (5), `tests/unit/footmoney-under-dollar.test.ts`, `tests/unit/receipt-footrows-paid-floor.test.ts` (with a 3,000-run property), `tests/unit/report-totals-under-dollar.test.ts`, one period-switch test in `tests/unit/meter-components.test.tsx`, and `tests/e2e/final114-leave-after-save.spec.ts` (chromium and mobile).
+- Compliance: the numbers-standard check (one hero, $1.6M\*) reads `docs/POSTS.md` only in the private tree (`inThisTree`, like the other private reads). The public export leaves that file out, and the check read it unconditionally, so the export's own `npm test`, a judge's fresh clone, failed with ENOENT (`publish-public.sh --target community --verify`: 1 failed, 3,049 passed; now 3,050 passed, 3 skipped).
+- Changed expectations, on purpose: `tests/unit/format.test.ts` (the row [$2.30, $0.70, $1.60] prints "$2", "< $1", "$2", not "$1" paid, which broke that file's own footing property outside the range it sampled) and `tests/unit/r1-ui-net-foot.test.ts` (the m10 footing property accepts a `< $1` paid on a row whose would have paid and saved print the same dollar).
+
+## [v1.1.3] - 2026-09-28
+
+A **checkpoint, not published and not the final freeze**: founder-build round 3 (FINDINGS_R3: 7 major and 13 minor findings, the round-2 carries H6 and H9) merged on branch `round1`. `release/meter-reader-1.1.3.tgz` and `release/meter-reader-1.1.3-backend.tgz` sit beside 1.1.0 (the published package), 1.1.1 and 1.1.2; all eight lines stay in `release/SHA256SUMS`. Demo build **1.0.19** is packaged and **not deployed**; 1.0.18 stays the deploy candidate until 1.0.19 has passed its gate, and 1.0.17 is DO NOT DEPLOY.
+
+### Fixed (correctness findings)
+
+- **No automatic weekly receipt for a week metering never reached (FINDINGS_R3 #1; D83).** The first sweep that meters records `meta.meteringStartedAt` once; the automatic send (the open tab, the runner, the Enterprise schedule) covers last week only when metering started before that week ended in the workspace's zone, and skips with `not_metered` otherwise. A fresh install between Monday 12:00 UTC and the next Monday no longer posts a receipt for a week nobody metered. A partly metered week says so on its bell line ("metered N% of the week"), on "Weekly receipt now" too.
+- **A delivered weekly receipt is sent once (#7; D84).** The job delivers first and records `lastWeeklySentAt` in its own step, retried within the call (three attempts); a record that still fails is a warning and the week is settled, so two ticks make exactly one post. A send cut short by a navigation (status 0, "Load failed", an AbortError) logs a warning, not an error (FT-R111-4).
+- **The runner heartbeat clears a final failure only on evidence (#6, #15; D79 amended).** A delivery streak holding a final 4xx (404, 400, 401, 403, 410, an invalid URL, a refused host; 429 excepted) no longer ages out between incidents: it clears on a later 2xx to that endpoint or the endpoint's removal or disablement. The mark (`deliveryFinal`) survives a restart, and a heartbeat written before round 2 is stamped with its file's time on restore. Retryable and 429 streaks still age out after two reminder cadences.
+- **The landing figure's basis is counted, never inferred (#3; D75 amended).** The sweep that finds the first priced minute records how many of that day's metered minutes came before it (`pricedSinceEmptyMinutes`), and the annualized figure leaves out exactly those: a gap after the first priced minute no longer reads 0.48–0.75× of the traffic's own rate (now 1.00 ± 0.01 in the tests). The new-install landing on Annualized stays.
+- **On the tour, the Report's month-to-date net equals the Receipt's (#4; D85):** the sample prorates Cribl's cost over the recording's span, as the Receipt does; a live report is unchanged.
+- **Nothing prints $0 beside real money (#9, #10, #18, H6; D82 amended).** A footed triple with an operand under a dollar prints unfooted; a line under a dollar in a footed column keeps its exact amount; the compact formatter prints `< $1` for a non-zero amount; a sub-dollar trend axis reads in cents; the goal strip prints `< $1`, never "$0". Whole-dollar columns foot to the dollar as before.
+- **One view zone (#5; D87).** The Report card, the Ledger and the incident cards use the Receipt's zone (a stored zone, else the zone the totals were metered in), so a settings-less workspace opened in another browser zone prints one month-to-date net and span everywhere.
+- **The leave-Settings guard covers every direction (#11; D86):** Forward, `history.go(±n)` and a platform-forwarded navigation ask before unsaved Settings are lost.
+- **A stopped meter writes nothing (FT-R111-2 = FT-R110-2).** A stopped meter adopts no late sweep's documents and asks for no refresh, and a live poll still out when polling stopped writes nothing to the store; the chip, title and 401 specs are stable on a Monday after 12:00 UTC.
+- **Custom ranges honour `meta.minuteRetentionHours` (H9):** the reader never asks for a minute document older than the retention, and the picker says when a range is summed in whole hours.
+- **A never-priced Prices page refreshes its destination list** every 60 seconds and on focus; its caption no longer mentions a Sweep now button the page does not show (#8).
+
+### Changed
+
+- **Accessibility and small screens:** every focus ring Meter Reader draws is at least 3:1 (#12; Capra's own control rings are Cribl's palette, as DESIGN_BRIEF:26 notes); the Ledger's 320 px card no longer runs "Volume reduced" under the trend (#13); the toast fits a 320 px screen (#14).
+- **README:** one alert-retry rule, the first-sweep `settings` write and the Capra contrast carve-out (#17, #19, #20); the round-3 behaviour above; this tree's packages are named 1.1.3.
+- `src/views/Receipt/atScale.ts` comments no longer cite retired figures.
+
+### Docs
+
+- Docs (founder-build round 3, docs lane): one hero on every judge surface, the numbers standard's $1.6M\* (10,000 GB/day × $1.50/GB\* × 30% × 365, ladder $164K\* · $821K\* · $1.6M\*): `PITCH.md` v1.8 and `docs/POSTS.md` (re-mirrored from the posted launch copy), with a compliance row over README, PITCH and POSTS (FINDINGS_R3 #2; D88). \* For demonstration purposes only. Does not reflect actual prices.
+- Docs: the README states one alert-retry rule (a relay forward is not retried within a call; across sweeps the per-endpoint rule applies, and only the relay pre-check's 404 is final), the `settings` write a settings-less workspace's first tab makes, and the Capra contrast carve-out (FINDINGS_R3 #17, #19, #20); and the round-3 behaviour: the weekly receipt only for a week metering reached, footing and compact figures never print a zero beside real money, the Report card, Ledger and cards in the Receipt's zone, the never-priced Prices list refresh, the minute retention in custom ranges, focus rings at 3:1. `docs/RUNBOOK.md` §6 and `docs/NOTIFICATIONS.md` §3.4: the heartbeat's final-4xx streak is sticky (429 excepted) and a legacy heartbeat is stamped on restore (D79 amended). DECISIONS D75, D79, D82 amended; D83–D88.
+- DECISIONS D75, D79 and D82 amended; D83–D88 new.
+
+### Tests
+
+- New suites per item (`r3-core-*`, `r3-ui-*`), including a Monday-after-12:00-UTC pinned clock (`MR_E2E_NOW`) for the chip, title and 401 specs; the integrator's handoffs: `r2-ui-default-annualized` holds the landing figure to 0.9–1.1× of the traffic's rate and adds a gap after the first priced minute; the two footing properties foot whole-dollar columns only; `r2-core-small-money` scans the trend axis (one real "$0" tick per axis); a compliance row holds README, PITCH and POSTS to one hero.
+
+## [v1.1.2] - 2026-09-28
+
+A **checkpoint, not published and not the final freeze**: founder-build round 2 (FINDINGS_R2, the open FINDINGS_EXTRA items and round 1's carries) merged on branch `round1`. `release/meter-reader-1.1.2.tgz` and `release/meter-reader-1.1.2-backend.tgz` sit beside 1.1.0 (the published package) and 1.1.1; all six lines stay in `release/SHA256SUMS`. Demo build **1.0.18** is packaged and **not deployed** (the Monday-evening candidate, deployed only on the owner's go). Round 1's demo **1.0.17 must not be deployed**: it re-posts a failing webhook every 2 minutes (FINDINGS_R2 #1). The release grants (`config/policies.yml`) are unchanged: no new write and no new grant.
+
+### Fixed (correctness findings)
+
+- **Alert retries per endpoint (FINDINGS_R2 #1, #5; D77).** A final failure (403, 404, 429, a refused URL) waits for the reminder cadence or a rise in severity; a retryable one (a timeout, a 5xx) backs off 2, 4, then 8 minutes. An endpoint keeps one failed record and its last delivery is never evicted, so the bell's "ok" stays on the card. A closure is retried per endpoint for 10 minutes, and the bell hears a closure once.
+- **The runner heartbeat recovers (#16; D79).** A failure streak ages out after two of the workspace's own reminder cadences and drops when its endpoint is removed or disabled; a still-failing endpoint never ages out.
+- **One zone per workspace (#4, #11; D68).** The sweep, the weekly job and the test send resolve the zone as settings, then the zone the totals were metered in (UTC counting as none), then the runtime's default, then UTC; the first live tab on a settings-less workspace stores that zone once. No more rezone ping-pong between tabs in different zones and the UTC runner, and a half-hour zone (Kolkata, Kathmandu, St John's) rezones to the millicent.
+- **The annualized rate is not inflated by a metering gap (#7; D75).** Only metered minutes before the first priced minute leave the basis.
+- **Annualized Paid scales with the run rate (BO-3).** Would have paid, paid and saved annualize on the same days' own ratios.
+- **The Report never says "Recovered" for a close below the floor, an accepted or a muted incident (#2; D78),** on the Report and on the incident card; the Report prints its cost basis and "(estimate at list price)" beside the payback, ROI and net when the Cribl cost is the estimate, the CSV gains `cribl_cost_is_estimate`, and the net foots with the Receipt (#3, #8, IC-13).
+- **Reconciliation (BO-2, BO-8; D81).** An out series that reads 0 is a real 0; with no positive weight the leftover stays unattributed.
+- **Receipts foot (BO-9, BO-10, BO-11).** Item lines add up to the printed total with an "Other" line; signed percentages round one way everywhere.
+- **Real money under half a dollar prints `< $1`, never "$0" (IC-4; D82),** on the hero asides, the Meter's screen-reader line and the top savers (the trend axis is still open).
+- **The automatic Monday send retries a transient Leader failure** instead of settling the week; the range planner honours a short minute retention (the UI wiring is still open).
+- **What if on one rate basis (IC-2, BO-13); the tour's toasts clear when the tour stops (IC-3); the tour's net holds one figure (BO-12); the Settings preview speaks the display zone and "Caught in" holds (#13, #14, BO-16); Back, P and "/" ask before leaving unsaved Settings (#12, BO-17); the hero aside prints what its meter prints (BO-5, BO-7, #9, #10); the Ledger's phone card fits at 360 px (BO-6); a stale frame on returning to the Receipt (W3-RECEIPT-5); focus after "Use the list-price estimate" (#15); polish (BO-14, BO-15, IC-6, IC-7, IC-17).**
+
+### Changed
+
+- **A new install opens the Receipt on the annualized run rate (D75),** labelled a projection until it rests on a full day. A stored month-to-date default is the member's and is kept (no migration). Ships with its prerequisites (the gap fix and annualized Paid).
+- **README:** the first screen follows the numbers standard (dev 5502ed2, cherry-picked); per-endpoint retries, the zone line, the annualized landing, the splitting router, system inputs and `< $1` are documented; this tree's packages are named 1.1.2.
+
+### Docs
+
+- NOTIFICATIONS §3.2 (the zone for an upgraded workspace) and §3.4 (retries per endpoint); RUNBOOK (heartbeat recovery; never restart the runner onto round1 code); DESIGN_BRIEF:26 (Cribl's own palette pairs); DECISIONS D68 amended, D73–D82.
+
+### Tests
+
+- New suites per item (`r2-core-*`, `r2-ui-*`), the integrator's handoffs (the report CSV header and sample note, the small-money e2e, `r1-ui-zero-row` without its weekly allow-list), and a compliance case that fails "priced from a dry run" anywhere in the README, PITCH, VIDEO_SCRIPT or `docs/`.
+
+## [v1.1.1] - 2026-09-28
+
+A **checkpoint, not published and not the final freeze**: founder-build round 1 (the founder plan's ranked rows and the app-assurance findings) merged on branch `round1`. `release/meter-reader-1.1.1.tgz` and `release/meter-reader-1.1.1-backend.tgz` sit beside the certified, published-Monday `meter-reader-1.1.0.tgz` (both lines kept in `release/SHA256SUMS`). Demo build **1.0.17** is packaged and **not deployed** (the demo org is updated only on the owner's go). The release grants (`config/policies.yml`) are unchanged: no new write and no new grant.
+
+### Fixed (correctness findings)
+
+- **A fresh install is metered in the member's zone (B1; D68).** The first prices save stores the settings document with the browser's zone before the prices; the sweep and the weekly job take the tab's zone when no settings document exists (the runner and the backend keep UTC); the totals and the snapshot record the zone they are bucketed in, and a sweep in another zone re-buckets the current month and the trend from the rollups (`core/rezone.ts`), so a settings-less workspace from 1.1.0 reads local after its next sweep. The Report's method line names the zone.
+- **A plain Datagen the member priced is metered (B2, RW-1; D67).** A Datagen input is external unless its type is internal; the demo rig's tagged Datagens are unchanged.
+- **Traffic through an Output Router is priced or flagged (M12):** a router with one destination is followed and priced; a splitting router shows as unpriced.
+- **Levers re-seat baselines** on Revert, Restore and Reset everything (M5, M6), and a route or rate lever refuses a shared file someone else left pending (m25).
+- **A failed endpoint is retried even when the bell delivered (M8)**; the heartbeat and `runner-health.sh` go red after three failed deliveries in a row (M7, code side).
+- **KV expiry runs at any flow count**, and minute retention is sized to stay near 400 keys (M11).
+- **Deep links always use `/apps/a/meter-reader` (M10).**
+- **Alert wording:** the Report never annualizes a spike (M4); a close below the floor says "Closed:", never "Recovered:" (M9); the Slack year label for a closed drop (m15); the test alert posts as info with a neutral sample and local times (m2, m8, m16).
+- **Money footing** on the Receipt, Compare and the presenter (m9–m12); the tour's Today, weekly receipt and target lines tell the truth (M2, M3, m1); smaller UI fixes (m4, m14, m20, m21, m22).
+- **The annualized rate rests on the minutes that carried traffic (#42):** a minutes-old install no longer divides by empty minutes.
+
+### Added (founder plan rows)
+
+- **Rows 2, 2b: What if on any workspace:** no pack fits, none, no basis, saves more, and "already runs this pack".
+- **Row 9: the demo profile's good news waits for the settled minute** (`settings.demo.settle`, rollback `scripts/lever.ts settle on|off`; D69). The release's 3-minute streak is unchanged and good news stays opt-in in the release.
+- **Row 10: one author function on every surface (D70):** a labelled API client prints its label on the bell, targets, Slack and the Report; no surface prints a client id.
+- **Rows 11–14:** the tour's savings drop lands as the takeover card at +25 s; "See your own number" at the end of the tour; "Use the list-price estimate" on the Report card (UI half); a notice on a row that reads zero on first run.
+- **The sample tour opens on Annualized (D71)** and the Report card stays month to date; the release's own default is unchanged (the flip is round 2). The Receipt's annualized view gains an **At your scale** line that projects the workspace's own measured rate to 1, 5 and 10 TB a day (D72).
+- **Settings:** Connect saves the endpoint; leaving Settings with unsaved changes asks first; the relay line explains itself (M1).
+
+### Docs
+
+- README: `## Try it` and `### Install` (anchor `#try-it`); the Summary folds its four bullets; Organization administrator is the install role; a Pack is projected, not dry-run; save after Connect and the test alert; no install-time figure; new compliance checks (no Summary bullets, every dollar figure starred, no retired figure). NOTIFICATIONS (the zone at first save, targets on request), RUNBOOK (the reset order, who a lever's commit names), LIVE_VALIDATION (row 20: who Cribl records as a commit's author), DECISIONS D67–D72.
+- The README names this tree's packages as 1.1.1; the install step no longer claims a Release for it (the freeze's version sweep writes the final wording).
+
+### Tests
+
+- New unit, integration and end-to-end suites per item (`r1-core-*`, `r1-ui-*`), and the integrator's `tests/e2e/r1-int-tz-upgrade.spec.ts` (a UTC-bucketed, settings-less workspace re-buckets into Chicago and Los Angeles at month end; red without the tab's zone wire).
+- Compliance: the "only primary package" rule allows a certified primary that `release/SHA256SUMS` lists byte for byte (1.1.0 stays beside 1.1.1 by the owner's order); an unlisted or altered one still fails.
 
 ## [v1.1.0] - 2026-09-27
 

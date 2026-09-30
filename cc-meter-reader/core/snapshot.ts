@@ -32,7 +32,7 @@ import { flowObjectKeys, isInternalOutput, makeFlowKey, objectKey, parseFlowKey,
 import { outputMonthTotals, poolMinuteRows, sparkline } from './rollups.ts';
 import { isWarm } from './baseline.ts';
 import { allCommits } from './timeline.ts';
-import { DAY_MS, MINUTE_MS, addDaysToKey, fromIso, localDayKey, localMonthKey, toIso } from './time.ts';
+import { DAY_MS, MINUTE_MS, addDaysToKey, fromIso, localDayKey, localDayStartMs, localMonthKey, toIso } from './time.ts';
 
 export const MAX_TOP_SAVERS = 5;
 export const MAX_SNAPSHOT_INCIDENTS = 50;
@@ -74,6 +74,18 @@ export interface SnapshotParts {
   metricsSource: MetricsSource;
   /** the previous snapshot, whose ratioSeries carries the older 24 h history forward */
   previous?: Snapshot | null;
+  /** founder-build r1 core-2: the zone the totals are bucketed in, recorded as Snapshot.zone (omitted: no zone field) */
+  zone?: string;
+  /**
+   * Founder-build r1 core-14 (m3, #6): every minute row the sweep holds (a first-run or catch-up backfill reaches back up
+   * to a day): the 24 h ratio series is built from these, not only the snapshot's last 60 minutes. Omitted: minuteRows.
+   */
+  ratioRows?: Record<FlowKey, MinuteRow[]>;
+  /**
+   * Core-6 (#42): where the rows the sweep passed (ratioRows, else minuteRows) begin — the first hour of minute documents
+   * it held, rows or not. Only when they reach back to collecting since can a first run say where traffic began.
+   */
+  rowsFromMs?: number;
 }
 
 const byT = (a: { t: ISO }, b: { t: ISO }): number => fromIso(a.t) - fromIso(b.t);
@@ -372,8 +384,9 @@ export function buildSnapshot(parts: SnapshotParts): Snapshot {
   }
 
   // ── 24 h ratio series: recompute buckets the minute rows fully cover, carry older ones forward ──
+  const seriesRows = parts.ratioRows ?? parts.minuteRows;
   let coverageStart = Number.POSITIVE_INFINITY;
-  for (const rows of Object.values(parts.minuteRows)) for (const r of rows) coverageStart = Math.min(coverageStart, fromIso(r.t));
+  for (const rows of Object.values(seriesRows)) for (const r of rows) coverageStart = Math.min(coverageStart, fromIso(r.t));
   const firstFullBucket = Number.isFinite(coverageStart) ? Math.ceil(coverageStart / RATIO_BUCKET_MS) * RATIO_BUCKET_MS : windowEndMs;
   const dayAgo = sweepAtMs - DAY_MS;
   const series = new Map<number, number>();
@@ -381,7 +394,7 @@ export function buildSnapshot(parts: SnapshotParts): Snapshot {
     const t = fromIso(p.t);
     if (t >= dayAgo && t < firstFullBucket) series.set(t, p.ratio);
   }
-  for (const [t, b] of ratioBuckets(parts.minuteRows, firstFullBucket, windowEndMs)) if (b.whp > 0) series.set(t, ratio(b.saved, b.whp));
+  for (const [t, b] of ratioBuckets(seriesRows, firstFullBucket, windowEndMs)) if (b.whp > 0) series.set(t, ratio(b.saved, b.whp));
   const ratioSeries = [...series.entries()]
     .filter(([t]) => t >= dayAgo)
     .sort((a, b) => a[0] - b[0])
@@ -399,7 +412,14 @@ export function buildSnapshot(parts: SnapshotParts): Snapshot {
   const timelineTruncated = droppedRecentCommit(everyCommit, MAX_SNAPSHOT_TIMELINE, sweepAtMs);
   const deliveries = [...(parts.deliveries ?? [])].sort((a, b) => fromIso(b.at) - fromIso(a.at)).slice(0, MAX_SNAPSHOT_DELIVERIES);
 
-  const headline = computeHeadline(parts.totals, sweepAtMs, tz, parts.collectingSinceMs, settings.criblCostCentsPerMonth, parts.windowEndMs);
+  // Founder-build r1 core-6 (#42): where priced traffic began, for the annualized basis (see Snapshot.pricedSince).
+  const pricedSinceMs = pricedSince(parts, seriesRows);
+  // Founder-build r3 core-5 (#3): the priced-since day's metered minutes before it, for the annualized basis.
+  const emptyBefore = pricedSinceMs !== undefined ? emptyMinutesBeforePriced(parts, pricedSinceMs, tz) : undefined;
+  const headline = computeHeadline(parts.totals, sweepAtMs, tz, parts.collectingSinceMs, settings.criblCostCentsPerMonth, parts.windowEndMs, {
+    ...(pricedSinceMs !== undefined ? { pricedSinceMs } : {}),
+    ...(emptyBefore !== undefined ? { emptyMinutesBeforePriced: emptyBefore } : {}),
+  });
   Object.assign(headline, savingsSplit(headline.mtdM, destinations, parts.totals, monthKey), costAddedFigures(flows));
 
   return {
@@ -426,7 +446,59 @@ export function buildSnapshot(parts: SnapshotParts): Snapshot {
     metricsSource: parts.metricsSource,
     attributionSummary: summarizeAttribution(flows),
     flowCounts: flowCounts(flows),
+    ...(parts.zone ? { zone: parts.zone } : {}),
+    ...(pricedSinceMs !== undefined ? { pricedSince: toIso(pricedSinceMs) } : {}),
+    ...(emptyBefore !== undefined ? { pricedSinceEmptyMinutes: emptyBefore } : {}),
   };
+}
+
+/**
+ * Founder-build r3 core-5 (FINDINGS_R3 #3): how many of the minutes metered on `pricedSinceMs`'s local day came before it
+ * (none carried priced traffic) — counted, never inferred from the wall clock. The sweep that finds pricedSince metered
+ * every minute from it to its window end (the first priced minute is always in its own range: a first run's rows reach
+ * back to collecting since, and a later sweep finds it at or after the previous window end), so the day's metered
+ * minutes less those this sweep metered from pricedSince on are the ones before it. A pricedSince carried unchanged
+ * carries its count; one carried from a snapshot without a count, or across a zone change, has none (the basis falls
+ * back to r2's arithmetic).
+ */
+function emptyMinutesBeforePriced(parts: SnapshotParts, pricedSinceMs: number, tz: string): number | undefined {
+  const prev = parts.previous;
+  if (prev?.pricedSince && fromIso(prev.pricedSince) === pricedSinceMs) {
+    const sameZone = (prev.zone ?? parts.zone ?? tz) === tz;
+    return sameZone && typeof prev.pricedSinceEmptyMinutes === 'number' && Number.isFinite(prev.pricedSinceEmptyMinutes) ? prev.pricedSinceEmptyMinutes : undefined;
+  }
+  const key = localDayKey(pricedSinceMs, tz);
+  const dayMinutes = parts.totals?.byDay?.[key]?.minutes ?? 0;
+  const dayEnd = localDayStartMs(addDaysToKey(key, 1), tz);
+  const fromPriced = Math.max(0, Math.floor((Math.min(dayEnd, parts.windowEndMs) - pricedSinceMs) / MINUTE_MS));
+  return Math.max(0, dayMinutes - fromPriced);
+}
+
+/**
+ * Founder-build r1 core-6 (#42): the minute priced traffic began (no minute before it carried any), carried from
+ * snapshot to snapshot. A previous snapshot that kept one: it stands once the workspace has had traffic; while it had
+ * none yet, the first minute with would-have-paid in this sweep's rows, else this window's end. A previous snapshot
+ * from before core-6: collecting since (the old basis, unchanged). No previous snapshot (a first run): the first minute
+ * with would-have-paid in the rows, when those rows reach back to collecting since; otherwise (the tour, whose rows are
+ * its last hour) undefined — the old basis.
+ */
+function pricedSince(parts: SnapshotParts, rows: Record<FlowKey, MinuteRow[]>): number | undefined {
+  const firstTraffic = (fromMs: number): number | undefined => {
+    let first = Number.POSITIVE_INFINITY;
+    for (const list of Object.values(rows)) for (const r of list) if (r.whpM > 0) first = Math.min(first, fromIso(r.t));
+    return Number.isFinite(first) && first >= fromMs ? first : undefined;
+  };
+  const prev = parts.previous;
+  if (prev) {
+    if (!prev.pricedSince) return undefined; // a snapshot from before core-6: the basis stays collecting since
+    const kept = fromIso(prev.pricedSince);
+    const hadTraffic = (prev.headline?.whp30dM ?? 0) > 0 || (prev.headline?.whpMtdM ?? 0) > 0;
+    if (hadTraffic) return kept;
+    return firstTraffic(kept) ?? parts.windowEndMs;
+  }
+  // A first run: the rows it held must reach back to where collecting began (the tour's last hour does not).
+  if (parts.rowsFromMs === undefined || !Number.isFinite(parts.collectingSinceMs) || !(parts.rowsFromMs <= parts.collectingSinceMs)) return undefined;
+  return firstTraffic(parts.collectingSinceMs) ?? parts.windowEndMs;
 }
 
 /**

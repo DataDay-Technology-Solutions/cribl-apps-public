@@ -20,6 +20,8 @@ import { ErrorNotice } from '../../components/common/ErrorNotice.tsx';
 import { LoadingBlock } from '../../components/common/Loading.tsx';
 import { Page } from '../../components/Shell/Page.tsx';
 import { IS_DEMO_BUILD } from '../../lib/env.ts';
+import { setNavGuard } from '../../lib/navGuard.ts';
+import { ConfirmModal } from '../../components/common/ConfirmModal.tsx';
 import { shallowEqual, useAppState } from '../../state/react.tsx';
 import { resolveSection, SECTION_LABEL_KEYS, SECTION_ORDER, sectionHref, type SectionId } from './model.ts';
 import { onWriteOutcome, SettingsFailuresContext, SettingsFrameContext, SettingsSlotContext, useBeforeUnloadGuard, type SettingsFrameRegistry } from './hooks.ts';
@@ -198,6 +200,7 @@ export default function SettingsView() {
   const section = resolveSection(pathname, search, AVAILABLE);
   const { dirty, failures, registry } = useSettingsFrame(section);
   useBeforeUnloadGuard(dirty.size > 0);
+  const leaving = useLeaveGuard(dirty);
   // The open section, plus every section left with unsaved changes (kept mounted, hidden, so its draft lives).
   const mounted = AVAILABLE.filter((s) => s === section || dirty.has(s));
   const label = (s: SectionId) => (dirty.has(s) ? t('settings.sectionUnsaved', { section: t(SECTION_LABEL_KEYS[s]) }) : t(SECTION_LABEL_KEYS[s]));
@@ -245,6 +248,58 @@ export default function SettingsView() {
           </SettingsFailuresContext.Provider>
         </SettingsFrameContext.Provider>
       </div>
+
+      <ConfirmModal
+        isOpen={leaving.pending}
+        title={t('settings.leaveGuard.title')}
+        body={t('settings.leaveGuard.body')}
+        affects={AVAILABLE.filter((s) => dirty.has(s)).map((s) => ({ label: t(SECTION_LABEL_KEYS[s]), action: t('settings.leaveGuard.action') }))}
+        irreversible={false}
+        confirmText={t('settings.leaveGuard.leave')}
+        cancelText={t('settings.leaveGuard.stay')}
+        onConfirm={leaving.leave}
+        onClose={leaving.stay}
+      />
     </Page>
   );
+}
+
+/**
+ * The in-app leave guard (founder-build r1 ui-5, FINDINGS_R1 M1): while a section is dirty, a navigation that leaves
+ * Settings (a top tab, the palette: src/lib/navGuard.ts) waits for the member's answer. Moving between sections never
+ * asks: a dirty section stays mounted, so its draft survives (P1-G07).
+ */
+function useLeaveGuard(dirty: ReadonlySet<SectionId>): { pending: boolean; leave: () => void; stay: () => void } {
+  const [proceed, setProceed] = useState<(() => void) | null>(null);
+  const isDirty = dirty.size > 0;
+  useEffect(() => {
+    if (!isDirty) return;
+    return setNavGuard((to, go) => {
+      if (to === '') return false;
+      const path = to.replace(/\/+$/, '') || '/';
+      if (path === '/settings' || path.startsWith('/settings/')) return false;
+      setProceed(() => go);
+      return true;
+    });
+  }, [isDirty]);
+  // Final 1.1.4 (hunt r3 #0): a save that was in flight when the member clicked away (Start the meter, then a tab) can
+  // land while the dialog is open. Nothing is left to discard then, so the dialog closes and the navigation the member
+  // asked for goes ahead, as Leave would. It never stays open over an empty list saying "nothing has been written".
+  // Deferred a tick and cancelled if the member answers first (Stay) or the section turns dirty again.
+  useEffect(() => {
+    if (isDirty || proceed === null) return;
+    const id = window.setTimeout(() => {
+      setProceed(null);
+      proceed();
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [isDirty, proceed]);
+  const leave = useCallback(() => {
+    const go = proceed;
+    setProceed(null);
+    // After the dialog has closed, so the next page opens clean.
+    if (go) window.setTimeout(go, 0);
+  }, [proceed]);
+  const stay = useCallback(() => setProceed(null), []);
+  return { pending: proceed !== null, leave, stay };
 }

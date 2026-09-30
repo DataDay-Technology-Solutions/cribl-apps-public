@@ -3,16 +3,7 @@
 // the two windows were made comparable, and why a comparison can't be made. Every string from src/copy/en.ts;
 // money through the shared formatters.
 
-import {
-  rangeDuration,
-  type CompareRefusalReason,
-  type CompareSpec,
-  type ComparisonPlan,
-  type ComparisonRefusal,
-  type RangeComparison,
-  type RangeFigures,
-  type RangeGranularity,
-} from '../../../core/range.ts';
+import { rangeDuration, type CompareRefusalReason, type CompareSpec, type ComparisonPlan, type ComparisonRefusal, type RangeComparison, type RangeFigures, type RangeGranularity, printedDeltaM } from '../../../core/range.ts';
 import { footMoney } from '../../../core/format.ts';
 import { formatLocalMonthDay, formatLocalTime, localDayKey } from '../../../core/time.ts';
 import { t, tn, type CopyKey } from '../../copy/en.ts';
@@ -67,8 +58,10 @@ export function fromToText(cmp: RangeComparison): string {
 
 /** "+$222 (+14%)", "−$95 a day (−6%)", "+$40" (the baseline saved nothing), or "No change". */
 export function deltaText(cmp: RangeComparison): string {
-  if (cmp.direction === 'flat') return t('meter.range.compare.flat');
-  const amount = basisMoney(cmp, cmp.deltaM, { signed: true });
+  // The change as printed foots with the two figures as printed (r1 ui-8, m11): round(current) − round(baseline).
+  const printed = printedDeltaM(cmp);
+  if (cmp.direction === 'flat' || printed === 0) return t('meter.range.compare.flat');
+  const amount = basisMoney(cmp, printed, { signed: true });
   return cmp.pct !== undefined ? t('meter.range.compare.delta', { amount, pct: formatPct(cmp.pct, { signed: true }) }) : amount;
 }
 

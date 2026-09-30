@@ -41,9 +41,11 @@ export interface LeverLedgerProps {
   entries: LedgerEntry[];
   /** The display timezone (settings.displayTimezone). */
   tz?: string;
+  /** settings.humanize: an API client's name, when a member gave it one (r2 ui-15, H2). */
+  labels?: Record<string, string>;
 }
 
-export function LeverLedger({ entries, tz }: LeverLedgerProps) {
+export function LeverLedger({ entries, tz, labels }: LeverLedgerProps) {
   return (
     <section className="mr-demo-section mr-demo-ledger" aria-labelledby="mr-demo-ledger" data-testid="demo-ledger">
       <div className="mr-demo-section-head">
@@ -61,7 +63,8 @@ export function LeverLedger({ entries, tz }: LeverLedgerProps) {
           <ol className="mr-demo-ledger-list">
             {entries.map((e) => {
               const target = leverTarget(e);
-              const status = [displayAuthor(e.author), e.deployed ? t('demo.ledger.deployed') : t('demo.ledger.committed')];
+              // r2 ui-15 (H2): an API client reads by the name a member gave it (settings.humanize).
+              const status = [displayAuthor(e.author, labels), e.deployed ? t('demo.ledger.deployed') : t('demo.ledger.committed')];
               return (
                 <li
                   key={e.hash}

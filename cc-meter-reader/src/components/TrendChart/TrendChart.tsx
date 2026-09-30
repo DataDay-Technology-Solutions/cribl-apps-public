@@ -18,7 +18,7 @@ import { footMoney } from '../../../core/format.ts';
 import { DAY_MS, formatLocalMonthDay, localDayStartMs } from '../../../core/time.ts';
 import { t, tn } from '../../copy/en.ts';
 import { commitAuthor } from '../../lib/author.ts';
-import { formatMoney, formatPct } from '../../lib/format.ts';
+import { formatAxisMoney, formatMoney, formatPct } from '../../lib/format.ts';
 import { formatLocalTime } from '../../../core/time.ts';
 import { EMPTY_AXIS_MAX, collectedDays, deployMarkers, linear, nearestIndex, niceMax, nothingSaved, type DeployMarker, type TrendAnnotation } from './trendMath.ts';
 import './TrendChart.css';
@@ -242,7 +242,7 @@ export function TrendChart({ points, todayKey, commits, tz, collectingSinceMs, h
             <g key={i}>
               <line className="mr-trend-grid" x1={M.left} x2={width - M.right} y1={geo.y(v)} y2={geo.y(v)} />
               <text className="mr-trend-ylabel mr-num" x={M.left - 10} y={geo.y(v)} dy="0.32em" textAnchor="end">
-                {formatMoney(v, { compact: true })}
+                {formatAxisMoney(v, geo.ticks[geo.ticks.length - 1] ?? 0)}
               </text>
             </g>
           ))}
@@ -290,7 +290,7 @@ export function TrendChart({ points, todayKey, commits, tz, collectingSinceMs, h
           <g key={i}>
             <line className="mr-trend-grid" x1={M.left} x2={width - M.right} y1={geo.y(v)} y2={geo.y(v)} />
             <text className="mr-trend-ylabel mr-num" x={M.left - 10} y={geo.y(v)} dy="0.32em" textAnchor="end">
-              {formatMoney(v, { compact: true })}
+              {formatAxisMoney(v, geo.ticks[geo.ticks.length - 1] ?? 0)}
             </text>
           </g>
         ))}

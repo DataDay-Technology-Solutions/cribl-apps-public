@@ -73,6 +73,12 @@ export interface RangeReaderDeps {
   now: () => number;
   /** Parallel document reads. Default 4. */
   concurrency?: number;
+  /**
+   * meta.minuteRetentionHours (r1 core-7 / M11): on a large estate the sweep keeps minute documents for fewer than 25 h,
+   * and the plan reads the minute family only within it (core/range.ts, r2 core-11 b; wired here by r3 ui-5, H9).
+   * Read at each read, so a retention the sweep changes applies to the next one. Undefined: the default reach.
+   */
+  minuteRetentionHours?: () => number | undefined;
 }
 
 export interface RangeReader {
@@ -229,7 +235,8 @@ export function createRangeReader(deps: RangeReaderDeps): RangeReader {
       // Inside a 429's backoff nothing is read at all: another GET now would only extend the limit.
       if (nowMs < backoffUntil && lastRateLimit) return rateLimited(lastRateLimit);
 
-      let plan = planRangeReads(resolved.fromMs, resolved.toMs, nowMs, meteredThroughMs);
+      const retention = deps.minuteRetentionHours?.();
+      let plan = planRangeReads(resolved.fromMs, resolved.toMs, nowMs, meteredThroughMs, retention !== undefined ? { minuteRetentionHours: retention } : {});
       const epoch = foldEpoch(meteredThroughMs);
       const docs: Record<string, RangeDoc | null> = {};
       let cached = 0;

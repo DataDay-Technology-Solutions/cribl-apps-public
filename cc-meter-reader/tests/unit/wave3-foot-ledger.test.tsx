@@ -44,7 +44,10 @@ describe('footColumn: lines under a total add up to the total as printed', () =>
   it('never takes a line below zero', () => {
     const lines = footColumn([0.4 * DOLLAR, 0, 5.4 * DOLLAR], 4.6 * DOLLAR);
     expect(lines.every((v) => v >= 0)).toBe(true);
-    expect(lines.reduce((a, b) => a + b, 0)).toBe(5 * DOLLAR);
+    // Founder-build r3 core-7 (FINDINGS_R3 #10): the $0.40 line keeps its exact amount ('< $1'), never "$0"; the dollar
+    // lines foot to the total as printed.
+    expect(lines).toEqual([0.4 * DOLLAR, 0, 5 * DOLLAR]);
+    expect(lines.filter((v) => v % DOLLAR === 0).reduce((a, b) => a + b, 0)).toBe(5 * DOLLAR);
   });
 });
 

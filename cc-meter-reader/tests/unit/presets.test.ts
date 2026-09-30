@@ -186,6 +186,9 @@ describe('isFreeOutput (P0-04)', () => {
   it('is a free type that nothing marks as standing in for a paid destination', () => {
     expect(isFreeOutput({ type: 'devnull', id: 'devnull' })).toBe(true);
     expect(isFreeOutput({ type: 'router', id: 'fanout' })).toBe(true);
+    // Founder-build r1 core-12 (M12): a router that splits across destinations is not free (its traffic reads unpriced).
+    expect(isFreeOutput({ type: 'router', id: 'fanout', rules: [{ output: 'splunk' }, { output: 's3' }] })).toBe(false);
+    expect(isFreeOutput({ type: 'router', id: 'fanout', rules: [{ output: 'splunk' }, { output: 's3', disabled: true }] })).toBe(true);
     expect(isFreeOutput('devnull')).toBe(true);
     expect(isFreeOutput(undefined)).toBe(false);
     expect(isFreeOutput({ type: 'devnull', id: 'mrd_siem_prod' })).toBe(false);

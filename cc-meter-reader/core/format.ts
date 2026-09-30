@@ -23,10 +23,17 @@ function roundHalfUp(x: number): number {
   return Math.floor(x + 0.5);
 }
 
-/** '$1,234' — whole dollars, half-up; negative '−$12'. */
+/** Founder-build r2 core-10 (IC-4): what a non-zero amount under half a dollar prints as (never "$0"). */
+export const UNDER_ONE_DOLLAR = '< $1';
+
+/**
+ * '$1,234' — whole dollars, half-up; negative '−$12'. R2 core-10 (IC-4): a non-zero amount that rounds to $0 prints
+ * '< $1' ('−< $1' below zero), so real reducing traffic at a tiny volume never reads "$0"; exactly 0 is '$0'.
+ */
 export function fmtDollars(mc: number): string {
   if (!Number.isFinite(mc)) return '$0';
   const dollars = roundHalfUp(Math.abs(mc) / MC_PER_DOLLAR);
+  if (dollars === 0 && mc !== 0) return mc < 0 ? `${MINUS}${UNDER_ONE_DOLLAR}` : UNDER_ONE_DOLLAR;
   const body = `$${groupThousands(dollars)}`;
   return mc < 0 && dollars > 0 ? `${MINUS}${body}` : body;
 }
@@ -39,10 +46,14 @@ export function fmtDollarsCents(mc: number): string {
   return mc < 0 && cents > 0 ? `${MINUS}${body}` : body;
 }
 
-/** '$950', '$95.6k', '$1.2M', '$3.4B' — one decimal, trailing '.0' dropped. */
+/**
+ * '$950', '$95.6k', '$1.2M', '$3.4B' — one decimal, trailing '.0' dropped. Founder-build r3 core-8 (FINDINGS_R3 #18, H6;
+ * D82): a non-zero amount that rounds to $0 prints '< $1' ('−< $1' below zero), as fmtDollars does; exactly 0 is '$0'.
+ */
 export function fmtDollarsCompact(mc: number): string {
   if (!Number.isFinite(mc)) return '$0';
   const dollars = Math.abs(mc) / MC_PER_DOLLAR;
+  if (roundHalfUp(dollars) === 0 && mc !== 0) return mc < 0 ? `${MINUS}${UNDER_ONE_DOLLAR}` : UNDER_ONE_DOLLAR;
   let body = `$${groupThousands(roundHalfUp(dollars))}`;
   if (roundHalfUp(dollars) >= 1_000) {
     const scales: [number, string][] = [
@@ -71,6 +82,16 @@ export function fmtPct(ratio: number): string {
   // Grouped like every other figure (OQ-13: 'ROI 19259968%' on an extreme price).
   const text = pct >= 1000 ? pct.toLocaleString('en-US') : String(pct);
   return ratio < 0 && pct > 0 ? `${MINUS}${text}%` : `${text}%`;
+}
+
+/**
+ * Founder-build r2 core-9 (BO-11): a signed ratio as the whole percent fmtPct prints for it — half up on the magnitude
+ * (−0.005 → −1, +0.005 → +1, −0.875 → −88), never −0 — so a change stored as a number prints as the comparison does.
+ */
+export function signedWholePct(ratio: number): number {
+  if (!Number.isFinite(ratio)) return 0;
+  const pct = roundHalfUp(Math.abs(ratio) * 100);
+  return pct === 0 ? 0 : ratio < 0 ? -pct : pct;
 }
 
 /** '25 points' — a ratio delta (0.25) as percentage points; '1 point' singular. */
@@ -241,6 +262,14 @@ export interface MoneyTriple {
 }
 
 /**
+ * R2 core-10 (IC-4): the whole-dollar rounding of `mc`, except that a non-zero amount that rounds to $0 stays as it is
+ * (fmtDollars prints it '< $1'): footing never turns real money into a printed "$0".
+ */
+function keepUnderOneDollar(mc: number, rounded: number): number {
+  return rounded === 0 && Number.isFinite(mc) && mc !== 0 ? mc : rounded;
+}
+
+/**
  * Would have paid, paid and saved rounded so the printed figures add up. Each is rounded on its own (saved prints
  * exactly as fmtDollars prints it everywhere else); when the exact figures satisfy saved = would have paid − paid,
  * paid is printed as the difference of the rounded two, so rounding never leaves a $1 gap. When they don't (a
@@ -249,12 +278,45 @@ export interface MoneyTriple {
  * spreadsheet.
  */
 export function footMoney(m: MoneyTriple, unit: 'dollars' | 'cents' = 'dollars'): MoneyTriple {
-  const round = unit === 'cents' ? roundToCentsM : roundToDollarsM;
+  // R2 core-10 (IC-4): in whole dollars, a non-zero figure that rounds to $0 keeps its exact value, so it prints
+  // '< $1' as fmtDollars prints it everywhere else (the guarantee above), never "$0" beside real savings.
+  const round = unit === 'cents' ? roundToCentsM : (mc: number): number => keepUnderOneDollar(mc, roundToDollarsM(mc));
   const whpM = round(m.whpM);
   const savedM = round(m.savedM);
   const paidM = round(m.paidM);
   const foots = Math.abs(m.whpM - m.paidM - m.savedM) < (unit === 'cents' ? MC_PER_CENT : MC_PER_DOLLAR) / 2;
-  return { whpM, paidM: foots ? Math.max(0, whpM - savedM) : paidM, savedM };
+  if (!foots) return { whpM, paidM, savedM };
+  if (unit === 'cents') return { whpM, paidM: Math.max(0, whpM - savedM), savedM };
+  // Founder-build r3 core-7 (FINDINGS_R3 #9): an operand that prints '< $1' cannot foot — the unfooted form, each figure
+  // its own rounding ("$1 − < $1 = < $1", never a paid footed up to "$1" beside a real $0.47).
+  if (underOneDollar(m.whpM) || underOneDollar(m.savedM)) return { whpM, paidM, savedM };
+  const footedPaid = Math.max(0, whpM - savedM);
+  if (footedPaid !== 0 || !Number.isFinite(m.paidM) || m.paidM === 0) return { whpM, paidM: footedPaid, savedM };
+  // Real spend footing would print "$0": would have paid and saved print the same dollar ($2.30 − $0.70 = $1.60 foots
+  // to "$2 − $0 = $2"), so the spend is under a dollar and prints '< $1': "$2 − < $1 = $2". Final 1.1.4 (FINDINGS_R4
+  // hunt r3 #7): r3 core-7 gave paid its exact amount back, and from $0.50 to $0.99 fmtDollars prints that "$1", so the
+  // line read "$2 − $1 = $2" and "$100 − $1 = $100", which do not add up. A spend of a dollar or more (only a triple
+  // that foots within the half-dollar tolerance) prints its own rounding.
+  return { whpM, paidM: Math.abs(m.paidM) < MC_PER_DOLLAR ? shownUnderOneDollar(m.paidM) : paidM, savedM };
+}
+
+/** R3 core-7: a non-zero amount that rounds to $0 (fmtDollars prints it '< $1'). */
+function underOneDollar(mc: number): boolean {
+  return Number.isFinite(mc) && mc !== 0 && roundToDollarsM(mc) === 0;
+}
+
+/** The largest amount fmtDollars still prints '< $1' (half up, $0.49999 is $0). */
+const LARGEST_UNDER_ONE_DOLLAR_M = MC_PER_DOLLAR / 2 - 1;
+
+/**
+ * Final 1.1.4 (FINDINGS_R4 #1, hunt r3 #7): a real amount under a dollar as a printed figure that reads '< $1'. It is the
+ * exact amount when that already rounds to $0. From $0.50 to $0.99 fmtDollars would print "$1", so it is the largest
+ * amount that prints '< $1' instead. Use it only for a printed whole-dollar figure in a footing, never for an amount
+ * that is added up or shown in cents. Amounts of a dollar or more, 0 and non-finite values pass through unchanged.
+ */
+export function shownUnderOneDollar(mc: number): number {
+  if (!Number.isFinite(mc) || mc === 0 || Math.abs(mc) >= MC_PER_DOLLAR) return mc;
+  return Math.sign(mc) * Math.min(Math.abs(mc), LARGEST_UNDER_ONE_DOLLAR_M);
 }
 
 /**
@@ -265,6 +327,25 @@ export function footMoney(m: MoneyTriple, unit: 'dollars' | 'cents' = 'dollars')
  * keeps its own rounding and the gap is not hidden.
  */
 export function footColumn(valuesM: readonly number[], totalM: number): number[] {
+  const footed = footColumnDollars(valuesM, totalM);
+  // Founder-build r3 core-7 (FINDINGS_R3 #10): a real line under a dollar keeps its exact amount — so a line the
+  // rounding or the footing left at $0 prints '< $1' as everywhere else, and a row derived from two such lines (Show
+  // the math's paid = would have paid − saved) prints its own real amount, never "$1 − $1 = $0" or "$1 − $0 = $1"
+  // beside real money. A column holding one then foots only as printed ("$1 + < $1" under "$1": the unfooted rows);
+  // lines of a dollar and more foot to the dollar as before.
+  // Final 1.1.4 (FINDINGS_R4 hunt r3 #7): under a total that prints '< $1' (footMoney's paid when would have paid and
+  // saved print the same dollar), a line under a dollar prints '< $1' too, never "$1" under its own "< $1" total.
+  const underTotal = underOneDollar(totalM);
+  return footed.map((r, i) => (underADollar(valuesM[i]) ? (underTotal ? shownUnderOneDollar(valuesM[i]) : valuesM[i]) : r));
+}
+
+/** R3 core-7: a real amount under a dollar (footColumn keeps it exact). */
+function underADollar(mc: number): boolean {
+  return Number.isFinite(mc) && mc !== 0 && Math.abs(mc) < MC_PER_DOLLAR;
+}
+
+/** footColumn's whole-dollar footing, before a line under a dollar is given back its exact amount. */
+function footColumnDollars(valuesM: readonly number[], totalM: number): number[] {
   const rounded = valuesM.map((v) => roundToDollarsM(v));
   const n = rounded.length;
   if (n === 0) return rounded;

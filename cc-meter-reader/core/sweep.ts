@@ -70,6 +70,7 @@ import type {
   NotificationEndpoint,
   NotifyEvent,
   ObjectKey,
+  OutputInfo,
   PricesDoc,
   RollDayDoc,
   RollHourDoc,
@@ -97,6 +98,7 @@ import * as urls from './adapters/cribl-urls.ts';
 import {
   addMinuteToTotals,
   addOutputMinuteToTotals,
+  datedKeyStartMs,
   dayDocKey,
   emptyTotals,
   expiredKeys,
@@ -105,6 +107,8 @@ import {
   hourDocKey,
   mergeRowsByFlow,
   minuteDocKey,
+  MINUTE_RETENTION_MS,
+  minuteRetentionHours,
   outputMonthTotals,
   pruneTotals,
   upsertDayRows,
@@ -112,6 +116,7 @@ import {
   upsertMinuteRows,
 } from './rollups.ts';
 import {
+  DEFAULT_REGRESSION_MIN_CENTS_PER_DAY,
   detect,
   effectiveThresholds,
   emptyBaselines,
@@ -122,16 +127,19 @@ import {
   type RatioPoint,
 } from './detector.ts';
 import { allCommits, commitTimeMs, mergeCommits } from './timeline.ts';
-import { incidentsDocKey, mergeIncidentUpdates, shouldNotify } from './incidents.ts';
+import { MAX_INCIDENT_DELIVERIES, incidentsDocKey, isFinalFailure, mergeIncidentUpdates, nextEndpointRecord, recordDeliveryRef, shouldNotify } from './incidents.ts';
 import { CATCH_UP_NOTE, canonicalPayload } from './payloads.ts';
 import { buildSnapshot, compactSnapshot, snapshotBytes } from './snapshot.ts';
+import { hourBuckets, minuteBuckets, resolveMeterZone, rezonePlan, rezoneStraddleHours, rezoneTotals, type MoneyBucket } from './rezone.ts';
 import { humanize } from './humanize.ts';
 import {
   DAY_MS,
   HOUR_MS,
   MINUTE_MS,
+  canonicalZoneName,
   fromIso,
   hourFloor,
+  isValidTimeZone,
   localDayKey,
   localMonthKey,
   minuteFloor,
@@ -217,6 +225,13 @@ export const EXPIRE_EVERY_MS = HOUR_MS;
 const EXPIRY_FIRST_RESERVE = 20;
 /** A backlog continues before the hour is up only in a sweep with room for at least this many deletes (P1-E08). */
 const EXPIRY_MIN_BATCH = 5;
+/**
+ * Founder-build r1 core-7 (M11, #43): a due expiry pass (the hour is up, or a backlog is left) runs whatever the sweep
+ * has spent — at ~500 flows a steady sweep spends 36–76 calls, past the plan's room, and expiry never ran. It is bounded:
+ * the listings (2) and this many delete calls, or the largest expired document with its chunks if that is more (one
+ * whole document always goes; ~52 calls at the 2,000-flow preset). A backlog continues the same way next sweep.
+ */
+export const EXPIRY_RESERVE_DELETES = 30;
 export const NOTIFY_LOG_CAP = 200;
 /** Snapshot JSON target: one plain KV value (DECISIONS D13). */
 export const SNAPSHOT_MAX_BYTES = 90_000;
@@ -238,8 +253,6 @@ export const FAILED_ATTEMPT_COOLDOWN_MS = 2 * MINUTE_MS;
 export const DELIVERY_OWNER_FRESH_MS = 90_000;
 /** A closure (or one-shot good news) no sweep delivered is picked up by a later sweep for this long. */
 export const UNDELIVERED_CLOSURE_MS = 10 * MINUTE_MS;
-/** Delivery records kept on one incident. */
-const MAX_INCIDENT_DELIVERIES = 20;
 /** Calls held back for the conditional writes a sweep may need (incident docs before and after delivery, notify log). */
 const RESERVE_CALLS = 6;
 /** Older incident docs than this many days are not read for open incidents (the snapshot copy stands in). */
@@ -296,6 +309,13 @@ export interface SweepDeps {
    * descriptors (no URL) go to meta.deliveryWebhooks so the App can name them.
    */
   envWebhooks?: readonly NotificationEndpoint[];
+  /**
+   * Founder-build r1 core-2 (FINDINGS_R1 B1, contract C1'): the zone a workspace with no settings document is metered
+   * in — the tab passes the browser's zone. Omitted: 'UTC' (the runner, the Enterprise backend and every existing
+   * test keep what they did). A stored `settings.displayTimezone` always wins; r2 core-4 (C1''): after it, the zone the
+   * totals were kept in (`totals.zone`), so a runtime's own default applies only to a workspace that has none.
+   */
+  defaultTimeZone?: string;
 }
 
 export interface SweepOptions {
@@ -333,6 +353,15 @@ export interface SweepResult {
   /** What the sweep just wrote, so the UI can skip its next poll. */
   snapshot?: Snapshot;
   meta?: Meta;
+  /** Founder-build r1 core-13 (M7): this sweep's delivery attempts (the runner's heartbeat keeps a fail-streak per endpoint). */
+  attempts?: DeliveryLog[];
+  /**
+   * Founder-build r2 core-3: the enabled endpoints this sweep delivers to (absent when it deferred to another runtime or
+   * stopped before delivery); the runner's heartbeat drops the fail-streak of an endpoint no longer among them.
+   */
+  deliveryEndpoints?: string[];
+  /** R2 core-3: the reminder cadence those endpoints are re-tried at (thresholds.cooldownMinutes), for the heartbeat's age-out. */
+  deliveryReminderMinutes?: number;
   /**
    * Set while the Leader is rate-limiting this meter (P1-E01): since when (the first limited sweep of the streak),
    * until when sweeps are skipped (absent when this sweep scheduled no back-off), and how many sweeps in a row met
@@ -713,10 +742,27 @@ export function inFailedAttemptCooldown(i: Pick<Incident, 'lastAttemptAt' | 'las
 /**
  * A closed incident whose closure no sweep delivered (a tab that deferred to the runner, a failed send), closed
  * less than UNDELIVERED_CLOSURE_MS ago: a recovery of an incident someone was told about, or one-shot good news.
+ *
+ * Founder-build r2 core-2 (FINDINGS_R2 #5): per endpoint when the incident keeps per-endpoint records (r1 core-9). The
+ * closure stays pending while an endpoint that was told of the opening (good news: any endpoint that tried it) has
+ * not delivered since the close and either has not been tried since (a deferring tab) or failed retryably; a final
+ * failure (a 4xx) is not retried. The bell's 2xx no longer hides a webhook's failed closure. `endpointIds`, when
+ * given, limits it to the endpoints still delivering (a removed or disabled one never holds a closure open).
  */
-export function undeliveredClosure(i: Incident, nowMs: number): boolean {
+export function undeliveredClosure(i: Incident, nowMs: number, endpointIds?: ReadonlySet<string>): boolean {
   const closed = i.closedAt ? fromIso(i.closedAt) : Number.NaN;
   if (!Number.isFinite(closed) || !(nowMs - closed < UNDELIVERED_CLOSURE_MS)) return false;
+  const records = Object.entries(i.notified ?? {});
+  if (records.length > 0) {
+    return records.some(([id, own]) => {
+      if (endpointIds && !endpointIds.has(id)) return false;
+      const okAt = own.ok ? fromIso(own.ok) : Number.NaN;
+      if (okAt >= closed) return false; // delivered since the close
+      if (i.type !== 'goodnews' && !Number.isFinite(okAt)) return false; // never told of the opening
+      if (!(fromIso(own.at) >= closed)) return true; // not tried since the close
+      return !(own.status >= 200 && own.status < 300) && !isFinalFailure(own);
+    });
+  }
   const told = i.lastNotifiedAt ? fromIso(i.lastNotifiedAt) : Number.NaN;
   if (told >= closed) return false;
   return Number.isFinite(told) || i.type === 'goodnews';
@@ -889,6 +935,7 @@ export async function runSweep(deps: SweepDeps, opts: SweepOptions): Promise<Swe
       kvRefused: isKvWriteRefusal(e),
       progress,
       nowIso: toIso(nowMs),
+      app: { appVersion: d.appVersion, build: d.build },
       ...(rate ? { rate } : {}),
       ...(timelineAt ? { timelineRefreshedAt: timelineAt } : {}),
     });
@@ -964,6 +1011,12 @@ interface SweepProgress {
   expiryRan?: boolean;
   /** Expired keys the pass had no room to delete (P1-E08): a later sweep with room continues before the hour is up. */
   expiryBacklog?: number;
+  /** Core-7 (M11): the minute documents' retention this sweep's expiry pass used (meta.minuteRetentionHours). */
+  minuteRetentionHours?: number;
+  /** Core-14 (m18): the range this sweep planned (a failure halves the next catch-up span from it), and whether it was a first run. */
+  planned?: { spanMs: number; firstRun: boolean };
+  /** Core-14 (m18): the catch-up span cap meta keeps after this sweep (undefined: none, caught up). */
+  metricsSpanMs?: number;
   /** The change timeline this sweep fetched and has not written yet (P1-E08: a stopped sweep still writes it). */
   timeline?: { groups: Map<string, Commit[]>; written: boolean };
   /** The rate-limit streak meta records after this sweep (P1-E01); null when it met no limit. */
@@ -986,17 +1039,29 @@ async function expireKeys(
   nowMs: number,
   room: () => number,
   progress: SweepProgress,
+  reserve?: ExpiryReserve,
 ): Promise<{ listed: number; expired: number; deleted: number }> {
   progress.expiryRan = true;
   const [roll, incidents] = [await docs.listKeysWithChunks('roll/'), await docs.listKeysWithChunks('incidents/')];
   const keys = [...roll.keys, ...incidents.keys];
   const chunks = { ...roll.chunks, ...incidents.chunks };
-  const expired = expiredKeys(keys, nowMs);
+  // Core-7 (M11): minute documents kept as long as ~400 keys allow on this estate (25 h up to ~16 keys a document).
+  const retentionH = minuteRetentionHours(roll.keys, roll.chunks);
+  progress.minuteRetentionHours = retentionH;
+  // Oldest first, so a bounded pass frees what has been expired longest.
+  const expired = expiredKeys(keys, nowMs, { minuteRetentionMs: retentionH * HOUR_MS }).sort((a, b) => datedKeyStartMs(a) - datedKeyStartMs(b) || (a < b ? -1 : 1));
+  const cost = (k: string): number => 1 + (chunks[k]?.length ?? 0);
+  // A reserved pass (core-7): its own allowance — the reserve, or one whole largest expired document if that is more —
+  // under the hard budget when the runtime has one.
+  const allowance = reserve ? Math.max(reserve.deletes, ...expired.map(cost)) : Number.POSITIVE_INFINITY;
+  let used = 0;
   let deleted = 0;
   for (const k of expired) {
     const listed = chunks[k] ?? [];
-    if (room() < 1 + listed.length) break;
+    const c = 1 + listed.length;
+    if (reserve ? used + c > allowance || (reserve.hardRoom !== undefined && reserve.hardRoom() < c) : room() < c) break;
     await docs.del(k, { listed });
+    used += c;
     deleted++;
   }
   progress.kvDatedKeys = keys.length - deleted;
@@ -1010,15 +1075,22 @@ async function expireKeys(
  * never the reason a sweep that metered its minutes fails to write its snapshot and meta. A rate limit or the call
  * budget still stops the sweep.
  */
+/** Core-7 (M11): a reserved expiry pass's bound — delete calls beyond the listings, and the hard budget's room if any. */
+interface ExpiryReserve {
+  deletes: number;
+  hardRoom?: () => number;
+}
+
 async function expireKeysSafely(
   docs: KvDocs,
   nowMs: number,
   room: () => number,
   progress: SweepProgress,
   logger: Logger,
+  reserve?: ExpiryReserve,
 ): Promise<{ listed: number; expired: number; deleted: number } | undefined> {
   try {
-    return await expireKeys(docs, nowMs, room, progress);
+    return await expireKeys(docs, nowMs, room, progress, reserve);
   } catch (e) {
     if (e instanceof RateLimited || e instanceof BudgetExceeded) throw e;
     logger.warn('sweep: the key expiry pass failed; the next pass tries again', describeError(e));
@@ -1077,6 +1149,16 @@ async function writeFetchedTimeline(rawDocs: KvDocs, progress: SweepProgress, no
   }
 }
 
+/**
+ * Founder-build r1 core-14 (m18, #44): a failure a shorter range can avoid — the Leader's rate limit or the sweep's call
+ * or time budget (D63), a metrics query that failed (a 5xx, a timeout) — as opposed to one no range changes.
+ */
+export function coldPathFailure(code: string | undefined): boolean {
+  if (!code) return false;
+  // A metrics query's 5xx or no answer (HTTP 0) — never a 4xx (a refused grant is not fixed by a shorter range).
+  return code === 'rate_limited' || code === 'budget' || code === 'time_budget' || (/^metrics /.test(code) && /HTTP (5\d\d|0)\b/.test(code)) || /timeout/i.test(code);
+}
+
 /** meta after a failed or stopped sweep: sweepErrors++, lastError, rate-limit streak (SPEC 7 step 13, 19.12). */
 async function recordFailure(
   rawDocs: KvDocs,
@@ -1085,16 +1167,38 @@ async function recordFailure(
   code: string,
   rateLimited: boolean,
   logger: Logger,
-  more: { kvRefused: boolean; progress: SweepProgress; nowIso: string; rate?: RateLimitStatus; timelineRefreshedAt?: string },
+  more: { kvRefused: boolean; progress: SweepProgress; nowIso: string; rate?: RateLimitStatus; timelineRefreshedAt?: string; app?: { appVersion: string; build: Build } },
 ): Promise<Meta | null> {
   try {
-    const current = metaRead ? meta : await rawDocs.getMeta();
-    if (!current) return null; // never create meta from a failed first sweep: the next run still seeds normally
+    let current = metaRead ? meta : await rawDocs.getMeta();
+    if (!current) {
+      // A failed first sweep writes no meta, so the next run seeds normally — except a failure a shorter range avoids
+      // (core-14, m18): without a record the same day-long range was retried unchanged forever. A minimal meta keeps
+      // the failure, and the next first run meters the newest hour (planRange: lastFailedOnLimits).
+      if (!coldPathFailure(code) || !more.app) return null;
+      current = {
+        schemaVersion: 1,
+        installedAt: more.nowIso,
+        collectingSince: more.nowIso,
+        appVersion: more.app.appVersion,
+        build: more.app.build,
+        metricsSource: 'metrics-query',
+        sweepErrors: 0,
+        consecutiveRateLimited: 0,
+        sweepCount: 0,
+      };
+    }
     const next: Meta = {
       ...current,
       sweepErrors: (current.sweepErrors ?? 0) + 1,
       lastError: code,
     };
+    // Core-14 (m18): a catch-up that failed on its range meters half that span next time (never under an hour).
+    const planned = more.progress.planned;
+    if (planned && !planned.firstRun && coldPathFailure(code) && code !== 'rate_limited') {
+      // Whole minutes, so every slice ends on a minute boundary (the cursor stays minute-aligned).
+      next.metricsSpanMs = Math.max(FIRST_RUN_SEED_MS, Math.floor(Math.min(planned.spanMs, current.metricsSpanMs ?? planned.spanMs) / 2 / MINUTE_MS) * MINUTE_MS);
+    }
     // P1-E03: the first refused write starts the streak (a later failure of another kind does not end it; the next
     // completed sweep does), and an expiry pass this sweep ran is kept, so the next sweep does not repeat it.
     if (more.kvRefused) next.kvWriteFailingSince = current.kvWriteFailingSince ?? more.nowIso;
@@ -1146,6 +1250,11 @@ async function sweepLocked(a: LockedArgs): Promise<Partial<SweepResult>> {
   const { d, mode, nowMs, windowEnd, t, docs, meta } = a;
   const nowIso = toIso(nowMs);
   const target = d.budget ?? DEFAULT_SWEEP_BUDGET;
+  /** Core-7 (M11): a reserved expiry pass, under the hard budget (keeping `keep` calls for the writes after it) when there is one. */
+  const reserveFor = (keep: number): ExpiryReserve => ({
+    deletes: EXPIRY_RESERVE_DELETES,
+    ...(d.budget !== undefined ? { hardRoom: () => (d.budget as number) - t.calls() - keep } : {}),
+  });
   const limitFor = (force: boolean): number => (force ? (d.budget ?? Number.POSITIVE_INFINITY) : target);
   const demoBuild = d.build === 'demo';
   const { progress } = a;
@@ -1157,7 +1266,9 @@ async function sweepLocked(a: LockedArgs): Promise<Partial<SweepResult>> {
   const expiredBefore = meta?.lastExpiredAt ? fromIso(meta.lastExpiredAt) : Number.NaN;
   const backlogBefore = meta?.expiryBacklog ?? 0;
   if (Number.isFinite(failingSince) && (!(expiredBefore >= failingSince) || !(nowMs - expiredBefore < EXPIRE_EVERY_MS) || backlogBefore > 0)) {
-    const pass = await expireKeysSafely(docs, nowMs, () => target - t.calls() - EXPIRY_FIRST_RESERVE, progress, d.logger);
+    // Core-7 (M11): reserved, so a full store frees at least one whole document even when the sweep's plan has no room
+    // (at 2,000 flows one hour's minute document is ~52 keys; the old room of ~13 deleted nothing and metering stopped).
+    const pass = await expireKeysSafely(docs, nowMs, () => target - t.calls() - EXPIRY_FIRST_RESERVE, progress, d.logger, reserveFor(EXPIRY_FIRST_RESERVE));
     if (pass)
       d.logger.warn(
         `sweep: the KV store has refused writes since ${meta?.kvWriteFailingSince}; expiry pass first: ${pass.deleted} of ${pass.expired} expired key(s) deleted, ${pass.listed - pass.deleted} dated key(s) left`,
@@ -1176,8 +1287,17 @@ async function sweepLocked(a: LockedArgs): Promise<Partial<SweepResult>> {
       docs.getTotals(),
       docs.getSnapshot(),
     ]);
-  const settings: Settings = mergeSettings(storedSettings ?? {}, defaultSettings(nowIso, 'UTC'));
-  const tz = settings.displayTimezone || 'UTC';
+  // R2 core-4 (C1''): the zone is the stored settings' zone, else the zone the totals were kept in, else this runtime's
+  // default (the tab's browser zone), else UTC: a settings-less workspace settles in one zone (no re-bucketing ping-pong).
+  const settings: Settings = mergeSettings(storedSettings ?? {}, defaultSettings(nowIso, resolveMeterZone(storedSettings, storedTotals, d.defaultTimeZone)));
+  const tz = canonicalZoneName(settings.displayTimezone || 'UTC');
+  // C1': the zone the stored totals are keyed in — recorded since core-2; before it, the stored settings' zone, else
+  // UTC (what a settings-less install bucketed in). A different zone re-buckets them below (core/rezone.ts).
+  const totalsZone = storedTotals?.zone
+    ? canonicalZoneName(storedTotals.zone)
+    : storedSettings && typeof storedSettings.displayTimezone === 'string' && isValidTimeZone(storedSettings.displayTimezone)
+      ? canonicalZoneName(storedSettings.displayTimezone)
+      : 'UTC';
   const labels = settings.humanize ?? {};
   const prices: PricesDoc = storedPrices ?? emptyPrices(nowIso);
   let inventory: InventoryDoc | null = storedInventory;
@@ -1214,6 +1334,10 @@ async function sweepLocked(a: LockedArgs): Promise<Partial<SweepResult>> {
     lastExpiredAt?: string;
     deliveryDeferredAt?: string;
     gap?: { from: number; to: number };
+    /** Core-14 (m18): the catch-up span cap to keep (a sliced catch-up that has not caught up yet). */
+    metricsSpanMs?: number;
+    /** R3 core-2: this sweep metered a first run (no cursor before it): it stamps meta.meteringStartedAt, once. */
+    firstMetering?: boolean;
   }): Meta => {
     const minute = minuteKey(nowMs);
     const callsNow = t.calls() + 2;
@@ -1238,12 +1362,20 @@ async function sweepLocked(a: LockedArgs): Promise<Partial<SweepResult>> {
       },
     };
     if (m.meteredThrough) next.meteredThrough = m.meteredThrough;
+    if (m.metricsSpanMs !== undefined && m.metricsSpanMs > 0) next.metricsSpanMs = m.metricsSpanMs;
     if (meta?.lastWeeklySentAt) next.lastWeeklySentAt = meta.lastWeeklySentAt;
+    // R3 core-2 (FINDINGS_R3 #1, D83): when metering started — written once, by the first run that metered, and carried
+    // forward by every later sweep. A workspace already metering without it (an upgrade) is never stamped: the weekly
+    // receipt keeps the collectingSince rule there.
+    const meteringStartedAt = meta?.meteringStartedAt ?? (m.firstMetering ? nowIso : undefined);
+    if (meteringStartedAt) next.meteringStartedAt = meteringStartedAt;
     if (m.lastExpiredAt) next.lastExpiredAt = m.lastExpiredAt;
     const datedKeys = progress.kvDatedKeys ?? meta?.kvDatedKeys;
     if (datedKeys !== undefined) next.kvDatedKeys = datedKeys;
     const backlogAfter = progress.expiryBacklog ?? meta?.expiryBacklog ?? 0;
     if (backlogAfter > 0) next.expiryBacklog = backlogAfter;
+    const retentionH = progress.minuteRetentionHours ?? meta?.minuteRetentionHours;
+    if (retentionH !== undefined) next.minuteRetentionHours = retentionH;
     if (m.timelineRefreshedAt) next.timelineRefreshedAt = m.timelineRefreshedAt;
     if (meta?.inventoryRefreshEveryMin !== undefined) next.inventoryRefreshEveryMin = meta.inventoryRefreshEveryMin;
     Object.assign(next, groupFields);
@@ -1301,7 +1433,8 @@ async function sweepLocked(a: LockedArgs): Promise<Partial<SweepResult>> {
   // seeded one hour where D63 promised up to a day).
   // A first run whose last attempt met the Leader's rate limit or a call/time budget retries with the hour, so a
   // tight limit can never keep the first run from completing.
-  const lastFailedOnLimits = a.prevRate.streak > 0 || meta?.lastError === 'rate_limited' || meta?.lastError === 'budget' || meta?.lastError === 'time_budget';
+  // Core-14 (m18): a metrics query that failed on the day-long range (a 5xx, a timeout) falls back to the hour too.
+  const lastFailedOnLimits = a.prevRate.streak > 0 || coldPathFailure(meta?.lastError);
   const reachMax = firstRun && lastFailedOnLimits ? FIRST_RUN_SEED_MS : (d.firstRunReachMs ?? FIRST_RUN_SEED_MAX_MS);
   const planRange = (seedFlows: number) => {
     let newStart: number;
@@ -1321,8 +1454,10 @@ async function sweepLocked(a: LockedArgs): Promise<Partial<SweepResult>> {
     // A first run starts collecting where it starts metering: the unpriced sweeps' collectingSince is only a seed (the
     // time spent pricing would otherwise read as minutes never metered, and as a gap).
     const collectingSinceMs = firstRun ? newStart : Number.isFinite(storedSince) ? Math.min(storedSince, newStart) : newStart;
-    // P1-E04: one sweep meters at most MAX_SWEEP_SPAN_MS of a catch-up; the next sweep continues from its cursor.
-    const rangeEnd = Math.min(windowEnd, newStart + MAX_SWEEP_SPAN_MS);
+    // P1-E04: one sweep meters at most MAX_SWEEP_SPAN_MS of a catch-up; the next sweep continues from its cursor. Core-14
+    // (m18): after a catch-up's metrics query failed, at most meta.metricsSpanMs (half the span that failed).
+    const spanCap = !firstRun && meta?.metricsSpanMs && meta.metricsSpanMs > 0 ? Math.min(MAX_SWEEP_SPAN_MS, meta.metricsSpanMs) : MAX_SWEEP_SPAN_MS;
+    const rangeEnd = Math.min(windowEnd, newStart + spanCap);
     const touchedHours: number[] = [];
     for (let h = hourFloor(queryStart); h < rangeEnd; h += HOUR_MS) touchedHours.push(h);
     return { newStart, queryStart, collectingSinceMs, rangeEnd, sliced: rangeEnd < windowEnd, touchedHours };
@@ -1330,6 +1465,7 @@ async function sweepLocked(a: LockedArgs): Promise<Partial<SweepResult>> {
   let { newStart, queryStart, collectingSinceMs, rangeEnd, sliced, touchedHours } = planRange(
     storedInventory ? buildFlows(storedInventory, settings).length : 0,
   );
+  progress.planned = { spanMs: rangeEnd - newStart, firstRun };
   // P1-E04: minutes older than the backfill floor when metering resumes were never metered — recorded, never silent.
   // A first run resumes nothing, so it records none.
   const gapFrom = firstRun ? Number.NaN : oldThrough;
@@ -1508,6 +1644,7 @@ async function sweepLocked(a: LockedArgs): Promise<Partial<SweepResult>> {
     // a day). Only a priced sweep meters; an unpriced one keeps the hour floor it writes as collectingSince.
     const hourPlan = { newStart, queryStart, collectingSinceMs, rangeEnd, sliced, touchedHours };
     ({ newStart, queryStart, collectingSinceMs, rangeEnd, sliced, touchedHours } = planRange(buildFlows(inventory, settings).length));
+    progress.planned = { spanMs: rangeEnd - newStart, firstRun };
     planReads();
     if (d.budget !== undefined && roomFor(t, d.budget, 0, mandatoryAfterRefresh()) < 0) {
       // A hard call budget that cannot carry the longer reach keeps the hour this sweep planned with.
@@ -1559,6 +1696,54 @@ async function sweepLocked(a: LockedArgs): Promise<Partial<SweepResult>> {
   readHours.forEach((h, i) => minuteDocs.set(h, hourDocs[i] ?? undefined));
   const dirtyHours = new Set<number>();
 
+  // 5b. C1' (founder-build r1 core-2, FINDINGS_R1 B1): the totals were keyed in another zone (a settings-less install
+  // metered in UTC, or the member changed Settings → display timezone). Re-bucket the current month into this sweep's
+  // zone from the rollups before any new minute is added (core/rezone.ts: money and minutes conserved per old day).
+  const totalsEnd = Number.isFinite(totalsThrough) ? totalsThrough : oldThrough;
+  if (storedTotals && totalsZone !== tz) {
+    const plan = rezonePlan(totalsZone, tz, nowMs, totalsEnd, storedSince);
+    if (plan && plan.hours.length > 0) {
+      const hourSet = new Set(plan.hours);
+      const buckets: MoneyBucket[] = [];
+      const covered = new Set<number>();
+      // Minute rows the sweep already holds are exact (and cover the hour in progress, not folded yet).
+      for (const h of plan.hours) {
+        const md = minuteDocs.get(h);
+        if (!md) continue;
+        buckets.push(...minuteBuckets(md.flows).filter((b) => b.startMs < totalsEnd));
+        covered.add(h);
+      }
+      // R2 core-4 (#11): an hour a local midnight cuts off the hour (a +5:30 zone) splits exactly only from its minute
+      // rows: read them while they are kept, before the hour rollups stand in for it (a time split).
+      const retentionMs = (meta?.minuteRetentionHours ?? MINUTE_RETENTION_MS / HOUR_MS) * HOUR_MS;
+      const straddle = rezoneStraddleHours(plan).filter((h) => !covered.has(h) && nowMs - h < retentionMs);
+      const straddleDocs = await mapLimit(straddle, READ_CONCURRENCY, (h) => docs.getRollMinute(minuteDocKey(h)));
+      straddleDocs.forEach((md, i) => {
+        if (!md) return;
+        buckets.push(...minuteBuckets(md.flows).filter((b) => b.startMs < totalsEnd));
+        covered.add(straddle[i]);
+      });
+      // Then the hour rollups (one document per UTC day), for every hour the minute rows did not cover.
+      const dayDocs = await mapLimit(plan.utcDays, READ_CONCURRENCY, (day) => docs.getRollHour(hourDocKey(fromIso(`${day}T00:00:00.000Z`))));
+      const folded = new Set<number>();
+      dayDocs.forEach((hd) => {
+        const bs = hourBuckets(hd?.flows, new Set([...hourSet].filter((h) => !covered.has(h))));
+        for (const b of bs) folded.add(b.startMs);
+        buckets.push(...bs);
+      });
+      // An hour neither holds (a fold that never ran): its minute document, while it is kept (25 h).
+      const missing = plan.hours.filter((h) => !covered.has(h) && !folded.has(h) && nowMs - h <= 24 * HOUR_MS);
+      const extra = await mapLimit(missing, READ_CONCURRENCY, (h) => docs.getRollMinute(minuteDocKey(h)));
+      extra.forEach((md) => {
+        if (md) buckets.push(...minuteBuckets(md.flows).filter((b) => b.startMs < totalsEnd));
+      });
+      totals = rezoneTotals(totals, plan, { buckets, collectingSinceMs: storedSince, gaps: meta?.gaps ?? [] });
+      d.logger.info(`sweep: the totals were kept in ${totalsZone}; re-bucketed from ${toIso(plan.startMs)} into ${tz}`);
+    } else {
+      totals = { ...totals, zone: tz };
+    }
+  }
+
   // REVIEW-3a #1: hold back trailing empty minutes after traffic (the minute before newStart counts through
   // its stored rows too, so an empty rewrite answer is not mistaken for quiet).
   // A catch-up slice ends in the past: nothing there can be too new for the Leader, so nothing is held back.
@@ -1592,8 +1777,9 @@ async function sweepLocked(a: LockedArgs): Promise<Partial<SweepResult>> {
   // learned from, but never alerted on (DetectInput.learnOnly).
   const firstPricedMs = priceTimes.length > 0 ? priceTimes[0] : Number.NaN;
   const priceCache = new Map<string, EffectivePrices>();
-  const outputTypes = new Map<string, string>();
-  for (const [gid, g] of Object.entries(inventory.byGroup)) for (const o of g.outputs ?? []) outputTypes.set(`${gid}:${o.id}`, o.type);
+  // Core-12 (M12): the whole output (its type, and a router's rules), so a splitting router reads unpriced.
+  const outputTypes = new Map<string, OutputInfo>();
+  for (const [gid, g] of Object.entries(inventory.byGroup)) for (const o of g.outputs ?? []) outputTypes.set(`${gid}:${o.id}`, o);
   const pricesAt = (groupId: string, outputId: string, ms: number): EffectivePrices => {
     const key = `${groupId}:${outputId}#${epochOf(ms)}`;
     let p = priceCache.get(key);
@@ -1873,7 +2059,7 @@ async function sweepLocked(a: LockedArgs): Promise<Partial<SweepResult>> {
     await docs.putRollDay(key, upsertDayRows(dd, day.slice(0, 7), foldDayRows(hd)));
   }
 
-  totals = { ...pruneTotals(totals), updatedAt: nowIso, meteredThrough: toIso(meterEnd), meteredAt: nowIso };
+  totals = { ...pruneTotals(totals), updatedAt: nowIso, meteredThrough: toIso(meterEnd), meteredAt: nowIso, zone: tz };
   writes.push(docs.putTotals(totals));
   if (detected || !storedBaselines) writes.push(docs.putBaselines(baselines));
   if (inventoryRefreshed) writes.push(docs.putInventory(inventory));
@@ -1934,8 +2120,9 @@ async function sweepLocked(a: LockedArgs): Promise<Partial<SweepResult>> {
       // Never told (another sweep deferred, or every attempt failed): it is still news of an opening.
       candidates.push({ incident: inc, event: inc.lastNotifiedAt ? 'incident.updated' : 'incident.opened' });
     }
+    const delivering = new Set(endpoints.map((e) => e.id));
     for (const inc of prevSnapshot?.incidents ?? []) {
-      if (changes.has(inc.id) || openById.has(inc.id) || !undeliveredClosure(inc, nowMs)) continue;
+      if (changes.has(inc.id) || openById.has(inc.id) || !undeliveredClosure(inc, nowMs, delivering)) continue;
       pickedUp.add(inc.id);
       candidates.push({ incident: inc, event: inc.type === 'goodnews' ? 'incident.opened' : 'incident.closed' });
     }
@@ -1945,13 +2132,18 @@ async function sweepLocked(a: LockedArgs): Promise<Partial<SweepResult>> {
     const down = new Set<string>();
     for (const c of candidates) {
       let incident = c.incident;
-      // A failed attempt waits two minutes; lastNotifiedAt (the cooldown clock) moves only on a 2xx.
-      if (inFailedAttemptCooldown(incident, nowMs)) continue;
+      // A failed attempt waits two minutes; lastNotifiedAt (the cooldown clock) moves only on a 2xx. Core-9 (M8): an
+      // incident that keeps per-endpoint state waits per endpoint instead (shouldNotify), so a webhook that failed is
+      // retried even when the bell delivered.
+      if (!incident.notified && inFailedAttemptCooldown(incident, nowMs)) continue;
       let attempted = false;
       let delivered = false;
       for (const ep of endpoints) {
         if (down.has(ep.id)) continue;
-        if (!shouldNotify(incident, ep, nowMs, th.cooldownMinutes, c.prevSeverity)) continue;
+        if (!shouldNotify(incident, ep, nowMs, th.cooldownMinutes, c.prevSeverity, FAILED_ATTEMPT_COOLDOWN_MS)) continue;
+        // Core-9 (M8): an endpoint that never delivered this open incident hears it as an opening, not an update.
+        const own = incident.notified?.[ep.id];
+        const event: NotifyEvent = c.event === 'incident.updated' && !incident.closedAt && own !== undefined && !own.ok ? 'incident.opened' : c.event;
         // A dead endpoint costs one 10 s timeout a sweep (then it is skipped, P1-E07). Past the notification budget the
         // sweep stops sending and still writes, so a broken webhook can never keep a minute from being recorded.
         if (d.clock.now() - a.startedAt > NOTIFY_TIME_BUDGET_MS) {
@@ -1959,18 +2151,20 @@ async function sweepLocked(a: LockedArgs): Promise<Partial<SweepResult>> {
           outOfTime = true;
           break;
         }
-        const canonical = canonicalPayload(c.event, {
+        const canonical = canonicalPayload(event, {
           incident,
           workspace: d.workspace,
           linkBase: d.linkBase,
           labels,
           sentAt: nowIso,
+          // Core-10 (M9): a below-floor close names the floor this workspace set.
+          regressionFloorCentsPerDay: th.regressionMinCentsPerDay ?? DEFAULT_REGRESSION_MIN_CENTS_PER_DAY,
         });
         // A direct webhook gets one attempt a sweep (its retry is the next sweep): three 10 s timeouts and the back-off
         // between them were ~40 s per incident on one dead host (P1-E07). The Cribl channels keep their quick retries.
         const webhook = channelOf(ep) === 'webhook';
         const sentAt = d.clock.now();
-        const attempts = await router.deliver({ endpoint: ep, event: c.event, canonical, incidentId: incident.id, tz, labels, ...(webhook ? { backoffMs: [] } : {}) });
+        const attempts = await router.deliver({ endpoint: ep, event, canonical, incidentId: incident.id, tz, labels, ...(webhook ? { backoffMs: [] } : {}) });
         logs.push(...attempts);
         const failedSlow = attempts.length > 0 && attempts.every((x) => x.status === 0) && d.clock.now() - sentAt >= WEBHOOK_TIMEOUT_MS;
         if (attempts.some(isTimeoutAttempt) || failedSlow) {
@@ -1980,20 +2174,22 @@ async function sweepLocked(a: LockedArgs): Promise<Partial<SweepResult>> {
         const last = lastAttempt(attempts);
         if (!last) continue;
         attempted = true;
-        if (last.status >= 200 && last.status < 300) {
+        const ok = last.status >= 200 && last.status < 300;
+        if (ok) {
           notified++;
           delivered = true;
         }
+        // Core-9 (M8): this endpoint's own state (its last attempt, and its last 2xx); r2 core-1: its failures in a row
+        // and whether the last one is final, which set when it is tried again (shouldNotify).
+        incident = { ...incident, notified: { ...(incident.notified ?? {}), [ep.id]: nextEndpointRecord(own, last, incident.closedAt) } };
         const ref = {
           endpointId: ep.id,
           status: last.status,
           at: last.at,
           ...(last.error ? { error: last.error } : {}),
         };
-        incident = {
-          ...incident,
-          deliveries: [...(incident.deliveries ?? []), ref].slice(-MAX_INCIDENT_DELIVERIES),
-        };
+        // R2 core-1: one failed ref per endpoint (replaced), and an endpoint's last delivery is never evicted.
+        incident = { ...incident, deliveries: recordDeliveryRef(incident.deliveries, ref, MAX_INCIDENT_DELIVERIES) };
       }
       if (!attempted) continue;
       incident = { ...incident, lastAttemptAt: nowIso, ...(delivered ? { lastNotifiedAt: nowIso } : {}) };
@@ -2023,9 +2219,14 @@ async function sweepLocked(a: LockedArgs): Promise<Partial<SweepResult>> {
   // the pass already ran first this sweep (1b). A backlog the last pass had no room for continues sooner, but only in
   // a sweep with room for EXPIRY_MIN_BATCH deletes beyond the listings — never two listings to delete nothing (P1-E08).
   const lastExpiry = meta?.lastExpiredAt ? fromIso(meta.lastExpiredAt) : Number.NaN;
-  const hourly = !(nowMs - lastExpiry < EXPIRE_EVERY_MS) && roomFor(t, target, 2, 3) >= 0;
-  const backlog = (meta?.expiryBacklog ?? 0) > 0 && roomFor(t, target, 2 + EXPIRY_MIN_BATCH, 3) >= 0;
+  const hourlyDue = !(nowMs - lastExpiry < EXPIRE_EVERY_MS);
+  const backlogDue = (meta?.expiryBacklog ?? 0) > 0;
+  const hourly = hourlyDue && roomFor(t, target, 2, 3) >= 0;
+  const backlog = backlogDue && roomFor(t, target, 2 + EXPIRY_MIN_BATCH, 3) >= 0;
   if (!progress.expiryRan && (hourly || backlog)) await expireKeysSafely(docs, nowMs, () => target - t.calls() - 3, progress, d.logger);
+  // Core-7 (M11, #43): due but the plan has no room (a large estate's sweep spends more than the plan): run it anyway,
+  // bounded by the reserve, so expiry runs at any flow count and the store never fills.
+  else if (!progress.expiryRan && (hourlyDue || backlogDue)) await expireKeysSafely(docs, nowMs, () => 0, progress, d.logger, reserveFor(3));
   const lastExpiredAt = progress.lastExpiredAt ?? meta?.lastExpiredAt;
 
   // Snapshot: the 60 minutes up to meterEnd (an hour a hold reaches back into is read now if it wasn't).
@@ -2060,6 +2261,11 @@ async function sweepLocked(a: LockedArgs): Promise<Partial<SweepResult>> {
       calls: plannedFinal,
       metricsSource: 'metrics-query',
       previous: prevSnapshot,
+      zone: tz,
+      // Core-14 (m3): a backfill's every minute feeds the 24 h ratio series (steady state: the same hours as the snapshot).
+      ...(minuteDocs.size > snapshotHours.length ? { ratioRows: mergeRowsByFlow([...minuteDocs.values()]) } : {}),
+      // Core-6 (#42): where the rows it holds begin (the first run's seed hour, or the snapshot's first hour).
+      ...(minuteDocs.size > 0 ? { rowsFromMs: Math.min(...minuteDocs.keys()) } : {}),
     }),
     SNAPSHOT_MAX_BYTES,
   );
@@ -2074,6 +2280,9 @@ async function sweepLocked(a: LockedArgs): Promise<Partial<SweepResult>> {
     lastExpiredAt,
     ...(leftToDeliver ? { deliveryDeferredAt: nowIso } : {}),
     ...(gap ? { gap } : {}),
+    // Core-14 (m18): a catch-up that is still slicing keeps the span that worked; caught up, it goes back to the full span.
+    ...(sliced && meta?.metricsSpanMs ? { metricsSpanMs: meta.metricsSpanMs } : {}),
+    ...(firstRun ? { firstMetering: true } : {}),
   });
   await docs.putMeta(nextMeta);
 
@@ -2097,6 +2306,8 @@ async function sweepLocked(a: LockedArgs): Promise<Partial<SweepResult>> {
     snapshotBytes: bytes,
     snapshot,
     meta: nextMeta,
+    ...(logs.length > 0 ? { attempts: logs } : {}),
+    ...(deferred ? {} : { deliveryEndpoints: endpoints.map((e) => e.id), deliveryReminderMinutes: th.cooldownMinutes }),
   };
 }
 

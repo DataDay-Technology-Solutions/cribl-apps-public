@@ -66,7 +66,7 @@ test.describe('Cribl notifications in the emulator', () => {
     );
     const messages = await bellMessages(page);
     expect(messages).toHaveLength(1);
-    expect(messages[0]).toMatchObject({ severity: 'error', title: expect.stringMatching(/^Test: /) });
+    expect(messages[0]).toMatchObject({ severity: 'info', title: expect.stringMatching(/^Test: /) }); // founder-build r1 core-11 (m2): tests post as info
     expect(messages[0].id).toMatch(/^meter-reader-test-/);
     expect((await mockCalls(page)).byRoute['POST /system/messages']).toBe(1);
     expect(errors()).toEqual([]);
@@ -219,7 +219,9 @@ test.describe('an alert the bell could not deliver', () => {
     await expect(rail).toContainText(/Sent to Cribl notifications ✓/, { timeout: 30_000 });
     const messages = await bellMessages(page);
     expect(messages.length).toBeGreaterThan(0);
-    expect(messages[0].id).toMatch(/^meter-reader-inc_.*-(high|medium)$/);
+    // On a Monday after 12:00 UTC the tab's weekly receipt can reach the bell first (meter-reader-receipt-…): find the
+    // alert's message among them rather than assuming it is the first.
+    expect(messages.map((m) => m.id).find((id) => id.startsWith('meter-reader-inc_'))).toMatch(/^meter-reader-inc_.*-(high|medium)$/);
     expect(errors()).toEqual([]);
   });
 });

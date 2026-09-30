@@ -53,7 +53,8 @@ describe('defaultSettings', () => {
     expect(s.schemaVersion).toBe(1);
     expect(s.updatedAt).toBe(NOW);
     expect(s.displayTimezone).toBe(TZ);
-    expect(s.headlinePeriodDefault).toBe('mtd');
+    // Founder-build r2 ui-2 (named item (a)): a new install opens the Receipt on the annualized run rate.
+    expect(s.headlinePeriodDefault).toBe('annualized');
     expect(s.presenter).toEqual({ headlinePeriod: 'annualized', qrUrl: DEFAULT_QR_URL });
     expect(s.live).toEqual({ pollSeconds: 10, presenterPollSeconds: 5 });
     expect(s.thresholds).toEqual({
@@ -296,8 +297,15 @@ describe('mergeSettings', () => {
     expect(m.thresholds.spikeSigma).toBe(3);
     expect(m.live.pollSeconds).toBe(10);
     expect(m.displayTimezone).toBe(TZ);
-    expect(m.headlinePeriodDefault).toBe('mtd');
+    expect(m.headlinePeriodDefault).toBe('annualized');
     expect(m.runtime).toBe('ui');
+  });
+  it('never migrates a stored headline period: a stored \'mtd\' stays the member\'s (r2 ui-2, ruling 5)', () => {
+    expect(defaults.headlinePeriodDefault).toBe('annualized');
+    expect(mergeSettings({ headlinePeriodDefault: 'mtd' }, defaults).headlinePeriodDefault).toBe('mtd');
+    expect(mergeSettings({ headlinePeriodDefault: 'today' }, defaults).headlinePeriodDefault).toBe('today');
+    // A settings document without the field (an older build's partial write) takes the new default.
+    expect(mergeSettings({ displayTimezone: TZ }, defaults).headlinePeriodDefault).toBe('annualized');
   });
   it('returns defaults for non-objects', () => {
     expect(mergeSettings(null, defaults)).toEqual(defaults);

@@ -6,10 +6,14 @@
 // - Sample / replay data is never written back to KV.
 // - Settings and prices saves are explicit user actions (a Save button); nothing here writes on load,
 //   on render or on a timer. The sweep writes its own documents inside core `runSweep()`.
+// - One exception, part of the sweep (founder-build r2 ui-3, FINDINGS_R2 #4, contract C1''): a live workspace with no
+//   settings document gets one right before this tab's first sweep, once, through ensureSettingsStored — the zone the
+//   workspace was already metered in (snapshot.zone), else this tab's. It never overwrites a stored document (another
+//   tab's is adopted) and never runs on the tour's or replay's sample (guardWrite).
 
 import type { Meta, PricesDoc, RollHourDoc, Settings, Snapshot, TotalsDoc } from '../../core/types.ts';
 import type { RangeSpec } from '../../core/range.ts';
-import { fromIso } from '../../core/time.ts';
+import { fromIso, isValidTimeZone } from '../../core/time.ts';
 import { IS_DEMO_BUILD } from '../lib/env.ts';
 import type { HostTheme } from '../theme/bridge.ts';
 import { hydrate, hydrateSecondary, retrySettings, type HydrateDeps } from './hydrate.ts';
@@ -22,6 +26,9 @@ import { classifyError, type ApiErrorInfo, type AppStore, type DataSource } from
 import { sampleRollups, type SampleRollups } from '../../core/sampleRollups.ts';
 import type { RangeReader } from './rangeReader.ts';
 import type { AppState } from './store.ts';
+
+/** Zones that mean "the UTC default", not a member's choice (1.1.0 and a settings-less runner bucket in UTC). */
+const UTC_ZONES = /^(Etc\/)?(UTC|UCT|GMT|Universal|Zulu|Greenwich)$/;
 
 export type WriteResult =
   /** `merged`: another tab saved first, and this save was appended on top of it (prices, P1-D04). */
@@ -113,8 +120,9 @@ export function createAppServices(deps: ServicesDeps): AppServices {
     retrySettings: () => retrySettings(hydrateDeps),
     includeDemoState,
   });
-  const meter = createMeterLoop({ store, engine, refresh: () => live.pollNow(), timers: deps.timers, now });
-  const rangeReader = docs.rollups ? createRangeReader({ rollups: docs.rollups, now }) : null;
+
+  // r3 ui-5 (H9): the live reader plans the minute family only within the sweep's minute retention (meta).
+  const rangeReader = docs.rollups ? createRangeReader({ rollups: docs.rollups, now, minuteRetentionHours: () => store.getState().meta?.minuteRetentionHours }) : null;
 
   // The tour's sample shows a custom range too (P2-W05): its rollups are synthesized in memory from the snapshot
   // on screen (core/sampleRollups.ts) — nothing is read from KV and nothing is written. One reader per snapshot.
@@ -139,6 +147,57 @@ export function createAppServices(deps: ServicesDeps): AppServices {
     return null;
   };
 
+  /**
+   * Makes sure KV holds a settings document (B1): adopts one another tab stored since hydration, else writes the
+   * settings this tab shows. Returns a failed WriteResult when either step fails (nothing else is written then).
+   */
+  const ensureSettingsStored = async (overrides: Partial<Settings> = {}): Promise<WriteResult | null> => {
+    let stored: Settings | null;
+    try {
+      stored = await docs.readSettings();
+    } catch (error) {
+      return { ok: false, reason: 'error', error: classifyError(error, now()) };
+    }
+    if (stored) {
+      store.setState({ settings: mergeSettings(stored), settingsStored: true });
+      return null;
+    }
+    const doc: Settings = { ...store.getState().settings, ...overrides, updatedAt: new Date(now()).toISOString() };
+    try {
+      await docs.writeSettings(doc);
+    } catch (error) {
+      return { ok: false, reason: 'error', error: classifyError(error, now()) };
+    }
+    store.setState({ settings: doc, settingsStored: true });
+    return null;
+  };
+
+  /**
+   * Founder-build r2 ui-3 (FINDINGS_R2 #4, C1''): before this tab's first live sweep of a workspace with no settings
+   * document, store one — once — so the zone stops depending on which runtime sweeps (an LA tab, a NY tab and the UTC
+   * runner used to re-bucket the month on every sweep). The zone is the one the workspace was metered in
+   * (snapshot.zone), else this tab's (the defaults carry the browser's zone): the tab stores what its Receipt shows.
+   * A UTC snapshot zone is not adopted: it is what 1.1.0 and a settings-less runner bucket in by default, never a zone a
+   * member chose, so such a workspace moves once into this tab's zone (r1-int-tz-upgrade), as the release promised.
+   * A failed write never blocks the sweep; the next sweep tries again.
+   */
+  const persistZoneBeforeSweep = async (): Promise<void> => {
+    const state = store.getState();
+    if (state.settingsStored || guardWrite()) return;
+    const zone = state.snapshot?.zone;
+    const adopt = zone !== undefined && isValidTimeZone(zone) && !UTC_ZONES.test(zone);
+    await ensureSettingsStored(adopt ? { displayTimezone: zone } : {});
+  };
+  const meterEngine: SweepEngine = {
+    ...engine,
+    runLocal: async (mode) => {
+      await persistZoneBeforeSweep().catch(() => undefined);
+      return engine.runLocal(mode);
+    },
+  };
+
+  const meter = createMeterLoop({ store, engine: meterEngine, refresh: () => live.pollNow(), timers: deps.timers, now });
+
   const actions: AppActions = {
     async saveSettings(next) {
       const refused = guardWrite();
@@ -156,6 +215,15 @@ export function createAppServices(deps: ServicesDeps): AppServices {
     async savePrices(next) {
       const refused = guardWrite();
       if (refused) return refused;
+      // B1 / C1': a fresh install has no settings document, so the sweep would bucket Today, MTD and the trend in
+      // UTC while every screen labels them in the member's zone. The first prices save therefore stores the settings
+      // this tab shows (the defaults, carrying the browser's zone) — before the prices, because the meter loop may
+      // start its first sweep the moment prices exist. First-run detection reads prices + snapshot, not settings,
+      // so it is unchanged. A document another tab wrote since hydration is adopted, never overwritten.
+      if (!store.getState().settingsStored) {
+        const adopted = await ensureSettingsStored();
+        if (adopted) return adopted;
+      }
       const base = store.getState().prices;
       let stored: PricesDoc | null;
       try {

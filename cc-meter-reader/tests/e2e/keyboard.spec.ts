@@ -12,8 +12,9 @@
 // Screenshots (the chromium project only, both themes, each width set here): tests/report/screens/wave1-a-*.png.
 
 import { expect, test, type Page } from '@playwright/test';
-import type { Incident, Snapshot } from '../../core/types.ts';
-import { gotoApp, mockControl, resetMock, seedPrices, setTheme, trackConsoleErrors, waitForHydration, type Theme } from './helpers/index.ts';
+import type { Incident, Meta, Snapshot } from '../../core/types.ts';
+import { shouldAutoSendWeekly } from '../../core/weekly.ts';
+import { gotoApp, kvGet, mockControl, pinClockFromEnv, resetMock, seedPrices, setTheme, trackConsoleErrors, waitForHydration, type Theme } from './helpers/index.ts';
 
 const THEMES: Theme[] = ['light', 'dark'];
 const TABS = [
@@ -34,6 +35,7 @@ const STAGE_SIZES = [
 
 /** A priced workspace, so '/' is the Receipt (a never-priced one lands on First run). */
 async function openPriced(page: Page, path = '/'): Promise<void> {
+  await pinClockFromEnv(page);
   await gotoApp(page, '/first-run');
   // Let the view finish loading first: Firefox fails a module import that a navigation cancels, loudly.
   await expect(page.getByTestId('first-run')).toBeVisible();
@@ -593,6 +595,14 @@ test.describe('the single-key off switch and a11y nits (P1-A09)', () => {
     const errors = trackConsoleErrors(page);
     await openPriced(page, '/');
     await expect(page.getByTestId('receipt-hero')).toBeVisible();
+    // r3 ui-9 (FT-R111-4): inside the weekly window a fresh tab sends last week's receipt on its own; a page.goto below
+    // that cuts it off mid-write logs "weekly receipt failed" (the emulator's client has closed, so the PUT falls through
+    // to the dev server). Walk the views only once that send is no longer due (it went out, or never was).
+    await expect
+      .poll(async () => shouldAutoSendWeekly(JSON.parse((await kvGet(page, 'meta')) ?? 'null') as Meta | null, await page.evaluate(() => Date.now())), {
+        timeout: 90_000,
+      })
+      .toBe(false);
     const cases = [
       { path: '/', title: 'Receipt – Meter Reader', ready: () => expect(page.getByTestId('receipt-hero')).toBeVisible() },
       { path: '/flow', title: 'Flow – Meter Reader', ready: () => expect(page.locator('main h1')).toHaveText('Flow') },

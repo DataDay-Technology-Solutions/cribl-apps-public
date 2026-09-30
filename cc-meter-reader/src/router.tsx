@@ -48,7 +48,9 @@ import { useAppParams } from './lib/params.ts';
 import { useAppState } from './state/react.tsx';
 import { homeTarget } from './state/selectors.ts';
 import { TourParamSync } from './tour/TourParamSync.tsx';
-import { setHistoryBackedRouter } from './components/Shell/useShellEffects.ts';
+import { livePathname, setHistoryBackedRouter } from './components/Shell/useShellEffects.ts';
+import { guardNavigation, installPopstateGuard, targetPath } from './lib/navGuard.ts';
+import { meterYoursPending } from './tour/status.ts';
 
 declare module '@capra/core' {
   interface RouterConfig {
@@ -128,7 +130,9 @@ function HomeRoute() {
   const { search } = useLocation();
   const target = useAppState(homeTarget);
   if (params.present) return <PresenterView />;
-  if (target === 'first-run') return <Navigate to={{ pathname: '/first-run', search }} replace />;
+  // After the finished tour's "See your own number" the member is on the way to Prices (row 12): the sample is cleared
+  // before that navigation lands, so an unpriced workspace must not be bounced to first run meanwhile.
+  if (target === 'first-run' && !meterYoursPending()) return <Navigate to={{ pathname: '/first-run', search }} replace />;
   return <ReceiptView />;
 }
 
@@ -175,7 +179,8 @@ function AppRoutes() {
 function CapraRouterBridge({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   return (
-    <RouterProvider navigate={(to, options) => void navigate(to, options)} useHref={useHref}>
+    // Every Capra link (the top tabs included) asks the in-app navigation guard first (src/lib/navGuard.ts, r1 ui-5).
+    <RouterProvider navigate={(to, options) => guardNavigation(targetPath(to), () => void navigate(to, options))} useHref={useHref}>
       {children}
     </RouterProvider>
   );
@@ -187,6 +192,10 @@ export function AppRouter() {
     const b = basePath();
     const k = chooseRouter(b);
     setHistoryBackedRouter(k === 'browser'); // the stage keys' "navigation in flight" check (useShellEffects.ts)
+    // Browser Back / Forward ask the in-app leave guard too (r2 ui-10, FINDINGS_R2 #12), History-backed routers only.
+    // Installed here, before the BrowserRouter below mounts: popstate listeners on window run in the order they were
+    // added (capture or not), so the guard's must come before the router's for it to hold a move the router never sees.
+    if (k === 'browser') installPopstateGuard(livePathname);
     return { base: b, kind: k };
   });
   const content = (
