@@ -4,6 +4,27 @@ All notable changes to Meter Reader are recorded here. Versions follow [Semantic
 
 ## [Unreleased]
 
+## [v1.1.5] - 2026-09-30
+
+1.1.4 with two fixes to the Receipt's annualized figure, both found off the README's Try it path, and one fix for cloning on Windows. Nothing else in the App changes. The release grants (`config/policies.yml`) are byte-identical to 1.1.4's, so the Review App screen asks for the same 17 Cribl API permissions and nothing new.
+
+Packages, built with `scripts/package.mjs --ref eca811a` (the commit before the packages): `release/meter-reader-1.1.5.tgz` sha256 `3a50a1c0153b41dadb2bfb56adb2d8184b8ba542099478b19db09262ccab2248` (105 files) and the Enterprise variant `release/meter-reader-1.1.5-backend.tgz` `530e4f7be6ef2a878b9438308a3cfbdb0b444ac47b8c11f78371aae4f944fc23` (110 files), both in `release/SHA256SUMS` (12 lines, `shasum -a 256 -c` all OK; the 1.1.0–1.1.4 lines are unchanged). Their `default/policies.yml` is sha256 `c59ae750…fdbf2`, byte-identical to 1.1.4's and to `config/policies.yml`. Beside 1.1.4's packages, only three things differ inside them: the version number, the README's package file names and Version row, and the few lines behind the two annualized fixes. No demo build was made for 1.1.5.
+
+### Fixed
+
+- **Choosing "Nowhere (archive-only data)" no longer shows a huge, growing "You paid".** With DevNull priced and **Without Cribl this data would go to** set to **Nowhere**, the annualized line on the Receipt read "You paid" about $320,000 a year, and climbed with every sweep, for a flow that costs about $2,700 a year; "Where the money goes" on the same page was right. Money that is paid but saves nothing by design now counts as traffic when the meter works out where traffic began, so the annualized "You paid" is the real yearly rate from the first sweep and holds steady from sweep to sweep and hour to hour.
+- **Pressing Start the meter before any traffic exists no longer overstates the annualized figure.** When the Datagen was built a few minutes after Start, the first minute of traffic the meter picked up had its savings counted but its minute left out, so the annualized figure read up to 3× the truth in its first minutes and was still about 20% high after 13 minutes, and the caption ("projected from the last N minutes of traffic") counted fewer minutes than had been metered. The figure is now within 2% of the truth from the first sweep that sees the traffic, and the caption counts every metered minute of it.
+- **A clone with Windows line endings passes `npm test`.** Git for Windows checks text files out with CRLF line endings by default, and 22 tests that compare against the LF packages failed. A root `.gitattributes` now checks text out with LF and marks the `.tgz` packages, images and fonts as binary. No committed file changes.
+
+Both annualized fixes are covered by new tests that failed on 1.1.4 and pass now: `tests/unit/r115-pricedsince.test.ts` (the arithmetic, and that flows which would have paid read exactly as before) and `tests/integration/r115-annualized-paid-only-and-early-start.test.ts` (end to end through the sweep).
+
+**Upgrading over 1.1.4:** a workspace that already metered under 1.1.4 with Nowhere chosen keeps the starting minute 1.1.4 recorded, so its annualized "You paid" reads too high, less so each day, until that minute is 30 days old. Remove the App and import it again (removing it clears the App's data) for a clean figure. A fresh install is not affected.
+
+### Changed
+
+- Version 1.1.5: `package.json`, `package-lock.json`, and the README's package file names and Version row.
+- README, Stage One checklist: `DataDay-Technology-Solutions/cribl-apps-public` is described as what it is, a staging copy that may lag this repository; install from this repository.
+
 ## [v1.1.4] - 2026-09-29
 
 The release that replaces 1.1.0 as the submission package: 1.1.3 (founder-build rounds 1–3, never published) plus the fixes a judge-path validation of 1.1.0 asked for on 29 September (the published 1.1.0 installed, but read $0 for a plain Datagen, the likeliest way a judge tests it, and had three other first-run traps). `release/meter-reader-1.1.4.tgz` is built from this tree. The release grants (`config/policies.yml`, sha256 `c59ae750…`) are byte-identical to 1.1.0's, so the Review App screen asks for the same 17 Cribl API permissions and nothing new. The 1.1.0–1.1.3 packages stay beside it in `release/SHA256SUMS`.

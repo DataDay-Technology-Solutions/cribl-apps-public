@@ -12,9 +12,9 @@ A free, open-source Cribl App built by Steve Koelpin. It turns Cribl's throughpu
 
 \* For demonstration purposes only. Does not reflect actual prices.
 
-**Status:** v1.1.4, the judge-path release: it replaces 1.1.0 and fixes a plain Datagen Source that metered nothing, and other first-run issues. It is the same tree as the hackathon submission, [Cribl-Community/cc-meter-reader](https://github.com/Cribl-Community/cc-meter-reader). **Latest release:** [meter-reader-v1.1.4](../../releases/tag/meter-reader-v1.1.4)
+**Status:** v1.1.5: it replaces 1.1.4 and fixes the annualized figure when a destination's "without Cribl" choice is Nowhere or the meter starts before any traffic; it keeps 1.1.4's fixes to 1.1.0 (a plain Datagen Source that metered nothing, and other first-run issues). It is the same tree as the hackathon submission, [Cribl-Community/cc-meter-reader](https://github.com/Cribl-Community/cc-meter-reader). **Latest release:** [meter-reader-v1.1.5](../../releases/tag/meter-reader-v1.1.5)
 
-**Install:** download `meter-reader-1.1.4.tgz` from the [meter-reader-v1.1.4 release](../../releases/tag/meter-reader-v1.1.4), then in Cribl open **Apps** → **Import from File** (under **Build my own App ▾** on a workspace with no Apps yet, under **Add App** once one is installed) → **Import** → **Install**. The release declares no external host and no backend, so it installs on every Cribl.Cloud plan, Standard included. This is an App, not a pack: it is not imported under Processing → Packs.
+**Install:** download `meter-reader-1.1.5.tgz` from the [meter-reader-v1.1.5 release](../../releases/tag/meter-reader-v1.1.5), then in Cribl open **Apps** → **Import from File** (under **Build my own App ▾** on a workspace with no Apps yet, under **Add App** once one is installed) → **Import** → **Install**. The release declares no external host and no backend, so it installs on every Cribl.Cloud plan, Standard included. This is an App, not a pack: it is not imported under Processing → Packs.
 
 **Watch:** the [6-minute walkthrough](https://youtu.be/_4KhXD4fvTk).
 
