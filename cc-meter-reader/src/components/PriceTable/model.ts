@@ -147,12 +147,17 @@ const unpricedItself = (e: { unpriced: boolean; counterfactualUnpriced: boolean 
 
 /**
  * "This destination" / every OTHER destination in the same group (pricing never crosses groups) / "Nowhere".
- * A destination with no stored price is captioned "(no price yet)": crediting diverted data at it counts $0 (P1-F01).
+ * A destination with no price is captioned "(no price yet)": crediting diverted data at it counts $0 (P1-F01). A free
+ * output type with no stored price is priced at $0 once any price is saved (D33, the row's own badge, core/pricing.ts
+ * effectivePrices), so it reads "(free, $0)" — never "(no price yet)" beside a row that says free (r1 ui-9, m4).
  */
 export function counterfactualOptions(row: Destination, rows: readonly PriceRow[]): Option[] {
   const others = rows
     .filter((r) => r.groupId === row.groupId && r.outputId !== row.outputId)
-    .map((r) => ({ id: `other:${r.outputId}`, label: r.stored ? r.name : t('settings.prices.cfNoPrice', { name: r.name }) }));
+    .map((r) => ({
+      id: `other:${r.outputId}`,
+      label: r.stored ? r.name : r.unpriced ? t('settings.prices.cfNoPrice', { name: r.name }) : t('settings.prices.cfFree', { name: r.name }),
+    }));
   return [{ id: 'same', label: t('settings.prices.cfSame') }, ...others, { id: 'none', label: t('settings.prices.cfNone') }];
 }
 

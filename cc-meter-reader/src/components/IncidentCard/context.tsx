@@ -6,6 +6,7 @@ import { Fragment, useCallback, useMemo, useSyncExternalStore, type ReactNode } 
 import type { DemoState, Meta, NotificationEndpoint, Settings } from '../../../core/types.ts';
 import { descriptorEndpoints } from '../../../core/env-webhooks.ts';
 import { useOptionalStoreApi } from '../../state/react.tsx';
+import { browserTimeZone, receiptZone } from '../../lib/zone.ts';
 
 export interface IncidentContextValue {
   endpoints?: readonly NotificationEndpoint[];
@@ -14,6 +15,8 @@ export interface IncidentContextValue {
   muted?: Record<string, string>;
   /** P1-F07: a member's "Mute for 24 hours" (settings.mutes), with who muted it. */
   mutes?: Settings['mutes'];
+  /** Founder-build r2 ui-4: the regression alert's $/day floor (settings.thresholds), for a below-floor close's words. */
+  floorCentsPerDay?: number;
 }
 
 const noopUnsubscribe = () => {};
@@ -24,19 +27,28 @@ export function useIncidentContext(): IncidentContextValue {
   const getSettings = useCallback((): Settings | null => store?.getState().settings ?? null, [store]);
   const getDemo = useCallback((): DemoState | null => store?.getState().demoState ?? null, [store]);
   const getMeta = useCallback((): Meta | null => store?.getState().meta ?? null, [store]);
+  // r3 ui-1 (C3): the Receipt's zone (stored settings → snapshot.zone → this browser's); the boot defaults carry the
+  // browser's zone, so a settings-less workspace's cards would otherwise time its alerts in a zone its days are not in.
+  const getZone = useCallback((): string | undefined => {
+    const s = store?.getState();
+    if (!s) return undefined;
+    return receiptZone({ settingsStored: s.settingsStored || s.source !== 'live', displayTimezone: s.settings.displayTimezone }, s.snapshot?.zone, browserTimeZone());
+  }, [store]);
   const settings = useSyncExternalStore(subscribe, getSettings, getSettings);
+  const zone = useSyncExternalStore(subscribe, getZone, getZone);
   const demo = useSyncExternalStore(subscribe, getDemo, getDemo);
   const meta = useSyncExternalStore(subscribe, getMeta, getMeta);
   return useMemo(
     () => ({
       // The stored Cribl channels, then the runner's .env webhooks by name (D57: meta carries names, never URLs).
       endpoints: settings ? [...settings.notifications, ...descriptorEndpoints(meta?.deliveryWebhooks)] : undefined,
-      tz: settings?.displayTimezone,
+      tz: zone,
       labels: settings?.humanize,
       muted: demo?.muted,
       mutes: settings?.mutes,
+      floorCentsPerDay: settings?.thresholds?.regressionMinCentsPerDay,
     }),
-    [settings, demo, meta],
+    [settings, demo, meta, zone],
   );
 }
 

@@ -18,7 +18,7 @@ import { RECOVERY_POINTS, incidentId, severityRank } from './incidents.ts';
 import { parseObjectKey } from './flows.ts';
 import { MINUTE_MS, daysInMonth, fromIso, minuteFloor, toIso } from './time.ts';
 import { budgetPace } from './pricing.ts';
-import { goodNewsActive } from './settings.ts';
+import { demoSettleOn, goodNewsActive } from './settings.ts';
 
 export const DEMO_PROFILE_NOTE = 'demo-profile';
 /** Recovery band for regressions: back within this many points of the frozen baseline (defined with the readings it shapes). */
@@ -43,6 +43,15 @@ export const SPIKE_HIGH_MULTIPLE = 2;
 /** Outside the demo profile a spike opens at most once per object in this window (an hourly batch pages once a day). */
 export const SPIKE_REPEAT_MS = 24 * 60 * MINUTE_MS;
 export const NEW_NORMAL_NOTE = 'new-normal';
+
+/**
+ * Founder-build r1 (FOUNDER_PLAN row 9, PACK_PAYOFF F1/F2): under the demo profile (1-minute confirmation), a good-news
+ * minute that starts less than this long after its commit's deploy is the Worker reload's transitional minute (Sunday:
+ * the deploy at 12:39:50 read 19 % on 12:40, settled at 34 % from 12:41). It does not fire: the frozen baseline is kept,
+ * the streak restarts and the minute is not learned; the first qualifying minute starting at least this long after
+ * the deploy fires with that minute's reading. `settings.demo.settle: false` turns it off (demoSettleOn).
+ */
+export const SETTLE_MS = 60_000;
 
 /** The σ the spike rule uses: the learned σ, floored at 15 % of the mean and $1/hour (P1-F06). */
 export function spikeSigma(b: Baseline | undefined, mean = b?.mean ?? 0): number {
@@ -358,6 +367,12 @@ export function detect(input: DetectInput): DetectOutput {
         if (gs.streak >= th.regressionMinutes) {
           const firstMs = fromIso(gs.firstQualifyingAt ?? toIso(minuteStart));
           const commit = matchCommit(commits, key, { sinceMs: firstMs - windowMs, untilMs: nowMs, ...ctx });
+          if (commit && demoProfile && demoSettleOn(settings) && minuteStart - commitTimeMs(commit) < SETTLE_MS) {
+            // Row 9: the deploy's transitional minute. Keep the frozen baseline, restart the streak, and keep counting
+            // (so the baseline never learns this minute); the first minute that starts ≥ SETTLE_MS after the deploy fires.
+            rules[goodKey] = { ...gs, streak: 0 };
+            continue;
+          }
           delete rules[goodKey];
           if (commit) {
             // One-shot: the improvement is announced once and becomes the new normal (re-learned).

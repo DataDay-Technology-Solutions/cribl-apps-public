@@ -82,7 +82,7 @@ describe('demo lever client', () => {
   it('maps the Leader calls a lever makes to the status line’s stage', () => {
     expect(stageForCall('PATCH', '/m/default/pipelines/mrd_pay_sample')).toBe('saving');
     expect(stageForCall('PATCH', '/m/default/routes/default')).toBe('saving');
-    expect(stageForCall('GET', '/m/default/version/status')).toBe('committing');
+    expect(stageForCall('GET', '/m/default/version/status')).toBeNull();
     expect(stageForCall('POST', '/m/default/version/commit')).toBe('committing');
     expect(stageForCall('PATCH', '/products/stream/groups/default/deploy')).toBe('deploying');
     expect(stageForCall('PUT', '/kvstore/timeline')).toBe('recording');

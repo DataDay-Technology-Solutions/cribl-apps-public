@@ -102,8 +102,12 @@ export const PAYLOAD_STRINGS = {
   closedBy: ' by {by}',
   closedAsNewNormal: 'Closed as the new normal',
   recovered: 'Recovered',
+  /** Core-10 (M9): the plain text's close word for a below-floor close. */
+  closed: 'Closed',
   weeklyFallback: '{glyph} Meter Reader weekly receipt · {label} · Saved by Cribl {amount}',
   weeklyHeader: '{glyph} Weekly receipt · {label}',
+  /** Founder-build r3 core-2: the bell's weekly line for a week metered in part ('metered 71% of the week'). */
+  weeklyCoverage: 'metered {pct} of the week',
   openReceipt: 'Open the Receipt',
   openLedger: 'Open in Ledger',
   openLedgerAt: 'Open in Ledger: {link}',
@@ -119,6 +123,8 @@ export const PAYLOAD_STRINGS = {
     closedNoDuration: '{perDay} a day above normal while it lasted',
     perDayPerYear: '{perDay} a day · {perYear} a year',
     overBudget: '{perDay} a day over budget',
+    // Founder-build r1 core-10 (M9, D26/D47): closed by the dollar floor, not recovered — the ratio is still down.
+    belowFloor: 'fell under the {floor}/day floor; savings still at {after}',
   },
   demoProfile: ' · 1-minute confirmation (demo profile). Default is 3.',
   noChange: 'No configuration change found nearby',
@@ -167,11 +173,25 @@ export const PAYLOAD_STRINGS = {
     closed: ' · {closed} {at}',
   },
   servicenowWeekly: 'Meter Reader weekly receipt {label}',
-  // "Send a test alert": the SPEC 12.1 example incident every test payload carries.
+  // "Send a test alert": the SPEC 12.1 example incident every test payload carries. Founder-build r1 core-11 (m8,
+  // #14): neutral names — a release's test alert quotes no demo-rig object (no "mrd_", no "demo:").
   testSample: {
-    label: 'Payments API sampling',
-    commitMessage: 'demo: break the trim on mrd_pay_sample',
+    label: 'Example pipeline',
+    commitMessage: 'Example: a pipeline change',
+    objectId: 'example_pipeline',
+    outputId: 'example_destination',
   },
+} as const;
+
+/**
+ * A commit author as every surface prints it (founder-build r1 core-4, contract C5: core/humanize.ts displayAuthor is
+ * the one author function; src/lib/author.ts delegates to it). The same words src/copy/en.ts `commits.apiClient` and
+ * `commits.unknownAuthor` carry (tests/unit/r1-core-author.test.ts holds them equal).
+ */
+export const AUTHOR_STRINGS = {
+  /** An API credential's commit, unnamed: the client id's last four characters, never the id. */
+  apiClient: 'API client ··{tail}',
+  unknownAuthor: 'unknown author',
 } as const;
 
 /**
@@ -187,5 +207,39 @@ export const CREDIT_STRINGS = {
   signature: 'Meter Reader by Steve Koelpin',
 } as const;
 
+/**
+ * Founder-build r2 core-6 (FINDINGS_R2 #2, contract C3): the Report card's words for an alert that closed without
+ * recovering, in the channels' M9/m15 wording (PAYLOAD_STRINGS: the floor's "Closed", a member's "Accepted as the new
+ * normal" / "Muted" / "Alerts stopped", P1-F06's "New normal"), so the CFO document never calls one "Recovered". The
+ * money lines are PAYLOAD_STRINGS.impact's: belowFloor for the floor, open ("… a year if left") for a member's close.
+ */
+export const REPORT_STRINGS = {
+  status: {
+    belowFloor: 'Closed',
+    accepted: 'Accepted as the new normal',
+    muted: 'Muted',
+    excluded: 'Alerts stopped',
+    newNormal: 'New normal',
+  },
+  /** The protection summary when nothing is open but not every alert recovered. */
+  summaryNoneOpen: '{alerts} · none open',
+  /** The Protection KPI's line for the same case. */
+  kpiNoneOpen: '{amount} a day above normal when caught, none open',
+  /**
+   * R2 core-7 (FINDINGS_R2 #3, contract C4): beside every figure built on the list-price estimate of the Cribl cost
+   * (Settings' criblCostEstimate) — the payback multiple, the ROI and the net — in every renderer.
+   */
+  estimateLabel: '(estimate at list price)',
+  csv: {
+    /** R2 core-7: the column that says the Cribl cost behind the report is the list-price estimate. */
+    criblCostIsEstimateHeader: 'cribl_cost_is_estimate',
+    yes: 'true',
+    no: 'false',
+    /** IC-13: the last row of a sample card's CSV (the record column reads 'note'); no comma, so the row stays plain. */
+    noteRecord: 'note',
+    sampleNote: 'SAMPLE DATA: the Meter Reader tour workspace (not a live workspace)',
+  },
+} as const;
+
 /** Every user-facing word core/ writes into a receipt or a notification (re-exported by src/copy/en.ts). */
-export const CORE_STRINGS = { receipt: RECEIPT_STRINGS, payload: PAYLOAD_STRINGS, credit: CREDIT_STRINGS } as const;
+export const CORE_STRINGS = { receipt: RECEIPT_STRINGS, payload: PAYLOAD_STRINGS, credit: CREDIT_STRINGS, author: AUTHOR_STRINGS, report: REPORT_STRINGS } as const;

@@ -56,6 +56,23 @@ async function openSampleReceipt(page: Page): Promise<void> {
   await page.getByTestId('receipt-hero').waitFor();
 }
 
+/**
+ * The sample tour's Receipt on month to date from its first paint: the tour opens on its annualized run rate
+ * (founder-build r1 ui-2), a whole-day rate shown still, so a page that must first-paint the ticking month to date
+ * starts the tour from a first-run page carrying ?period=mtd (the tour button keeps the page's params).
+ */
+async function openSampleReceiptOnMtd(page: Page): Promise<void> {
+  await gotoApp(page, '/');
+  await resetMock(page);
+  await gotoApp(page, '/first-run?period=mtd');
+  await expectPath(page, '/first-run');
+  await page.getByTestId('first-run').getByRole('button', { name: 'Tour with sample data' }).click();
+  await expectPath(page, '/');
+  await expect(page.locator('[data-callout="sample-band"]')).toBeVisible();
+  await page.getByTestId('receipt-hero').waitFor();
+  await expect(page.locator('.mr-receipt-view')).toHaveAttribute('data-period', 'mtd');
+}
+
 async function blur(page: Page): Promise<void> {
   await page.evaluate(() => (document.activeElement instanceof HTMLElement ? document.activeElement.blur() : undefined));
   await page.mouse.move(0, 0);
@@ -66,6 +83,9 @@ test.describe('W3-RECEIPT-1: the Receipt bar adds up and agrees with the Report 
     const errors = trackConsoleErrors(page, [TRACER_IN_SANDBOX]);
     await openSampleReceipt(page);
     const hero = page.getByTestId('receipt-hero');
+    // The tour opens on its annualized run rate (founder-build r1 ui-2); month to date is one click away.
+    await expect(page.locator('.mr-receipt-view')).toHaveAttribute('data-period', 'annualized');
+    await page.getByRole('radio', { name: 'MTD' }).click();
     await expect(page.locator('.mr-receipt-view')).toHaveAttribute('data-period', 'mtd');
     const whp = dollars(await hero.locator('.mr-rbar-whp .mr-rbar-amount').innerText());
     const paid = dollars(await hero.locator('.mr-rbar-legend-paid .mr-rbar-amount').innerText());
@@ -220,18 +240,20 @@ interface RollFrame {
   v: number;
   /** each wheel strip's translate, in % of the strip (0 = the wheel shows 0) */
   wheels: number[];
+  /** the address when the frame was drawn (r2 ui-14: a second visit's frames are the ones back on '/') */
+  p?: string;
 }
 
 /** Records every frame of the Receipt hero figure from the page's start: its value attribute and its wheels. */
 async function recordHero(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    const seen: { t: number; v: number; wheels: number[] }[] = [];
+    const seen: { t: number; v: number; wheels: number[]; p: string }[] = [];
     (window as unknown as { __mrRoll: typeof seen }).__mrRoll = seen;
     const tick = () => {
       const el = document.querySelector('[data-testid="receipt-hero"] [data-callout="saved"][data-value-m]');
       if (el) {
         const wheels = [...el.querySelectorAll<HTMLElement>('.mr-meter-strip')].map((w) => Math.abs(parseFloat(/,\s*(-?[\d.]+)%/.exec(w.style.transform)?.[1] ?? '0')));
-        seen.push({ t: performance.now(), v: Number(el.getAttribute('data-value-m')), wheels });
+        seen.push({ t: performance.now(), v: Number(el.getAttribute('data-value-m')), wheels, p: location.pathname });
       }
       requestAnimationFrame(tick);
     };
@@ -247,7 +269,7 @@ test.describe('W3-RECEIPT-5: the Receipt hero rolls up from $0 on first paint, o
   test('the wheels turn up from $0 for over a second while data-value-m says the figure from the first frame', async ({ page }) => {
     const errors = trackConsoleErrors(page);
     await recordHero(page);
-    await openSampleReceipt(page);
+    await openSampleReceiptOnMtd(page);
     await page.waitForTimeout(1_600);
     const seen = await frames(page);
     expect(seen.length).toBeGreaterThan(10);
@@ -283,11 +305,13 @@ test.describe('W3-RECEIPT-5: the Receipt hero rolls up from $0 on first paint, o
     await expectPath(page, '/');
     await page.getByTestId('receipt-hero').locator('[data-value-m]').waitFor();
     await page.waitForTimeout(400);
-    const again = await frames(page);
+    // The second visit's frames: those drawn with the address back on '/'. (While the Ledger's view loads, the Receipt
+    // can stay on screen under /ledger for a frame or two; r2 ui-14 ends its ease there, so it never rolls on the return.)
+    const again = (await frames(page)).filter((f) => f.p === '/');
     expect(again.length).toBeGreaterThan(0);
     const lead = again[again.length - 1].wheels[0];
     expect(lead).toBeGreaterThanOrEqual(9);
-    expect(again.filter((f) => f.wheels[0] !== lead).length, 'no roll-up on a second visit').toBe(0);
+    expect(again.filter((f) => f.wheels[0] !== lead).length, `no roll-up on a second visit (data-value-m: first visit ${final.v}, second ${again[0].v} → ${again[again.length - 1].v})`).toBe(0);
     // (A tour beat may land a new snapshot meanwhile: the figure then eases to it, it never rolls up from $0.)
     expect(again[0].v).toBeGreaterThanOrEqual(again[again.length - 1].v * 0.5);
     expect(errors()).toEqual([]);

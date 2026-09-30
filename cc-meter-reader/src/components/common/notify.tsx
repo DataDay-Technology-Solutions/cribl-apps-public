@@ -11,7 +11,10 @@
 //     the stage clears what is showing — the stage's own status line and the takeover card are the message
 //     there (P0-09). A keyed toast refused on the stage shows the next time its caller asks after the stage;
 //   • motion: every toast body carries `data-mr-toast`, which Toasts.css uses to fade and slide the toast in
-//     (Capra's medium.1 step, 200 ms; none under reduced motion).
+//     (Capra's medium.1 step, 200 ms; none under reduced motion);
+//   • by source (founder-build r2 ui-6, IC-3): `notify.tagged('tour')` tags a toast with who raised it, and
+//     `notify.clearTag('tour')` closes every one still open — Clear sample data and any tour exit leave none of the
+//     sample's toasts (its dollar figures, View in Ledger, View message) over the member's own workspace.
 
 import type { ReactNode } from 'react';
 import { Toast, type ToastOptions } from '@capra/core';
@@ -29,6 +32,8 @@ interface OpenToast {
   key?: string;
   /** When Capra's own timer will have closed it (Infinity: sticky until closed). */
   until: number;
+  /** Who raised it (`notify.tagged`), so its source can close it (`notify.clearTag`). */
+  tag?: string;
 }
 
 const openById = new Map<string, OpenToast>();
@@ -54,7 +59,7 @@ function openFor(key: string): string | undefined {
   return id;
 }
 
-function show(kind: Kind, content: ReactNode, options?: ToastOptions, key?: string): string {
+function show(kind: Kind, content: ReactNode, options?: ToastOptions, key?: string, tag?: string): string {
   if (onStage) return '';
   const dedupeKey = key ?? (typeof content === 'string' ? `text:${kind}:${content}` : undefined);
   if (dedupeKey !== undefined) {
@@ -78,7 +83,7 @@ function show(kind: Kind, content: ReactNode, options?: ToastOptions, key?: stri
     opts,
   );
   const duration = opts.duration ?? CAPRA_DEFAULT_DURATION_MS;
-  openById.set(id, { key: dedupeKey, until: duration > 0 ? Date.now() + Math.max(duration, CAPRA_MIN_DURATION_MS) : Infinity });
+  openById.set(id, { key: dedupeKey, until: duration > 0 ? Date.now() + Math.max(duration, CAPRA_MIN_DURATION_MS) : Infinity, ...(tag !== undefined ? { tag } : {}) });
   if (dedupeKey !== undefined) openByKey.set(dedupeKey, id);
   return id;
 }
@@ -108,6 +113,25 @@ export const notify = {
     if (id === undefined) return;
     forget(id);
     Toast.destroy(id);
+  },
+
+  /** The same four kinds, each toast tagged with its source (`clearTag` closes them together). */
+  tagged(tag: string) {
+    return {
+      success: (content: ReactNode, options?: ToastOptions) => show('success', content, options, undefined, tag),
+      info: (content: ReactNode, options?: ToastOptions) => show('info', content, options, undefined, tag),
+      warning: (content: ReactNode, options?: ToastOptions) => show('warning', content, options, undefined, tag),
+      error: (content: ReactNode, options?: ToastOptions) => show('error', content, options, undefined, tag),
+    };
+  },
+
+  /** Closes every open toast raised with `tag` (Capra calls each one's onClose). */
+  clearTag(tag: string): void {
+    for (const [id, entry] of [...openById]) {
+      if (entry.tag !== tag) continue;
+      forget(id);
+      Toast.destroy(id);
+    }
   },
 
   /** Presenter or Story mode is up (true) or not: no toasts on the stage; entering it clears the open ones. */

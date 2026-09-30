@@ -373,7 +373,7 @@ body.dark .mr-flow-drift {
 }
 .mr-flow-focus {
   fill: none;
-  stroke: token('color.border.focus');
+  stroke: token('color.foreground.accent.default');
   stroke-width: 2;
   pointer-events: none;
 }
@@ -385,7 +385,7 @@ body.dark .mr-flow-drift {
   outline: none;
 }
 .mr-flow-ribbon-key:focus {
-  stroke: token('color.border.focus');
+  stroke: token('color.foreground.accent.default');
   stroke-width: 2;
 }
 
@@ -654,7 +654,7 @@ body.dark .mr-flowlist-row {
   --mr-band-hi: 0.88;
 }
 .mr-flowlist-row:focus-visible {
-  outline: 2px solid token('color.border.focus');
+  outline: 2px solid token('color.foreground.accent.default');
   outline-offset: 1px;
 }
 .mr-flowlist-row.is-selected {
@@ -951,7 +951,7 @@ body.dark .mr-flowlist-row {
   border-color: token('color.border.neutral.strong');
 }
 .mr-flowmap-chip-btn:focus-visible {
-  outline: 2px solid token('color.border.focus');
+  outline: 2px solid token('color.foreground.accent.default');
   outline-offset: 1px;
 }
 .mr-flowmap-chip-btn[aria-pressed='true'] {

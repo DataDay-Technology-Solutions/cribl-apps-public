@@ -2,6 +2,7 @@
 
 import type { Meta, NotificationEndpoint, Snapshot } from '../../core/types.ts';
 import { OTHER_FLOW_KEY } from '../../core/snapshot.ts';
+import { humanize } from '../../core/humanize.ts';
 import { BELL_ENDPOINT_ID, channelOf } from '../../core/delivery.ts';
 import { t } from '../copy/en.ts';
 import { toMs } from '../lib/format.ts';
@@ -54,6 +55,31 @@ export function everyPriceIsZero(prices: AppState['prices']): boolean {
     }
   }
   return entries > 0;
+}
+
+/**
+ * FOUNDER_PLAN row 14 (founder-build r1 ui-11): the destinations priced at $0 (a free output type once any price is
+ * saved, D33, or a stored $0) that receive a pipeline's reduction, when nothing is saved anywhere — the mixed $0 case,
+ * where the Receipt read only "Nothing saved yet". Their display names, largest reduction first; [] otherwise (and
+ * whenever every price is $0: everyPriceIsZero has its own notice).
+ */
+export function zeroPricedReducers(snapshot: Snapshot | null | undefined, labels?: Record<string, string>): string[] {
+  if (!snapshot) return [];
+  const flows = snapshot.flows ?? [];
+  if (flows.some((f) => Number.isFinite(f.savedPerDayM) && f.savedPerDayM > 0) || (snapshot.headline?.mtdM ?? 0) > 0) return [];
+  const free = new Map<string, string>();
+  for (const d of snapshot.destinations ?? []) {
+    if (!d.unpriced && d.milliCentsPerGb === 0) free.set(`${d.groupId}:${d.outputId}`, d.outputId);
+  }
+  if (free.size === 0 || (snapshot.destinations ?? []).every((d) => d.unpriced || d.milliCentsPerGb === 0)) return [];
+  const removed = new Map<string, number>();
+  for (const f of flows) {
+    const key = `${f.groupId}:${f.outputId}`;
+    const cut = (f.inBPerDay ?? 0) - (f.outBPerDay ?? 0);
+    if (!free.has(key) || !(cut > (f.inBPerDay ?? 0) * 0.01)) continue;
+    removed.set(key, (removed.get(key) ?? 0) + cut);
+  }
+  return [...removed.entries()].sort((a, b) => b[1] - a[1]).map(([key]) => humanize(free.get(key) ?? key, labels) || (free.get(key) ?? key));
 }
 
 /** Whether saves are possible right now (hydrated, live data). Views disable Save buttons otherwise. */

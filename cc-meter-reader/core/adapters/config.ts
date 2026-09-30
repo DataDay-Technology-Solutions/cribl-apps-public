@@ -80,6 +80,20 @@ export function normalizeInputs(body: unknown): InputInfo[] {
   return out.sort(byId);
 }
 
+/** An Output Router's rules as the inventory keeps them (core-12, M12): each rule's output, filter, final and disabled flags. */
+function routerRules(value: unknown): OutputInfo['rules'] {
+  if (!Array.isArray(value)) return undefined;
+  const out: NonNullable<OutputInfo['rules']> = [];
+  for (const r of value) {
+    if (!r || typeof r !== 'object') continue;
+    const o = r as Record<string, unknown>;
+    const output = str(o.output);
+    if (!output) continue;
+    out.push(withDefined({ output }, { filter: str(o.filter), final: bool(o.final), disabled: bool(o.disabled) }));
+  }
+  return out;
+}
+
 export function normalizeOutputs(body: unknown): OutputInfo[] {
   const out: OutputInfo[] = [];
   for (const it of itemsOf(body)) {
@@ -94,6 +108,8 @@ export function normalizeOutputs(body: unknown): OutputInfo[] {
           description: str(it.description),
           pipeline: str(it.pipeline),
           defaultId: type === 'default' ? str(it.defaultId) : undefined,
+          // Core-12 (M12): where a router sends (output ids and rule filters only; nothing else of its config).
+          rules: type === 'router' ? routerRules(it.rules) : undefined,
         },
       ),
     );

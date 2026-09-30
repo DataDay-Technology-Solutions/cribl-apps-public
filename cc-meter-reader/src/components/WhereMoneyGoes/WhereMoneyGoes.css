@@ -160,7 +160,7 @@
   text-underline-offset: 3px;
 }
 .mr-wmg-name--button:focus-visible {
-  outline: token('border.focus');
+  outline: 2px solid token('color.foreground.accent.default');
   outline-offset: 2px;
 }
 

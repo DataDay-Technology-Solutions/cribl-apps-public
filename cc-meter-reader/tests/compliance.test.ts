@@ -32,6 +32,7 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -76,9 +77,9 @@ const YAML = createRequire(nodeRequire.resolve('@cribl/apps/package'))('yaml') a
 const README_HEADINGS: readonly string[] = [
   '# Meter Reader', // 1. hero GIF and the pitch
   '## Summary', // Marketplace template: App title and summary, with the intended users
-  '## Try it in 5 minutes', // 2.
+  '## Try it', // 2. (no install-time claim until the post-freeze clean install measures one: FOUNDER_PLAN rows 3, 5, 7)
   '### Before you install', // Marketplace template
-  '### Install in 30 seconds', // 2. (second half)
+  '### Install', // 2. (second half)
   '### Configuration', // Marketplace template
   '## What it does', // 3.
   '### When to use', // Marketplace template
@@ -443,9 +444,12 @@ function sectionOf(markdown: string, heading: string): string {
   return lines.slice(start + 1, end < 0 ? undefined : end).join('\n');
 }
 
-/** The README's first screen: everything before "## Try it in 5 minutes" (the title, the hero, the Summary). */
+/** The README's "## Try it" heading line, exactly (the first screen ends there). */
+const TRY_IT = /\n## Try it\n/;
+
+/** The README's first screen: everything before "## Try it" (the title, the hero, the Summary). */
 function firstScreen(markdown: string): string {
-  return markdown.split('\n## Try it in 5 minutes')[0];
+  return markdown.split(TRY_IT)[0];
 }
 
 function licenseOf(pkgName: string): string {
@@ -1109,13 +1113,182 @@ describe('launch copy says what the release does (EPIC_AUDIT P0-12)', () => {
     const readme = read('README.md');
     const heroLine = readme.split('\n').findIndex((l) => l.includes(`](${HERO_IMAGE.from})`));
     expect(heroLine).toBeGreaterThanOrEqual(0);
-    const first = readme.split('\n').slice(heroLine + 1).join('\n').split('\n## Try it in 5 minutes')[0];
+    const first = readme.split('\n').slice(heroLine + 1).join('\n').split(TRY_IT)[0];
     const words = first.split(/\s+/).filter(Boolean).length;
     expect(words, 'README first screen word count (whitespace tokens)').toBeLessThanOrEqual(150);
     for (const name of ['receipt', 'flow', 'alert', 'report']) {
       expect(first, `the grid shows docs/images/${name}.png`).toContain(`](docs/images/${name}.png)`);
       expect(existsSync(join(ROOT, `docs/images/${name}.png`)), `docs/images/${name}.png`).toBe(true);
     }
+  });
+
+  // FOUNDER_PLAN row 5: the four one-line bullets fold into the Summary (every commit priced, good or bad; the bell;
+  // What if forecasts a pack before you apply it), and one "Measured live" line follows it. Row 3: What if is a
+  // forecast, never "priced before install" or a dry run in general (a pack attached as a Pack is projected).
+  it('folds the joins into the Summary: no bullet list on the first screen, and What if is a forecast (founder plan rows 3, 5)', () => {
+    const readme = read('README.md');
+    const summary = sectionOf(readme, '## Summary');
+    expect(summary.split('\n').filter((l) => /^\s*[-*] /.test(l)), 'the first screen has no bullet list').toEqual([]);
+    const flat = summary.replace(/\s+/g, ' ');
+    expect(flat).toMatch(/every commit, good or bad/);
+    expect(flat).toMatch(/Cribl bell/);
+    expect(flat).toContain('What if forecasts a pack before you apply it');
+    expect(firstScreen(readme)).not.toMatch(/priced before (?:you )?install|What if prices it from a dry run/i);
+  });
+
+  // FOUNDER_PLAN row 3 (the truth pass) and FINDINGS_R1 M1, m5, m24: phrases that are false or unmeasured today stay out
+  // of the README; the install role is Cribl's (https://docs.cribl.io/apps/admin-guide/: "Only Organization
+  // administrators can install"); a pack attached as a Pack is projected, not dry-run; a confirmed Connect keeps the
+  // endpoint at once (founder-build r1 ui-5, NotificationsSection.tsx persistConnected; the judge-path validation's
+  // scenario e), so step 6 never tells a member to press Save changes to keep it; "?" opens Go to anything (the
+  // palette), not a full sheet; the licence claim is scoped (Capra is Cribl's).
+  it('says only what is true today: no install time, the Organization administrator role, the pack projection, Connect keeps the endpoint, Go to anything and a scoped licence claim (founder plan row 3; M1, m5, m24)', () => {
+    const readme = read('README.md');
+    const never = /Try it in 5 minutes|(?<!every )\b30 seconds|about 5 minutes|confirmed live|PACK ALONE|Every step of that|just like the break|Workspace Administrator/gi;
+    const hits = [...readme.matchAll(never)].map((m) => `README.md:${readme.slice(0, m.index).split('\n').length} "${m[0]}"`);
+    expect(hits, 'row 3 "Never say" phrases in the README').toEqual([]);
+    expect(sectionOf(readme, '### Before you install')).toContain('an **Organization administrator**');
+    expect(sectionOf(readme, '### Install')).toContain('an **Organization administrator**');
+    expect(sectionOf(readme, '## Known limitations').replace(/\s+/g, ' ')).toContain(
+      'a pack attached as a Pack is projected from a similar stream or its published range, not dry-run in place',
+    );
+    const step6 = readme.split('\n').find((l) => l.startsWith('6. **Optional: connect a Cribl notification target.**')) ?? '';
+    expect(step6, 'Try it step 6 says a confirmed Connect keeps the endpoint').toMatch(/\*\*Send a test alert\*\*[\s\S]*A confirmed \*\*Connect\*\* keeps the endpoint at once/);
+    expect(step6, 'Try it step 6 no longer asks for Save changes to keep the endpoint').not.toMatch(/Save changes\*\* to keep the endpoint|alerts go only to saved endpoints/);
+    const keys = sectionOf(readme, '## Accessibility and keyboard');
+    expect(keys).toContain('**Go to anything**');
+    expect(keys).not.toMatch(/`\?` the shortcut sheet/);
+    const licence = sectionOf(readme, '## Stage One checklist').split('\n').find((l) => /Apache-2\.0-compatible/.test(l)) ?? '';
+    expect(licence, 'the ticked licence line is scoped to the open-source components').toMatch(/open-source/);
+    expect(licence, 'and states Capra\'s licence').toContain('Cribl Developer Agreement');
+  });
+
+  // FINDINGS_R2 #6 (founder-build round 2, docs-1): What if is a forecast with a named basis. It is a dry run through
+  // Cribl's preview API only when the treatment's pipeline is defined in the worker group; otherwise (a pack attached as
+  // a Pack included) it is projected from a similar stream or the pack's published range. So no text says What if is
+  // "priced from a dry run" without that qualification. The submission kit outside the repository is held to the same
+  // pattern by the docs lane's check script (ops/founder-build/r2-docs-check-submission.py).
+  it('never says What if is priced from a dry run without its qualification: README, PITCH, VIDEO_SCRIPT and docs (founder plan row 3; FINDINGS_R2 #6)', () => {
+    const dryRun = /priced? (?:it )?from a dry run|prices it from a dry run/gi;
+    expect("and What if priced from a dry run on a Source's own events", 'the pattern catches JUDGES_GUIDE:56 as it was').toMatch(
+      new RegExp(dryRun.source, 'i'),
+    );
+    const docs = walk(join(ROOT, 'docs'))
+      .map((p) => relative(ROOT, p).split(sep).join('/'))
+      .filter((rel) => /\.(?:md|json|txt|html)$/.test(rel));
+    expect(docs, 'docs/** has text files to read').toContain('docs/RUNBOOK.md');
+    const hits: string[] = [];
+    for (const f of ['README.md', 'PITCH.md', 'VIDEO_SCRIPT.md', ...docs].filter((rel) => existsSync(join(ROOT, rel)))) {
+      const text = read(f);
+      for (const m of text.matchAll(dryRun)) hits.push(`${f}:${text.slice(0, m.index).split('\n').length} "${m[0]}"`);
+    }
+    expect(hits, 'What if "priced from a dry run" without its qualification').toEqual([]);
+  });
+
+  // Numbers ledger (STEVE_NOTES Sun 11:55 PM, Mon 12:12 AM): every $ a reader sees carries an asterisk and the footnote
+  // is on the same screen; the 34% projection basis ($2.8M, $280K, $1.4M) is retired; no stale or live-org dollar
+  // figure (the grep gate 140,500 | 283K | 31.6 TB) appears anywhere in the README.
+  it('stars every $ on the first screen, with the demonstration footnote on the same screen, and carries no retired figure (numbers ledger)', () => {
+    const readme = read('README.md');
+    const first = firstScreen(readme);
+    const unstarred: string[] = [];
+    for (const m of first.matchAll(/\$\d[\d,.]*[KMB]?/g)) {
+      const after = first.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 6);
+      if (!/^(?:\/GB)?\\?\*/.test(after)) unstarred.push(`${m[0]}${after}`);
+    }
+    expect(unstarred, 'every $ figure on the first screen carries *').toEqual([]);
+    expect(first).toContain('\\* For demonstration purposes only. Does not reflect actual prices.');
+    const retired = /\$2\.8M|\$280K|\$1\.4M|2,792,250|279,225|1,396,125|\b283K|140,500|31\.6 TB/g;
+    const hits = [...readme.matchAll(retired)].map((m) => `README.md:${readme.slice(0, m.index).split('\n').length} "${m[0]}"`);
+    expect(hits, 'retired or stale figures in the README').toEqual([]);
+  });
+
+  // FINDINGS_R3 #2 (founder-build round 3, docs-1): one hero on every judge-facing surface in the repository. The
+  // numbers standard (ops/numbers/NUMBERS_STANDARD.md; the owner, Mon 9/28 8:20–8:30 AM) is 10,000 GB/day × $1.50/GB\*
+  // × 30% × 365 ≈ $1.6M\*, with the ladder $164K\* · $821K\* · $1.6M\*. So README.md, PITCH.md and docs/POSTS.md each
+  // carry that math and ladder, quote no other projection ($N.NM\*) except the built-in sample's own figure on a line
+  // that labels it the sample (round-3.md ruling 7), and hold no string of round-3.md §1's numbers gate. The README's
+  // Presets section documents the App's own presets (Splunk Cloud's 1–2 TB/day tier, Sumo Logic's tier shares) and is
+  // exempt; docs/review/**, docs/LIVE_VALIDATION.md, docs/RIG.md and docs/evidence/** are history and are not read.
+  // The submission kit outside the repository is held to the same rules by
+  // ops/founder-build/r3-docs-check-judge-surfaces.py.
+  it('quotes one hero, $1.6M* with its math and ladder, and no retired figure: README, PITCH and docs/POSTS (numbers standard; FINDINGS_R3 #2)', () => {
+    const gate =
+      /2\.5M|2,463,750|246K|246,375|\$1\.2M|1,231,875|1\.3M|2\.8M|2,792,250|283K|280K|279,225|\$1\.4M|1,396,125|140,500|17,155|39,420|22,265|8,708|\$135|\$88|\$24 a day|measured 34|34 ?% (?:saved|less|live|measured)|45 ?%|37 ?%|we measured/g;
+    const projection = /\$[0-9][0-9.,]*M\\?\*?/g;
+    // The built-in sample's own figures (its annualized run rate, would have paid → paid, its Cribl cost), allowed only on a
+    // line that labels them the sample (ruling 7); any other $N.NM* is a second projection.
+    const SAMPLE_FIGURES = new Set(['$8.1M', '$23.1M', '$15.0M', '$3M']);
+    const offenders = (file: string, lines: readonly string[]): string[] => {
+      const out: string[] = [];
+      lines.forEach((line, i) => {
+        for (const m of line.matchAll(gate)) out.push(`${file}:${i + 1} gate "${m[0]}"`);
+        for (const m of line.matchAll(projection)) {
+          const figure = m[0].replace(/\\/g, '').replace(/\*$/, '');
+          if (figure !== '$1.6M' && !(SAMPLE_FIGURES.has(figure) && /\bsample\b/i.test(line))) out.push(`${file}:${i + 1} projection "${m[0]}"`);
+        }
+      });
+      return out;
+    };
+    // The patterns catch the retired hero as PITCH.md:52 had it, and let the labelled sample through.
+    const retiredHero = ['one pack projects to about $2', '.5M\\* a year: 10,000 GB/day × $2.25/GB\\* × 30% × 365 = $2,463', ',750\\*. At 1 TB a day it\'s about $246', 'K\\*.'].join('');
+    expect(offenders('probe', [retiredHero])).toEqual([
+      'probe:1 gate "2.5M"',
+      'probe:1 gate "2,463,750"',
+      'probe:1 gate "246K"',
+      'probe:1 projection "$2.5M\\*"',
+    ]);
+    expect(offenders('probe', [['Projected at 30%; 34', '% measured live on our demo feed.'].join(''), 'the sample reads $8.1M\\* a year', 'the sample reads $2.2M\\* at scale'])).toEqual([
+      'probe:1 gate "34% measured"',
+      'probe:3 projection "$2.2M\\*"',
+    ]);
+    // The README's Presets section (the App's own presets) is blanked, keeping line numbers.
+    const readme = read('README.md').split('\n');
+    const presets = readme.findIndex((l) => l === '### Presets');
+    const presetsEnd = readme.findIndex((l, i) => i > presets && /^#{1,3} /.test(l));
+    expect(presets, 'README has its Presets section').toBeGreaterThan(0);
+    const readmeLines = readme.map((l, i) => (i > presets && i < presetsEnd ? '' : l));
+    const hits: string[] = [];
+    const surfaces: [string, readonly string[]][] = [
+      ['README.md', readmeLines],
+      ['PITCH.md', read('PITCH.md').split('\n')],
+    ];
+    // docs/POSTS.md is private (EXPORT_DROPS): held here in the private tree only, so the public export, which leaves it
+    // out, passes its own npm test (final 1.1.4: a judge's fresh clone of the export failed on ENOENT here).
+    if (inThisTree('docs/POSTS.md')) surfaces.push(['docs/POSTS.md', read('docs/POSTS.md').split('\n')]);
+    for (const [file, lines] of surfaces) {
+      hits.push(...offenders(file, lines));
+      const text = lines.join('\n');
+      expect(text, `${file} carries the standard's math`).toMatch(/10,000 GB\/day × \$1\.50\/GB\\?\* × 30% × 365/);
+      expect(text, `${file} carries the hero`).toMatch(/\$1\.6M\\?\*/);
+      expect(text, `${file} carries the ladder`).toMatch(/\$164K\\?\*[^\n]*\$821K\\?\*[^\n]*\$1\.6M\\?\*/);
+    }
+    expect(hits, 'a second projection or a retired figure on a judge-facing surface').toEqual([]);
+  });
+
+  // FINDINGS_R3 #17, #19, #20 (founder-build round 3, docs-3): the README says what the code does. One retry rule, the
+  // per-endpoint one (core/incidents.ts nextEndpointRecord: a 4xx and the relay pre-check's 404 are final; a 5xx, the
+  // relay forward's 500 included, a timeout or a dropped connection back off 2, 4 and 8 minutes), with the relay forward
+  // "not retried within a call" (core/adapters/cribl-notify.ts); the `settings` row names the one write no Save made
+  // (src/state/services.ts persistZoneBeforeSweep); and the contrast claim carries docs/DESIGN_BRIEF.md:26's carve-out.
+  it('states one retry rule, the first-sweep settings write and the Capra contrast carve-out (FINDINGS_R3 #17, #19, #20)', () => {
+    const readme = read('README.md');
+    const flat = readme.replace(/\s+/g, ' ');
+    expect(flat, 'the pre-round-2 rule (a failed attempt waits 2 minutes) is gone').not.toMatch(/failed delivery attempt waits 2 minutes/);
+    expect(flat, 'forwards are retried across sweeps').not.toMatch(/so they are never retried/);
+    expect(flat).toContain('a forward is not retried within a call; across sweeps the per-endpoint rule below applies');
+    const retries = sectionOf(readme, '### Alert delivery').split('\n').find((l) => l.startsWith('- **Retries, per endpoint**')) ?? '';
+    expect(retries, 'the relay pre-check 404 is final').toMatch(/relay the pre-check finds missing, logged `relay_missing` with 404/);
+    expect(retries, "the relay forward's 500 is retryable").toMatch(/a forward Cribl answers 500[^)]*\) is sent again after 2, 4 and 8 minutes/);
+    const settingsRow = sectionOf(readme, '### KV keys').split('\n').find((l) => l.startsWith('| `settings` |')) ?? '';
+    expect(settingsRow, 'the settings row names the first-sweep zone write').toMatch(/the first tab to sweep a live workspace with no settings document \(its zone, once/);
+    const themes = sectionOf(readme, '## Accessibility and keyboard').split('\n').find((l) => l.startsWith('- **Both themes.**')) ?? '';
+    const brief = read('docs/DESIGN_BRIEF.md');
+    for (const pair of ['3.26:1', '4.20:1', '`#0190ff`', '`#0072de` on `#e6f4fe`']) {
+      expect(brief, `DESIGN_BRIEF records ${pair}`).toContain(pair);
+      expect(themes, `README "Both themes" carries ${pair}`).toContain(pair);
+    }
+    expect(themes).toContain('every text and background pair Meter Reader defines is held to 4.5:1');
   });
 });
 
@@ -1190,7 +1363,7 @@ describe('the docs say what the live log measured (EPIC_AUDIT P1-N03, P1-N05)', 
     const tour = JSON.parse(read('demo/sample/tour.json')) as { durationSec: number };
     const halves = Math.round(tour.durationSec / 30);
     const words = `${NUMBER_WORDS[Math.floor(halves / 2)] ?? ''}${halves % 2 ? ' and a half' : ''} minutes`;
-    expect(sectionOf(read('README.md'), '## Try it in 5 minutes')).toContain(`in about ${words}.`);
+    expect(sectionOf(read('README.md'), '## Try it')).toContain(`in about ${words}.`);
     for (const f of ['README.md', 'PITCH.md']) {
       expect(read(f), `${f}: the 50-a-minute limit is documented for App backends only`).not.toMatch(/gives the app 50 API calls/i);
     }
@@ -1379,9 +1552,26 @@ describe('release package (the primary asset)', () => {
     expect(primary.pkg.cribl?.type).toBe('app');
   });
 
-  it('is the only primary package in release/ (no stale versions beside it)', () => {
+  // Founder-build r1 (integrator): the certified package that is being published stays in release/ beside the next
+  // checkpoint (1.1.0, the owner's certified asset, beside round 1's 1.1.1), so another primary may stay only as a
+  // certified asset: listed in release/SHA256SUMS and byte-identical to that line. An unlisted or altered primary is
+  // still a stale version beside the current one.
+  it('is the only primary package in release/ (no stale versions beside it) apart from certified ones in SHA256SUMS', () => {
     const primaries = readdirSync(join(ROOT, 'release')).filter((f) => /^meter-reader-\d+\.\d+\.\d+\.tgz$/.test(f));
-    expect(primaries).toEqual([`meter-reader-${VERSION}.tgz`]);
+    expect(primaries).toContain(`meter-reader-${VERSION}.tgz`);
+    const sumsFile = join(ROOT, 'release', 'SHA256SUMS');
+    const sums = new Map<string, string>();
+    if (existsSync(sumsFile)) {
+      for (const line of readFileSync(sumsFile, 'utf8').split('\n')) {
+        const m = /^([0-9a-f]{64}) [ *](\S+)$/.exec(line.trim());
+        if (m) sums.set(m[2], m[1]);
+      }
+    }
+    for (const f of primaries.filter((name) => name !== `meter-reader-${VERSION}.tgz`)) {
+      expect(sums.get(f), `release/${f} is a stale version beside ${VERSION}: not listed in release/SHA256SUMS`).toBeDefined();
+      const digest = createHash('sha256').update(readFileSync(join(ROOT, 'release', f))).digest('hex');
+      expect(digest, `release/${f} differs from its release/SHA256SUMS line`).toBe(sums.get(f));
+    }
   });
 
   it('contains the app, its declarations and the current README', () => {

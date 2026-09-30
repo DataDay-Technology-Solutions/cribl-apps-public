@@ -154,8 +154,10 @@ describe('slackPayload', () => {
     expect(floor.incident).toMatchObject({ before: { ratio: 0.297 }, after: { ratio: 0 } });
     expect(floor.incident!.recoveredTo).toBeUndefined();
     const floorFields = (slackPayload(floor).blocks[1] as { fields: { text: string }[] }).fields.map((f) => f.text);
-    expect(floorFields.slice(4)).toEqual(['*Before*\n30%', '*After*\n0%', '*Open for*\n12:57']);
-    expect(incidentPlainText(floor.incident!)).toContain('Savings ratio 30% → 0% · $25 a day');
+    // Founder-build r1 core-10 (M9): still down, so no recovery fields and no year — the drop per day, then the rest.
+    expect(floorFields[0]).toBe('*Lost per day*\n$25');
+    expect(floorFields.slice(3)).toEqual(['*Before*\n30%', '*After*\n0%', '*Open for*\n12:57']);
+    expect(incidentPlainText(floor.incident!)).toContain('Savings ratio 30% → 0% · fell under the $5/day floor; savings still at 0%');
     expect(incidentPlainText(floor.incident!)).not.toContain('recovered to');
     expect(incidentPlainText(legacy.incident!)).toContain('Savings ratio 75% before · recovered to 89% · $25 a day');
     expect(incidentPlainText(legacy.incident!)).not.toContain('→');
@@ -230,7 +232,7 @@ describe('slackPayload', () => {
   });
   it('handles test and incident-less payloads', () => {
     const t = slackPayload(testPayload('main', '2026-09-26T04:00:00.000Z'));
-    expect(t.blocks[0]).toMatchObject({ text: { text: ':red_circle: Test: Savings dropped: Payments API sampling' } });
+    expect(t.blocks[0]).toMatchObject({ text: { text: ':red_circle: Test: Savings dropped: Example pipeline' } }); // core-11 m8: the neutral sample
     const bare = slackPayload({ schemaVersion: 1, app: 'meter-reader', event: 'test', sentAt: 'x', workspace: 'w' });
     expect(bare.text).toBe(':large_blue_circle: Meter Reader test notification');
     const other = slackPayload({ schemaVersion: 1, app: 'meter-reader', event: 'incident.updated', sentAt: 'x', workspace: 'w' });
@@ -255,7 +257,8 @@ describe('servicenow, generic, dispatch and test payloads', () => {
       'Savings dropped: Payments API sampling',
       'Savings ratio 75% → 50% · $25 a day · $9,125 a year if left',
       'Commit a1f3c9e "demo: break the trim on mrd_pay_sample" by s.koelpin',
-      'Caught in 2:51 · Opened 2026-09-30T16:42:03.000Z',
+      // Founder-build r1 core-11 (m16, #38): times in the display zone, as Slack prints them (UTC when none is given).
+      'Caught in 2:51 · Opened 4:42 PM UTC',
       'Open in Ledger: L/ledger?object=pipe:default:mrd_pay_sample',
       // The builder's signature closes every alert message (core/strings.ts CREDIT_STRINGS).
       'Meter Reader by Steve Koelpin',
@@ -264,7 +267,7 @@ describe('servicenow, generic, dispatch and test payloads', () => {
     expect(med.urgency).toBe(2);
     expect(med.short_description).toBe('Recovered: Savings dropped: Payments API sampling');
     expect(med.description).toContain('No configuration change found nearby');
-    expect(med.description).toContain('Opened 2026-09-30T16:42:03.000Z · Recovered C');
+    expect(med.description).toContain('Opened 4:42 PM UTC · Recovered C');
     expect(servicenowPayload(canonicalPayload('incident.opened', { incident: regression({ severity: 'info', type: 'goodnews', closedAt: 'c' }), workspace: 'w', linkBase: '' })).urgency).toBe(3);
   });
   it('describes spikes and budgets in plain text', () => {
@@ -293,6 +296,41 @@ describe('servicenow, generic, dispatch and test payloads', () => {
     expect(p).toMatchObject({ event: 'test', sentAt: '2026-09-26T04:00:00.000Z', workspace: 'main' });
     expect(p.incident).toMatchObject({ notes: ['sample'], caughtInSeconds: 171, impact: { perDay: '$25', perYear: '$9,125' }, commit: { deployedAt: '2026-09-26T03:57:09.000Z' } });
     expect(testPayload('main', 'bad').incident?.openedAt).toBe('1970-01-01T00:00:00.000Z');
+  });
+
+  // Founder-build r1 core-11: m2 (#5) the bell test posts as info (README: tests post as info); m8 (#14) the release's
+  // test alert names no demo-rig object and links to the Ledger root; m16 (#38) target plain text prints local times.
+  it('m8: the test alert names no demo-rig object ("mrd_", "demo:") and links to the Ledger root', () => {
+    const p = testPayload('main', '2026-09-26T04:00:00.000Z', LINK_BASE);
+    const every = [
+      JSON.stringify(p),
+      JSON.stringify(slackPayload(p, { tz: 'America/New_York' })),
+      JSON.stringify(servicenowPayload(p)),
+      incidentPlainText(p.incident!),
+    ].join('\n');
+    expect(every).not.toMatch(/mrd_|demo:/);
+    expect(p.incident!.link).toBe('https://main-org.cribl.cloud/apps/a/meter-reader/ledger');
+    expect(p.incident!.title).toBe('Savings dropped: Example pipeline');
+  });
+
+  // Founder-build r2 core-11 (c), IC-11 verify: the bell's test is the neutral sample, posted as info (the sample's own
+  // severity is high; a test never lands in the bell as an alert).
+  it('IC-11: the bell renders the test payload as info, with the neutral sample names', async () => {
+    const { renderAlert } = await import('../../core/delivery.ts');
+    const bell = renderAlert(testPayload('main', '2026-09-26T04:00:00.000Z', LINK_BASE), 'America/New_York');
+    expect(bell.severity).toBe('info');
+    expect(bell.title).toBe('Test: Savings dropped: Example pipeline');
+    expect(`${bell.title}\n${bell.line}\n${bell.text}`).not.toMatch(/mrd_|demo:|Payments API/);
+  });
+
+  it('m16: the plain text (target, ServiceNow, the bell body) prints times in the display zone, never raw ISO', () => {
+    const closed = canonicalPayload('incident.closed', { incident: regression({ closedAt: '2026-09-30T16:55:00.000Z', recoveredTo: 0.75 }), workspace: 'w', linkBase: '' });
+    const ny = incidentPlainText(closed.incident!, 'America/New_York');
+    expect(ny).toContain('Opened 12:42 PM · Recovered 12:55 PM');
+    for (const text of [ny, incidentPlainText(closed.incident!), servicenowPayload(closed, 'America/Chicago').description, JSON.stringify(slackPayload(closed))]) {
+      expect(text).not.toMatch(/\d{2}:\d{2}:\d{2}\.\d{3}Z/);
+    }
+    expect(servicenowPayload(closed, 'America/Chicago').description).toContain('Opened 11:42 AM');
   });
 });
 

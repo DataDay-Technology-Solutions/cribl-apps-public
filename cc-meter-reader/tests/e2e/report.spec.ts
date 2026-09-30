@@ -27,7 +27,8 @@ const TOUR = JSON.parse(readFileSync(fileURLToPath(new URL('../../demo/sample/to
 const TZ = 'America/Chicago';
 const DAY_MS = 86_400_000;
 const PDFINFO = '/opt/homebrew/bin/pdfinfo';
-const CSV_HEADER = 'Record,Name,Worker group,Source,Pipeline,Destination,Priced as,Would-have-paid price $ / GB,Paid price $ / GB,GB / day in,GB / day out,Volume reduced %,Would-have-paid $ / day,Paid $ / day,Saved $ / day';
+// r2 core-7 (FINDINGS_R2 #3): the last column says whether the Cribl cost is the list-price estimate.
+const CSV_HEADER = 'Record,Name,Worker group,Source,Pipeline,Destination,Priced as,Would-have-paid price $ / GB,Paid price $ / GB,GB / day in,GB / day out,Volume reduced %,Would-have-paid $ / day,Paid $ / day,Saved $ / day,cribl_cost_is_estimate';
 
 /** The demo rig's destinations at the sourced presets (D41, D43). */
 const LIVE_PRICES = {
@@ -227,6 +228,8 @@ test.describe('Report card', () => {
     expect(lines[0]).toBe(CSV_HEADER);
     expect(lines.filter((l) => l.startsWith('flow,')).length).toBe(TOUR.snapshot.flows.length);
     expect(lines.filter((l) => l.startsWith('destination,')).length).toBeGreaterThan(0);
+    // r2 core-7 (IC-13): a sample card's CSV ends with the sample-data note (the header stays row 1).
+    expect(lines.filter((l) => l !== '').at(-1)).toMatch(/^note,SAMPLE DATA: /);
 
     // ── Copy for email ─────────────────────────────────────────────────────
     await reportButton(page, 'Copy for email').click();

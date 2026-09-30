@@ -871,12 +871,13 @@ describe('core/runtime', () => {
     expect(workspaceFromUrl('https://leader.example.com:9000/api/v1')).toBe('leader.example.com');
     expect(workspaceFromUrl(undefined)).toBe('');
     expect(workspaceFromUrl('/api/v1')).toBe('');
-    expect(linkBaseFrom('https://main-x.cribl.cloud/api/v1', '/app-ui/meter-reader/')).toBe(
-      'https://main-x.cribl.cloud/app-ui/meter-reader',
-    );
-    expect(linkBaseFrom('https://main-x.cribl.cloud/api/v1', undefined)).toBe(`https://main-x.cribl.cloud/app-ui/${APP_ID}`);
-    expect(linkBaseFrom('https://main-x.cribl.cloud/api/v1', 'app-ui/x')).toBe('https://main-x.cribl.cloud/app-ui/x');
-    expect(linkBaseFrom(undefined, '/app-ui/x/')).toBe('/app-ui/x');
+    // Founder-build r1 core-8 (M10 #34, C2): always the shell's `/apps/a/<app>`, whatever the iframe's base path — a
+    // `/app-ui/…` link clicked in Slack's web client, Gmail or PagerDuty opened the bare iframe page outside Cribl.
+    expect(linkBaseFrom('https://main-x.cribl.cloud/api/v1', '/app-ui/meter-reader/')).toBe(`https://main-x.cribl.cloud/apps/a/${APP_ID}`);
+    expect(linkBaseFrom('https://main-x.cribl.cloud/api/v1', undefined)).toBe(`https://main-x.cribl.cloud/apps/a/${APP_ID}`);
+    expect(linkBaseFrom('https://main-x.cribl.cloud/api/v1', 'app-ui/x')).toBe(`https://main-x.cribl.cloud/apps/a/${APP_ID}`);
+    expect(linkBaseFrom(undefined, '/app-ui/x/')).toBe(`/apps/a/${APP_ID}`);
+    expect(APP_ID).toBe('meter-reader');
   });
 
   it('builds lock owners and a console logger', () => {
@@ -909,7 +910,7 @@ describe('core/runtime', () => {
     expect(deps.owner).toBe('ui:tab1');
     expect(deps.runtime).toBe('ui');
     expect(deps.workspace).toBe('main-example-org');
-    expect(deps.linkBase).toBe('https://main-example-org.cribl.cloud/app-ui/meter-reader');
+    expect(deps.linkBase).toBe('https://main-example-org.cribl.cloud/apps/a/meter-reader');
     expect(deps.budget).toBe(60);
     const r = await runSweep({ ...deps, clock: w.deps.clock, sleep: w.deps.sleep }, { mode: 'ui' });
     expect(r.error).toBeUndefined();
@@ -935,7 +936,7 @@ describe('core/runtime', () => {
       expect(deps.runtime).toBe('backend');
       expect(deps.owner).toMatch(/^backend:/);
       expect(deps.workspace).toBe('main-x');
-      expect(deps.linkBase).toBe(`https://main-x.cribl.cloud/app-ui/${APP_ID}`);
+      expect(deps.linkBase).toBe(`https://main-x.cribl.cloud/apps/a/${APP_ID}`);
       const r = await runSweep({ ...deps, clock: w.deps.clock, sleep: w.deps.sleep }, { mode: 'scheduled' });
       expect(r.error).toBeUndefined();
       expect(seen.every((u) => u.startsWith(`${BACKEND_API_BASE}/`))).toBe(true);

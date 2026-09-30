@@ -9,7 +9,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { fmtDollars, fmtPct, footMoney } from '../../core/format.ts';
 import { computeHeadline } from '../../core/pricing.ts';
-import { compareRanges, sumRange, type RangeDoc, type RangeFigures, type RangeGranularity } from '../../core/range.ts';
+import { compareRanges, sumRange, type RangeDoc, type RangeFigures, type RangeGranularity, printedDeltaM } from '../../core/range.ts';
 import { comparisonLines } from '../../core/receipt.ts';
 import { dayDocKey, hourDocKey, minuteDocKey } from '../../core/rollups.ts';
 import { defaultSettings } from '../../core/settings.ts';
@@ -267,7 +267,8 @@ test.describe('Compare with… on the Receipt hero', () => {
     await expect(page.getByTestId('hero-compare')).toContainText('Compared with the previous 7 days');
     await expect(page.getByTestId('hero-compare-fromto')).toHaveText(`${fmtDollars(b.savedM)} → ${fmtDollars(a.savedM)}`);
     const delta = page.getByTestId('hero-compare-delta');
-    await expect(delta).toContainText(cmp.direction === 'flat' ? 'No change' : `${signed(cmp.deltaM)} (${signedPct(cmp.pct ?? 0)})`);
+    // The change as printed foots with the two figures (founder-build r1 ui-8, m11).
+    await expect(delta).toContainText(cmp.direction === 'flat' || printedDeltaM(cmp) === 0 ? 'No change' : `${signed(printedDeltaM(cmp))} (${signedPct(cmp.pct ?? 0)})`);
     await expect(delta).toHaveAttribute('data-direction', cmp.direction);
     // Every percentage names its basis.
     await expect(delta).toHaveAttribute('title', 'of what the previous 7 days saved');
@@ -401,7 +402,7 @@ test.describe('Compare with… on the Receipt hero', () => {
     expect(cmp.direction).toBe('down');
     const delta = page.getByTestId('hero-compare-delta');
     await expect(delta).toHaveAttribute('data-direction', 'down');
-    await expect(delta).toContainText(`${fmtDollars(cmp.deltaM)} (${signedPct(cmp.pct ?? 0)})`);
+    await expect(delta).toContainText(`${fmtDollars(printedDeltaM(cmp))} (${signedPct(cmp.pct ?? 0)})`);
     await expect(delta).toHaveAttribute('title', 'of what the time before 805b12c saved');
     // What moved: the broken saver first, its change in red.
     const first = page.getByTestId('hero-compare-movers').locator('li').first();
@@ -417,8 +418,8 @@ test.describe('Compare with… on the Receipt hero', () => {
     await openMath();
     const drawer = page.getByTestId('math-drawer');
     await expect(drawer).toContainText('Change = saved in this range − saved in the time before 805b12c');
-    await expect(drawer).toContainText(`${fmtDollars(a.savedM)} − ${fmtDollars(b.savedM)} = ${fmtDollars(cmp.deltaM)}`);
-    await expect(drawer).toContainText(`${fmtDollars(cmp.deltaM)} ÷ ${fmtDollars(b.savedM)} = ${signedPct(cmp.pct ?? 0)}`);
+    await expect(drawer).toContainText(`${fmtDollars(a.savedM)} − ${fmtDollars(b.savedM)} = ${fmtDollars(printedDeltaM(cmp))}`);
+    await expect(drawer).toContainText(`${fmtDollars(printedDeltaM(cmp))} ÷ ${fmtDollars(b.savedM)} = ${signedPct(cmp.pct ?? 0)}`);
     await expect(page.getByTestId('math-compare-plan')).toContainText('Read for the comparison:');
     if (shoots()) {
       for (const width of [1440, 390]) {

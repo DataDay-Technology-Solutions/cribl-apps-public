@@ -202,7 +202,7 @@
   border-radius: token('radius.md');
 }
 .mr-pt-info-scroll:focus-visible {
-  outline: 2px solid token('color.border.focus');
+  outline: 2px solid token('color.foreground.accent.default');
   outline-offset: 2px;
 }
 .mr-pt-info-basis {
@@ -395,12 +395,19 @@
 }
 .mr-pt-totals-line {
   display: flex;
+  /* r1 ui-9 (FINDINGS_R1 m22, WCAG 1.4.10): at 320 px the label, the leader and "~ $84,435 / day" no longer fit one
+     line; the amount wraps under the label, right-aligned, instead of running 5 px out of the card. */
+  flex-wrap: wrap;
+  min-width: 0;
   align-items: baseline;
-  gap: token('spacing.sm');
+  gap: 0 token('spacing.sm');
   margin: 0;
   font-size: 14px;
   line-height: 1.6;
   color: token('color.foreground.default');
+}
+.mr-pt-totals-line .mr-pt-totals-amount {
+  margin-left: auto;
 }
 .mr-pt-totals-label,
 .mr-pt-totals-amount {
@@ -560,7 +567,7 @@
   border-color: token('color.border.neutral.strong');
 }
 .mr-pp-tile:focus-visible {
-  outline: 2px solid token('color.border.focus');
+  outline: 2px solid token('color.foreground.accent.default');
   outline-offset: 1px;
 }
 .mr-pp-tile[aria-selected='true'] {
@@ -625,7 +632,7 @@
   text-underline-offset: 2px;
 }
 .mr-pt-history-toggle:focus-visible {
-  outline: 2px solid token('color.border.focus');
+  outline: 2px solid token('color.foreground.accent.default');
   outline-offset: 2px;
   border-radius: token('radius.md');
 }

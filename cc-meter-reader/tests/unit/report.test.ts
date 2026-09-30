@@ -5,14 +5,14 @@
 
 import { describe, expect, it } from 'vitest';
 import { alertLine, buildReportCard, fill, fmtMultiple, fmtPricePerGb, formatStamp, formatUtcStamp, meteredByWords, plural, reportPeriodFigures, slugify, volumeReduction } from '../../core/report.ts';
-import { MC_PER_DOLLAR, fmtDollars, fmtDollarsCents, fmtPct, fmtPlainDollars, fmtPlainGb } from '../../core/format.ts';
+import { MC_PER_DOLLAR, fmtDollars, fmtDollarsCents, fmtPct, fmtPlainDollars, fmtPlainGb, roundToDollarsM } from '../../core/format.ts';
 import { planRebase, rebaseHeadline, rebaseValue } from '../../src/tour/rebase.ts';
 import { rangeSpanLabel, sumRange, type RangeFigures } from '../../core/range.ts';
 import type { PricesDoc, RollMinuteDoc, Snapshot } from '../../core/types.ts';
-import { destinationRows, moneyDestinations, netFigures, periodFigures } from '../../src/views/Receipt/model.ts';
+import { destinationRows, moneyDestinations, netFigures, periodFigures, printedNetM } from '../../src/views/Receipt/model.ts';
 import { en } from '../../src/copy/en.ts';
 import { meteredSpan } from '../../core/net.ts';
-import { localMonthStartMs } from '../../core/time.ts';
+import { localMidnightMs, localMonthStartMs } from '../../core/time.ts';
 import { COPY, LIVE_NOW, LIVE_TZ, TOUR, TOUR_TZ, liveCard, liveInput, liveWorkspace, sampleCard, sampleInput } from './report-fixture.ts';
 
 const PERIODS = ['mtd', 'today', '30d'] as const;
@@ -73,11 +73,14 @@ describe('reconciles to the Receipt for the same period', () => {
     const cost = TOUR.settings.criblCostCentsPerMonth;
     expect(cost).toBeGreaterThan(0);
     const card = sampleCard({ kind: 'mtd' });
-    const mtd = netFigures(TOUR.snapshot, 'mtd', cost, TOUR_TZ);
+    // The Receipt's call for the sample (src/views/Receipt/index.tsx: `{ frozen: source === 'sample' }`, r2 ui-12; the
+    // Report follows it since r3 core-6).
+    const mtd = netFigures(TOUR.snapshot, 'mtd', cost, TOUR_TZ, { frozen: true });
     const annual = netFigures(TOUR.snapshot, 'annualized', cost, TOUR_TZ);
-    expect(card.cribl?.period?.netM).toBe(mtd?.netM);
+    // R2 core-7 (FINDINGS_R2 #8): the net prints as the Receipt prints it (r1 ui-8, D53): printed saved − printed cost.
+    expect(card.cribl?.period?.netM).toBe(printedNetM(mtd!.netM, mtd!.costM));
     expect(card.cribl?.period?.paybackX).toBe(mtd?.paybackX);
-    expect(card.cribl?.runRate.netM).toBe(annual?.netM);
+    expect(card.cribl?.runRate.netM).toBe(printedNetM(annual!.netM, annual!.costM));
     expect(card.cribl?.runRate.paybackX).toBe(annual?.paybackX);
   });
 
@@ -149,7 +152,9 @@ describe('ROI and net after Cribl', () => {
     const span = meteredSpan(localMonthStartMs(sweep, LIVE_TZ), sweep, Date.parse(input.snapshot.collectingSince));
     const prorated = ((3_500_000 * 1000 * 12) / 525_600) * span.minutes;
     expect(card.cribl?.period?.costM).toBe(Math.round(prorated));
-    expect(card.cribl?.period?.netM).toBe(h.mtdM - Math.round(prorated));
+    // R2 core-7 (#8): whole dollars, printed saved − printed cost.
+    const footed = roundToDollarsM(h.mtdM) - roundToDollarsM(Math.round(prorated));
+    expect(card.cribl?.period?.netM).toBe(footed);
     expect(card.cribl?.period?.paybackX).toBeCloseTo(h.mtdM / prorated, 12);
     const payback = h.mtdM / prorated;
     const tile = card.kpis[1];
@@ -158,7 +163,7 @@ describe('ROI and net after Cribl', () => {
     expect(tile.lines[0]).toBe(fill(COPY.kpi.roiEvery, { amount: fmtDollarsCents(Math.round(payback * 100_000)) }));
     // ROI as a CFO computes it: net savings ÷ cost = payback − 1.
     expect(tile.lines[1]).toBe(fill(COPY.kpi.roiPct, { pct: fmtPct(payback - 1) }));
-    expect(tile.lines[2]).toBe(fill(COPY.kpi.netPeriod, { amount: fmtDollars(h.mtdM - Math.round(prorated)), period: COPY.periodCaption.mtd }));
+    expect(tile.lines[2]).toBe(fill(COPY.kpi.netPeriod, { amount: fmtDollars(footed), period: COPY.periodCaption.mtd }));
   });
 
   it('rules round 2: a cost saved from "Use this estimate" is marked as an estimate; a contract cost is not', () => {
@@ -173,9 +178,11 @@ describe('ROI and net after Cribl', () => {
     const annual = input.snapshot.headline.annualizedM;
     const yearCost = 3_500_000 * 1000 * 12;
     expect(card.cribl?.period).toBeUndefined();
-    expect(card.cribl?.runRate).toEqual({ costM: yearCost, netM: annual - yearCost, paybackX: annual / yearCost, monthlyNetM: Math.round(annual / 12) - 3_500_000 * 1000 });
+    // R2 core-7 (#8): the nets in whole dollars, printed saved − printed cost.
+    const net = roundToDollarsM(annual) - roundToDollarsM(yearCost);
+    expect(card.cribl?.runRate).toEqual({ costM: yearCost, netM: net, paybackX: annual / yearCost, monthlyNetM: roundToDollarsM(Math.round(annual / 12)) - 3_500_000 * 1000 });
     expect(card.kpis[1].lines[1]).toBe(fill(COPY.kpi.roiPct, { pct: fmtPct(annual / yearCost - 1) }));
-    expect(card.kpis[1].lines[2]).toBe(fill(COPY.kpi.netRunRate, { amount: fmtDollars(annual - yearCost) }));
+    expect(card.kpis[1].lines[2]).toBe(fill(COPY.kpi.netRunRate, { amount: fmtDollars(net) }));
     expect(card.methodology).toContain(fill(COPY.methodology.criblCost, { amount: '$35,000' }));
   });
 
@@ -337,7 +344,8 @@ describe('protection', () => {
     expect(card.protection.count).toBe(4);
     // At risk counts only what is still open; the recovered ones are history, not exposure.
     expect(card.protection.openCount).toBe(2);
-    expect(card.protection.atRiskPerDayM).toBe((792 + 250) * 100_000);
+    // Founder-build r1 core-10 (M4, #18): "until fixed" is a regression's; an open spike is a day while it lasts.
+    expect(card.protection.atRiskPerDayM).toBe(250 * 100_000);
     expect(card.protection.totalPerDayM).toBe((792 + 250 + 90 + 400) * 100_000);
     expect(card.protection.fastestSec).toBe(95);
     expect(card.protection.medianSec).toBe(120);
@@ -348,9 +356,10 @@ describe('protection', () => {
       measure: fill(COPY.measure.ratio, { before: '75%', after: '50%' }),
       status: 'open',
       caughtText: '2\u00a0min 51\u00a0s',
-      commit: { hash: 'a1f3c9e', message: 'break the trim', author: 'API client' },
+      // C5 (founder-build r1 core-4): the channels' and the cards' one author rule — 'Zx9QgE@clients' → '··9QgE'.
+      commit: { hash: 'a1f3c9e', message: 'break the trim', author: 'API client ··9QgE' },
     });
-    expect(byId['reg-open'].causeText).toBe(fill(COPY.commit, { hash: 'a1f3c9e', message: 'break the trim', author: 'API client' }));
+    expect(byId['reg-open'].causeText).toBe(fill(COPY.commit, { hash: 'a1f3c9e', message: 'break the trim', author: 'API client ··9QgE' }));
     expect(byId['reg-recovered'].measure).toBe(fill(COPY.measure.ratioRecovered, { before: '30%', after: '12%', recovered: '31%' }));
     expect(byId['spike-closed'].measure).toBe(fill(COPY.measure.spikeBackTo, { recovered: '$19' }));
     expect(byId['spike-open'].measure).toBe(fill(COPY.measure.spike, { before: '$15', after: '$48' }));
@@ -362,10 +371,27 @@ describe('protection', () => {
     expect(byId['reg-recovered'].durationSec).toBe(3600);
     expect(byId['spike-closed'].impactText).not.toMatch(/year/);
     expect(card.kpis[3]).toMatchObject({ value: '4', unit: plural(COPY.kpi.protectionUnit, 4) });
-    expect(card.kpis[3].lines).toEqual([fill(COPY.kpi.protectionAtRisk, { amount: '$1,042' }), fill(COPY.kpi.protectionCaught, { time: '1\u00a0min 35\u00a0s' })]);
+    expect(card.kpis[3].lines).toEqual([fill(COPY.kpi.protectionAtRisk, { amount: '$250' }), fill(COPY.kpi.protectionCaught, { time: '1\u00a0min 35\u00a0s' })]);
     expect(card.protection.summary).toBe(
-      fill(COPY.protection.summaryOpen, { alerts: plural(COPY.kpi.protectionValue, 4), amount: '$1,042' }) + fill(COPY.protection.fastest, { fastest: '1\u00a0min 35\u00a0s', median: '2\u00a0min' }),
+      fill(COPY.protection.summaryOpen, { alerts: plural(COPY.kpi.protectionValue, 4), amount: '$250' }) + fill(COPY.protection.fastest, { fastest: '1\u00a0min 35\u00a0s', median: '2\u00a0min' }),
     );
+  });
+
+  it('M4 (#18): an open cost spike reads "while it lasts", never a year, and stays out of the "until fixed" sum', () => {
+    const card = liveCard({ kind: 'today' });
+    const spike = card.protection.rows.find((r) => r.id === 'spike-open')!;
+    // The channels' and the card's spike wording (core/strings.ts, the same words as en.ts incidents.impact.spike).
+    expect(spike.impactText).toBe(fill(en.incidents.impact.spike, { perDay: '$792' }));
+    expect(spike.impactText).toContain('while it lasts');
+    expect(spike.impactText).not.toMatch(/year/);
+    expect(strings(card).join('\n')).not.toMatch(/\$792[^\n]*a year/);
+    // Only spikes open: the KPI and summary say "while it lasts", never "at risk until fixed".
+    const w = liveWorkspace();
+    const onlySpike = buildReportCard({ ...liveInput({ kind: 'today' }), snapshot: { ...w.snapshot, incidents: w.snapshot.incidents.filter((i) => i.id === 'spike-open') } });
+    expect(onlySpike.protection.atRiskPerDayM).toBe(0);
+    expect(onlySpike.kpis[3].lines[0]).toBe(fill(en.incidents.impact.spike, { perDay: '$792' }));
+    expect(onlySpike.protection.summary).not.toMatch(/until fixed|a year/);
+    expect(onlySpike.protection.summary).toContain('while it lasts');
   });
 
   it('a regression closed before recoveredTo existed reads its close as the recovery', () => {
@@ -587,12 +613,15 @@ describe('the sample as the tour plays it on a later day', () => {
     expect(card.trend.points.map((p) => p.day)[card.trend.points.length - 1]).toBe('2026-09-26');
     expect(card.trend.points).toHaveLength(26);
     expect(card.headline.savedM).toBe(card.trend.points.reduce((s, p) => s + p.savedM, 0));
-    // Cribl's cost for the minutes metered Sep 1 → the sweep (core/net.ts), as the Receipt prorates it.
+    // Cribl's cost for the minutes the recording's savings cover — Sep 1 → local midnight + today's recorded minutes
+    // (core/net.ts; r3 core-6: the sample's frozen span), as the Receipt prorates it on the tour (netFigures frozen).
     const sweep = Date.parse(moved.sweepAt);
-    const minutes = meteredSpan(localMonthStartMs(sweep, zone), sweep, Date.parse(moved.collectingSince)).minutes;
+    const spanEnd = localMidnightMs(sweep, zone) + (moved.headline.minutesToday ?? 0) * 60_000;
+    const minutes = meteredSpan(localMonthStartMs(sweep, zone), spanEnd, Date.parse(moved.collectingSince)).minutes;
+    expect(minutes).toBeCloseTo(netFigures(moved, 'mtd', cost, zone, { frozen: true })!.costM / ((cost * 1000 * 12) / 525_600), 6);
     const prorated = ((cost * 1000 * 12) / 525_600) * minutes;
     expect(card.cribl?.period?.costM).toBe(Math.round(prorated));
-    expect(card.cribl?.period?.netM).toBe(card.headline.savedM - Math.round(prorated));
+    expect(card.cribl?.period?.netM).toBe(roundToDollarsM(card.headline.savedM) - roundToDollarsM(Math.round(prorated)));
     expect(card.cribl?.period?.paybackX).toBeCloseTo(card.headline.savedM / prorated, 12);
   });
 });

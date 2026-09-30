@@ -144,6 +144,8 @@ export function createLiveController(deps: LiveDeps): LiveController {
   const visibility = deps.visibility ?? (typeof document === 'undefined' ? undefined : document);
 
   let running = false;
+  /** Bumped by stop(): a poll that began before it (an older epoch) writes nothing (r3 ui-9). */
+  let stopEpoch = 0;
   let handle: unknown;
   let inFlight: Promise<void> | null = null;
   let unsubscribe: (() => void) | null = null;
@@ -183,6 +185,10 @@ export function createLiveController(deps: LiveDeps): LiveController {
   };
 
   const poll = async (opts: PollOptions = {}): Promise<void> => {
+    // r3 ui-9 (FT-R110-2): a poll that was out when live polling stopped writes nothing (services.stop(), test hooks
+    // only: a spec holds the store still). A poll started while stopped (pollNow) still reads and applies.
+    const epoch = stopEpoch;
+    const stoppedSince = () => stopEpoch !== epoch;
     const state = store.getState();
     if (!state.hasHydrated && deps.retrySettings) await deps.retrySettings().catch(() => undefined);
     if (store.getState().source !== 'live') return; // a tour/replay owns the screen; nothing to read
@@ -221,6 +227,7 @@ export function createLiveController(deps: LiveDeps): LiveController {
 
     // A tour may have started while the reads were out; its data must not be overwritten.
     if (store.getState().source !== 'live') return;
+    if (stoppedSince()) return;
 
     const results: [DocName, Settled<unknown> | null][] = [
       ['snapshot', snapshot],
@@ -313,6 +320,7 @@ export function createLiveController(deps: LiveDeps): LiveController {
     },
     stop() {
       running = false;
+      stopEpoch += 1;
       clearTimer();
       visibility?.removeEventListener('visibilitychange', onVisibility);
       unsubscribe?.();

@@ -46,6 +46,7 @@ import {
   incidentMeasure,
   incidentTitle,
   incidentTone,
+  isNeutralClose,
   openSeconds,
   primaryDelivery,
   recoveryDeliveries,
@@ -91,6 +92,15 @@ export interface TakeoverCardProps {
   animate?: boolean;
   /** Recovery: the change that restored the savings (restore.ts), when the timeline names one. */
   restoredBy?: CommitRef;
+  /** The hint beside the close button (default "Press any key to dismiss": the stage's any-key dismissal). */
+  dismissHint?: string;
+  /**
+   * The capture callouts (per-day, commit, author); default on. Off where the page already carries its own (the tour's
+   * card on the Receipt, FOUNDER_PLAN row 11), so each callout stays one per page.
+   */
+  callouts?: boolean;
+  /** A line for the foot's note slot (the tour's card: "Sample data. Nothing is written to your workspace."). */
+  note?: string;
 }
 
 /**
@@ -266,6 +276,7 @@ function CommitBlock({
 
 export function TakeoverCard(props: TakeoverCardProps) {
   const { incident, mode, onDismiss, placement = 'overlay' } = props;
+  const callouts = props.callouts !== false;
   const animate = props.animate ?? placement === 'overlay';
   const ctx = useIncidentContext();
   const tick = useNow();
@@ -321,7 +332,9 @@ export function TakeoverCard(props: TakeoverCardProps) {
   }, [animate, incident.id, placement]);
 
   const recovery = mode === 'recovery';
-  const tone = recovery ? 'recovered' : incidentTone(incident);
+  // A close that is not a recovery (a member's, or the $/day floor's: M9, founder-build r1 ui-6) takes the stage neutral.
+  const neutralClose = recovery && isNeutralClose(incident);
+  const tone = recovery ? (neutralClose ? 'info' : 'recovered') : incidentTone(incident);
   const title = incidentTitle(incident, labels);
   const className = `mr-takeover mr-takeover--${placement} mr-takeover--${mode} mr-takeover--${tone}`;
   const money = impactFigures(incident);
@@ -335,7 +348,7 @@ export function TakeoverCard(props: TakeoverCardProps) {
       </h2>
       {onDismiss ? (
         <div className="mr-tk-dismiss">
-          <span className="mr-tk-hint">{t('incidents.dismissHint')}</span>
+          <span className="mr-tk-hint">{props.dismissHint ?? t('incidents.dismissHint')}</span>
           <IconButton
             icon={CloseOutlined}
             aria-label={t('incidents.dismiss')}
@@ -354,7 +367,8 @@ export function TakeoverCard(props: TakeoverCardProps) {
     const open = openSeconds(incident);
     const sent = primaryDelivery(deliveryLines(recoveryDeliveries(incident, deliveries), { endpoints, tz, withSeconds: true }));
     const closedMs = Date.parse(incident.closedAt ?? '');
-    const savingAgain = incident.type === 'regression' || incident.type === 'goodnews';
+    // "Saving … again" only when savings came back (never after a neutral close: they are still where they fell).
+    const savingAgain = !neutralClose && (incident.type === 'regression' || incident.type === 'goodnews');
     // The lost counter, frozen at the close (P2-W03): what the drop cost from its start until it recovered. Only
     // beside the figures — a close with no reading (a demo reset) recovered nothing we measured.
     const lostClockAtClose = lostClock(props.was ?? incident);
@@ -406,7 +420,7 @@ export function TakeoverCard(props: TakeoverCardProps) {
             {/* The object, not the alert's title: "Savings dropped" under "Recovered" contradicts it (BEAUTY F3). */}
             <p className="mr-tk-object">{incidentLabel(incident, labels)}</p>
             {savingAgain ? (
-              <p className="mr-tk-money" data-callout="per-day">
+              <p className="mr-tk-money" data-callout={callouts ? 'per-day' : undefined}>
                 <MoneyLine
                   template={t('incidents.savingAgain')}
                   nodes={{ perDay: <span className="mr-num">{money.perDay}</span>, perYear: <span className="mr-num">{money.perYear}</span> }}
@@ -420,7 +434,9 @@ export function TakeoverCard(props: TakeoverCardProps) {
               <CommitBlock commit={props.restoredBy} template={t('incidents.restoredBy')} callouts={false} labels={labels} />
             ) : Number.isFinite(closedMs) ? (
               <p className="mr-tk-cause">
-                <span className="mr-tk-when">{t('incidents.backAtBaseline', { time: formatClockTime(closedMs, tz, true) })}</span>
+                <span className="mr-tk-when">
+                  {neutralClose ? t('incidents.closedAt', { time: formatClockTime(closedMs, tz, true) }) : t('incidents.backAtBaseline', { time: formatClockTime(closedMs, tz, true) })}
+                </span>
               </p>
             ) : null}
           </div>
@@ -493,13 +509,13 @@ export function TakeoverCard(props: TakeoverCardProps) {
         </div>
 
         <div className="mr-tk-detail">
-          <p className="mr-tk-money" data-callout="per-day">
+          <p className="mr-tk-money" data-callout={callouts ? 'per-day' : undefined}>
             <MoneyLine
-              template={impactWording(incident).template}
+              template={impactWording(incident, { floorCentsPerDay: ctx.floorCentsPerDay }).template}
               nodes={{
                 perDay: <span className="mr-num">{money.perDay}</span>,
                 perYear: <span className="mr-num">{money.perYear}</span>,
-                duration: <span className="mr-num">{impactWording(incident).duration}</span>,
+                duration: <span className="mr-num">{impactWording(incident, { floorCentsPerDay: ctx.floorCentsPerDay }).duration}</span>,
               }}
             />
           </p>
@@ -507,7 +523,7 @@ export function TakeoverCard(props: TakeoverCardProps) {
           {lost && props.lostCounter !== false ? <LostCounter clock={lost} nowMs={nowMs} /> : null}
           {/* The hash and the person on their own line at the money's scale; on the overlay a long message ellipsizes
               on the line under it, so neither is ever cut (P0-14, P1-B02). */}
-          {incident.commit ? <CommitBlock commit={incident.commit} template={t('incidents.commitBy')} callouts labels={labels} /> : null}
+          {incident.commit ? <CommitBlock commit={incident.commit} template={t('incidents.commitBy')} callouts={callouts} labels={labels} /> : null}
           {/* A nearby change's caveat already says when it deployed ("3 min earlier"), so it takes the time's
               place in the chip's row instead of adding a line the fixed-height overlay may not have (P0-14). */}
           <p className="mr-tk-cause">
@@ -539,7 +555,15 @@ export function TakeoverCard(props: TakeoverCardProps) {
         ) : null}
         {/* The delivery's slot is kept while nothing has landed, so the line arriving never reflows the card. */}
         {statusLine ? <Delivery key={statusLine.text} line={statusLine} /> : <p className="mr-tk-slot" aria-hidden="true" />}
-        {hasNote(incident, DEMO_PROFILE_NOTE) ? <p className="mr-tk-note">{t('demoProfile.notice')}</p> : null}
+        {props.note ? (
+          <p className="mr-tk-note" title={typeof props.note === 'string' ? props.note : undefined}>
+            {props.note}
+          </p>
+        ) : hasNote(incident, DEMO_PROFILE_NOTE) ? (
+          <p className="mr-tk-note" title={t('demoProfile.notice')}>
+            {t('demoProfile.notice')}
+          </p>
+        ) : null}
       </footer>
     </section>
   );

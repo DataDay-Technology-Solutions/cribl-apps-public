@@ -10,7 +10,7 @@
 // The Report card view shows this exact string in a sandboxed iframe, so the preview is the download.
 
 import type { ReportCard } from './report.ts';
-import { alertLine, fill, fmtPricePerGb, plural } from './report.ts';
+import { alertLine, fill, fmtPricePerGb, plural, reportIncidentTone } from './report.ts';
 import { fmtBytes, fmtDollars, fmtDollarsCompact, fmtPct } from './format.ts';
 
 /** Escapes text for HTML element content and double-quoted attributes. */
@@ -94,6 +94,8 @@ tfoot td { font-weight: 700; border-top: 1.5px solid #1c2024; border-bottom: 0; 
 .alert .t { display: flex; justify-content: space-between; gap: 12px; font-weight: 700; }
 .alert .s { color: #00824d; white-space: nowrap; }
 .alert.open .s { color: #ce2c31; }
+.alert.closed { border-left-color: #8b8d98; }
+.alert.closed .s { color: #60646c; }
 .alert p { margin: 3px 0 0; font-size: 12.5px; }
 .alert p.c { color: #60646c; font-size: 11.5px; }
 ul.method { margin: 0; padding-left: 18px; font-size: 12px; }
@@ -272,7 +274,7 @@ function protection(card: ReportCard): string {
   const { copy } = card;
   const prot = card.protection;
   const alerts = prot.rows
-    .map((r) => `<div class="alert ${r.status}"><div class="t"><span>${e(r.title)}</span><span class="s">${e(r.statusText)}</span></div><p>${e(alertLine(r, copy.cols.caught, ' · '))}</p><p class="c">${e(r.causeText)}</p></div>`)
+    .map((r) => `<div class="alert ${reportIncidentTone(r.status)}"><div class="t"><span>${e(r.title)}</span><span class="s">${e(r.statusText)}</span></div><p>${e(alertLine(r, copy.cols.caught, ' · '))}</p><p class="c">${e(r.causeText)}</p></div>`)
     .join('');
   return `<section><h2>${e(copy.protection.title)}</h2><p class="cap">${e(prot.caption)}</p><p class="${prot.count > 0 ? 'summary-line' : 'muted'}">${e(prot.summary)}</p>${alerts}</section>`;
 }

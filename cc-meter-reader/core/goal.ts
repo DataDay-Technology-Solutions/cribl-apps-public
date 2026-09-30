@@ -13,6 +13,7 @@
 
 import type { PricesDoc, TrendPoint } from './types.ts';
 import { meteredSpan } from './net.ts';
+import { signedWholePct } from './format.ts';
 import { priceEntryAt } from './pricing.ts';
 import { presetById } from './presets.ts';
 import { DAY_MS, addDaysToKey, localDayKey, localDayStartMs, localMonthStartMs, localNextMonthStartMs } from './time.ts';
@@ -143,10 +144,13 @@ export function weekFromTrend(trend: readonly TrendPoint[], sweepMs: number, tz:
   return out;
 }
 
-/** Signed whole-percent change, or undefined without a base: +16 for 116 vs 100. */
+/**
+ * Signed whole-percent change, or undefined without a base: +16 for 116 vs 100. R2 core-9 (BO-11): half up on the
+ * magnitude, as fmtPct prints the comparison's change (−0.5 % → −1, never "0%" beside the comparison's "−1%").
+ */
 export function changePct(current: number, prior: number): number | undefined {
   if (!(prior > 0) || !Number.isFinite(current)) return undefined;
-  return Math.round(((current - prior) / prior) * 100);
+  return signedWholePct((current - prior) / prior);
 }
 
 // ─── Price basis (the confidence badge) ──────────────────────────────────────

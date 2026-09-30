@@ -15,7 +15,7 @@
 // a one-line notice offers "Update figures" when newer ones arrive. Sample data works too and is
 // marked as a sample on every page. Nothing is written anywhere: no KV, no browser storage.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { Button, ButtonLink, TextArea, TextField, ToggleButtonGroup, type Key } from '@capra/core';
 import { ChevronLeft, CopyOutlined, Download, FileLines } from '@capra/icons';
@@ -25,7 +25,7 @@ import { renderReportPdf } from '../../../core/report-pdf.ts';
 import { renderReportHtml } from '../../../core/report-html.ts';
 import { renderReportEmail } from '../../../core/report-email.ts';
 import { renderReportCsv } from '../../../core/report-csv.ts';
-import { fromIso, isValidTimeZone } from '../../../core/time.ts';
+import { fromIso } from '../../../core/time.ts';
 import { t } from '../../copy/en.ts';
 import { InlineNotice } from '../../components/common/InlineNotice.tsx';
 import { notify } from '../../components/common/notify.tsx';
@@ -33,7 +33,8 @@ import { Page } from '../../components/Shell/Page.tsx';
 import { BUILD, versionLabel } from '../../lib/env.ts';
 import { formatTimeOfDay } from '../../lib/format.ts';
 import { hrefWithStickyParams, useAppParams } from '../../lib/params.ts';
-import { shallowEqual, useAppState } from '../../state/react.tsx';
+import { shallowEqual, useActions, useAppState, useStoreApi } from '../../state/react.tsx';
+import { applyCost, costDraftFrom } from '../Settings/model.ts';
 import type { DataSource } from '../../state/store.ts';
 import { rangeCaption } from '../Receipt/text.ts';
 import { useRange } from '../Receipt/useRange.ts';
@@ -53,6 +54,7 @@ import {
 } from './model.ts';
 import { criblCostSuggestion } from '../Receipt/model.ts';
 import './Report.css';
+import { useViewZone } from '../Receipt/useViewZone.ts';
 
 const CHOICE_LABEL: Record<ReportChoice, () => string> = {
   mtd: () => t('report.view.period.mtd'),
@@ -93,6 +95,9 @@ function useSettled<T>(value: T, ms: number): T {
 const NOTE_MAX = 400;
 const FOR_MAX = 80;
 
+/** The Report card's own default period (it never follows settings.headlinePeriodDefault). */
+const REPORT_DEFAULT_PERIOD = 'mtd' as const;
+
 function ReportContent({ snapshot: latest, source }: { snapshot: Snapshot; source: DataSource }) {
   // The figures the report is built from, until the reader asks for the newer ones.
   const [snapshot, setSnapshot] = useState(latest);
@@ -103,17 +108,24 @@ function ReportContent({ snapshot: latest, source }: { snapshot: Snapshot; sourc
   const view = useAppState(
     (s) => ({
       prices: s.prices,
-      tzSetting: s.settings.displayTimezone,
-      defaultPeriod: s.settings.headlinePeriodDefault,
       criblCost: s.settings.criblCostCentsPerMonth,
+      // A cost saved from the list-price estimate (Settings' "Use this estimate", or row 13's button) stays an estimate.
+      costIsEstimate: (s.settings as { criblCostEstimate?: true }).criblCostEstimate === true,
       labels: s.settings.humanize,
+      // r2 core-6 (FINDINGS_R2 #2): the floor a below-floor close fell under, as this workspace set it.
+      floorCents: s.settings.thresholds?.regressionMinCentsPerDay,
       owner: s.meta?.lastSweepOwner,
     }),
     shallowEqual,
   );
-  const tz = view.tzSetting && isValidTimeZone(view.tzSetting) ? view.tzSetting : 'UTC';
+  // r3 ui-1 (FINDINGS_R3 #5, C3): the Receipt's zone (receiptZone: stored settings → the pinned snapshot's zone → this
+  // browser's). The boot defaults always carry the browser's zone, so settings.displayTimezone alone would prorate a
+  // settings-less workspace's month from a different start than the Receipt it reconciles to.
+  const tz = useViewZone(snapshot.zone);
   const live = source === 'live';
-  const choice = reportChoice({ period: params.period, range: params.range, report: search.get('report') }, source, view.defaultPeriod);
+  // The Report card opens on month to date unless the Receipt (or the link) names a period: a CFO document is a real
+  // period, whatever the Receipt's own default is (founder-build r1 ui-2: the sample's Receipt opens on Annualized).
+  const choice = reportChoice({ period: params.period, range: params.range, report: search.get('report') }, source, REPORT_DEFAULT_PERIOD);
   const rangeSpec = rangeable(source) && choice === 'range' ? params.range : undefined;
   const { state: rangeState, result: rangeResult } = useRange(rangeSpec, rangeSpec !== undefined, snapshot.sweepAt);
   const viewer = useViewerName();
@@ -141,7 +153,12 @@ function ReportContent({ snapshot: latest, source }: { snapshot: Snapshot; sourc
       return buildReportCard({
         snapshot,
         prices: view.prices,
-        settings: { criblCostCentsPerMonth: view.criblCost, humanize: view.labels },
+        settings: {
+          criblCostCentsPerMonth: view.criblCost,
+          humanize: view.labels,
+          ...(view.costIsEstimate ? { criblCostEstimate: true as const } : {}),
+          ...(view.floorCents !== undefined ? { thresholds: { regressionMinCentsPerDay: view.floorCents } } : {}),
+        },
         period,
         nowMs: Date.now(),
         tz,
@@ -156,7 +173,7 @@ function ReportContent({ snapshot: latest, source }: { snapshot: Snapshot; sourc
         note: noteText,
       });
     },
-    [period, snapshot, view.prices, view.criblCost, view.labels, tz, live, viewer, source, view.owner],
+    [period, snapshot, view.prices, view.criblCost, view.costIsEstimate, view.labels, view.floorCents, tz, live, viewer, source, view.owner],
   );
 
   const card = useMemo(() => buildCard(settledFor, settledNote), [buildCard, settledFor, settledNote]);
@@ -205,7 +222,43 @@ function ReportContent({ snapshot: latest, source }: { snapshot: Snapshot; sourc
   };
 
   const disabled = !card;
-  const checks = card ? reportChecks(card, criblCostSuggestion(snapshot)) : [];
+  const suggestion = criblCostSuggestion(snapshot);
+  const checks = card ? reportChecks(card, suggestion) : [];
+  // FOUNDER_PLAN row 13 (founder-build r1 ui-11): no hole on first use. With no Cribl cost, one click saves the
+  // list-price estimate the checks quote — the same save as Settings → Cribl cost's "Use this estimate" (flagged as an
+  // estimate until a contract figure replaces it). Live data only; a sample writes nothing.
+  const { saveSettings } = useActions();
+  const store = useStoreApi();
+  const writable = useAppState((s) => s.hasHydrated && s.source === 'live');
+  const [savingEstimate, setSavingEstimate] = useState(false);
+  const offerEstimate = card !== undefined && !card.cribl && suggestion !== undefined && live && writable;
+  // Founder-build r2 ui-5 (FINDINGS_R2 #15, D39): the saved estimate unmounts the "Before you send it" block with the
+  // button that had focus. When focus fell with it (to <body>), it goes to Download PDF, the next thing to do; focus the
+  // member moved elsewhere meanwhile is left alone.
+  const actionsRef = useRef<HTMLDivElement>(null);
+  const offeredEstimate = useRef(offerEstimate);
+  useLayoutEffect(() => {
+    const was = offeredEstimate.current;
+    offeredEstimate.current = offerEstimate;
+    if (!was || offerEstimate) return;
+    const active = typeof document !== 'undefined' ? document.activeElement : null;
+    if (active && active !== document.body && active.isConnected) return;
+    actionsRef.current?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
+  }, [offerEstimate]);
+  const saveEstimate = async () => {
+    if (!suggestion || savingEstimate) return;
+    setSavingEstimate(true);
+    try {
+      const current = store.getState().settings;
+      const { next, errors } = applyCost(current, costDraftFrom({ ...current, criblCostCentsPerMonth: suggestion.centsPerMonth }), suggestion.centsPerMonth);
+      if (Object.keys(errors).length > 0) return;
+      const result = await saveSettings(next);
+      if (result.ok) notify.success(t('report.view.estimateSaved'));
+      else notify.error(t('settings.saveFailed', { status: result.error?.status || '—' }));
+    } finally {
+      setSavingEstimate(false);
+    }
+  };
   const backHref = hrefWithStickyParams('/', new URLSearchParams(rawSearch));
   const sweepMs = fromIso(snapshot.sweepAt);
 
@@ -260,9 +313,14 @@ function ReportContent({ snapshot: latest, source }: { snapshot: Snapshot; sourc
                   </li>
                 ))}
               </ul>
+              {offerEstimate ? (
+                <Button variant="secondary" size="sm" onPress={() => void saveEstimate()} pending={savingEstimate} data-testid="report-use-estimate">
+                  {t('report.view.useEstimate')}
+                </Button>
+              ) : null}
             </div>
           ) : null}
-          <div className="mr-report-actions" role="group" aria-label={t('report.view.actionsLabel')}>
+          <div className="mr-report-actions" role="group" aria-label={t('report.view.actionsLabel')} ref={actionsRef}>
             <Button variant="primary" leadingIcon={Download} onPress={() => onDownload('pdf')} disabled={disabled} block>
               {t('report.view.downloadPdf')}
             </Button>

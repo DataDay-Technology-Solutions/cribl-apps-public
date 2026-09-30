@@ -81,6 +81,31 @@ describe('Meter', () => {
     expect(screen.getByRole('status').textContent).toBe('Saved by Cribl, month to date: $1,030');
   });
 
+  it('a new label is announced at once with the figure it stands for, not after the 30 s throttle (1.1.4, §7.3)', () => {
+    vi.useFakeTimers({ toFake: ['Date', 'requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'setTimeout', 'setInterval'] });
+    vi.setSystemTime(Date.parse('2026-09-26T12:00:00.000Z'));
+    const t0 = Date.now();
+    // The Receipt's one ticking meter: month to date, then a switch to Today five seconds later.
+    const { rerender } = render(<Meter valueM={100_000_000} ratePerSecM={100_000} anchorMs={t0} label="Saved by Cribl, month to date" />);
+    expect(screen.getByRole('status').textContent).toBe('Saved by Cribl, month to date: $1,000');
+    act(() => {
+      vi.advanceTimersByTime(5_000);
+    });
+    const t1 = Date.now();
+    rerender(<Meter valueM={40_000_000} ratePerSecM={100_000} anchorMs={t1} label="Saved by Cribl, today" />);
+    // Never "month to date: …" on Today, and never the MTD figure the wheels are still easing down from.
+    expect(screen.getByRole('status').textContent).toBe('Saved by Cribl, today: $400');
+    // Back to the throttle after that: the value moves, the words wait for the next 30-second mark.
+    act(() => {
+      vi.advanceTimersByTime(5_000);
+    });
+    expect(screen.getByRole('status').textContent).toBe('Saved by Cribl, today: $400');
+    act(() => {
+      vi.advanceTimersByTime(26_000);
+    });
+    expect(screen.getByRole('status').textContent).toBe('Saved by Cribl, today: $430');
+  });
+
   it('a lower snapshot within $1 is held, never shown going backwards', () => {
     vi.useFakeTimers({ toFake: ['Date', 'requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'setTimeout', 'setInterval'] });
     vi.setSystemTime(Date.parse('2026-09-26T12:00:00.000Z'));

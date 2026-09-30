@@ -55,7 +55,8 @@ const PRESET_ROWS: Record<string, string> = { mrd_siem_prod: 'Splunk Cloud', mrd
 test.describe('Labels: every percentage names its basis', () => {
   test('Receipt: the hero says "of dollars, month to date" on hover and in Show the math; rows say "priced as"; the caption counts', async ({ page }) => {
     const errors = trackConsoleErrors(page);
-    await openOnFixture(page, '/');
+    // r2 ui-2: a new install opens on the annualized run rate; this spec is about month to date.
+    await openOnFixture(page, '/?period=mtd');
     const hero = page.getByTestId('receipt-hero');
     await expect(hero).toBeVisible();
     await expect(page.getByTestId('hero-caption')).toContainText('month to date');
@@ -203,7 +204,7 @@ test.describe('Labels: screenshots', () => {
       test.setTimeout(180_000);
       const errors = trackConsoleErrors(page);
 
-      await openOnFixture(page, '/');
+      await openOnFixture(page, '/?period=mtd'); // r2 ui-2: pinned to month to date
       await setTheme(page, theme);
       await expect(page.getByTestId('receipt-hero').getByTestId('receipt-saved-pct')).toHaveAttribute('title', 'of dollars, month to date');
       for (const size of WIDTHS) {

@@ -4,7 +4,7 @@
 // "Copy for email" puts both on the clipboard (text/html + text/plain); a mail client takes the richest one.
 
 import type { ReportCard } from './report.ts';
-import { alertLine, fill, fmtPricePerGb } from './report.ts';
+import { alertLine, fill, fmtPricePerGb, reportIncidentTone } from './report.ts';
 import { escapeHtml as e } from './report-html.ts';
 import { fmtBytes, fmtDollars, fmtPct } from './format.ts';
 
@@ -144,7 +144,9 @@ export function renderReportEmailHtml(card: ReportCard): string {
   rows.push(`<tr><td style="${text(13, prot.count > 0 ? INK : SUBTLE, `padding-top:6px;${prot.count > 0 ? 'font-weight:bold;' : ''}`)}">${e(prot.summary)}</td></tr>`);
   for (const r of prot.rows) {
     const second = alertLine(r, copy.cols.caught, ' · ');
-    const border = r.status === 'open' ? DANGER : SAVED;
+    // R2 core-6: a close that was not a recovery is neutral, never the recovered green.
+    const tone = reportIncidentTone(r.status);
+    const border = tone === 'open' ? DANGER : tone === 'recovered' ? SAVED : SUBTLE;
     rows.push(
       `<tr><td style="padding-top:8px;">${table(`<tr><td bgcolor="${PANEL}" style="${text(13, INK, `background-color:${PANEL};border-left:3px solid ${border};padding:8px 12px;`)}"><b>${e(r.title)}</b> &nbsp;<span style="color:${border};font-weight:bold;">${e(r.statusText)}</span><br>${e(second)}<br><span style="color:${SUBTLE};font-size:12px;">${e(r.causeText)}</span></td></tr>`)}</td></tr>`,
     );

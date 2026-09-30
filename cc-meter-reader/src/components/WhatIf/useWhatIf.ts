@@ -24,11 +24,14 @@ import {
   isPackTreatment,
   measureActual,
   pipelineMatchesTreatment,
+  currentRateBasis,
   previewHeadline,
   streamKeyOf,
   streamsRunning,
   suggestTreatment,
   treatmentApplies,
+  treatmentRunState,
+  unclaimedEmptyReason,
   unclaimedSavings,
   type AppliedComparison,
   type Estimate,
@@ -39,6 +42,7 @@ import {
   type SimilarStream,
   type StreamKey,
   type Treatment,
+  type UnclaimedEmptyReason,
   type UnclaimedSaving,
 } from '../../../core/whatif.ts';
 import { runDryRun as runPreviewDryRun, type DryRunResult } from '../../../core/adapters/preview.ts';
@@ -88,8 +92,13 @@ export interface WhatIfModel {
    * the What-if hero extends by the projection (P2-W08); null before the first run rate.
    */
   heroBar: { whpM: number; paidM: number; savedM: number } | null;
-  /** The stream already runs this treatment's pipeline. */
+  /** The stream already runs this treatment's pipeline (all of it, or a Pack that is part of it: runsPackId). */
   alreadyRuns: boolean;
+  /**
+   * Founder-build r1 ui-4 (row 2b): the stream's pipeline is a Pack that is only part of the treatment (Cribl's Palo Alto
+   * Networks pack attached alone against the Palo Alto + syslog packs): its Pack id, else null.
+   */
+  runsPackId: string | null;
   /** The treatment fits the stream's source (P1-F13); false → nothing is projected. */
   applicable: boolean;
   appliedAt?: number;
@@ -115,6 +124,8 @@ export interface WhatIfModel {
   tiles: Record<TreatmentKey, TreatmentTileInfo>;
   /** P2-W23: the biggest savings not yet taken in this group, ranked (at most five). */
   unclaimed: UnclaimedSaving[];
+  /** Why `unclaimed` is empty (founder-build r1 ui-4, row 2): undefined while it has a line. */
+  unclaimedEmpty?: UnclaimedEmptyReason;
   /** The in-app link that loads the calculator on a stream + treatment (keeps the other params). */
   linkFor(streamKey: StreamKey, treatment: TreatmentKey): string;
 }
@@ -177,9 +188,11 @@ export function useWhatIf(snapshot: Snapshot | null, groupId: string): WhatIfMod
   const derived = useMemo(() => {
     const treatment: Treatment = treatmentKey === 'custom' ? { dropPct } : treatmentKey;
     if (!stream || !snapshot) {
-      return { treatment, similar: null, estimate: null, projectedFlows: null, preview: null, heroBar: null, alreadyRuns: false, applicable: true, measured: null, applied: null, liveAnnualizedM: null };
+      return { treatment, similar: null, estimate: null, projectedFlows: null, preview: null, heroBar: null, alreadyRuns: false, runsPackId: null, applicable: true, measured: null, applied: null, liveAnnualizedM: null };
     }
     const alreadyRuns = isPackTreatment(treatment) && pipelineMatchesTreatment(stream.flow.pipelineId, treatment);
+    const runState = isPackTreatment(treatment) ? treatmentRunState(stream.flow.pipelineId, treatment) : null;
+    const runsPackId = runState?.state === 'part' ? runState.packId : null;
     const applicable = treatmentApplies(treatment, stream.flow);
     // A pack that does not fit this source borrows no one's ratio (P1-F13): its estimate is refused.
     const similar = applicable ? findSimilarStream(snapshot, treatment, { excludeStreamKey: stream.key, groupId }) : null;
@@ -225,9 +238,11 @@ export function useWhatIf(snapshot: Snapshot | null, groupId: string): WhatIfMod
       similar,
       estimate,
       projectedFlows,
-      preview: previewHeadline(snapshot.headline, estimate),
+      // Founder-build r2 ui-7 (IC-2): the hero and its bar on the strip's basis, the workspace at today's rates.
+      preview: previewHeadline(snapshot.headline, estimate, currentRateBasis(snapshot.flows ?? [])),
       heroBar: parts ? { whpM: parts.whpM, paidM: parts.paidM, savedM: Math.round(annualized) } : null,
       alreadyRuns,
+      runsPackId,
       applicable,
       measured,
       applied,
@@ -274,7 +289,27 @@ export function useWhatIf(snapshot: Snapshot | null, groupId: string): WhatIfMod
     }
     return out;
   }, [snapshot, stream, groupId]);
-  const unclaimed = useMemo(() => (snapshot ? unclaimedSavings(streams.map((s) => s.flow), snapshot, { groupId, limit: 5 }) : []), [snapshot, streams, groupId]);
+  const unclaimedBase = useMemo(() => (snapshot ? unclaimedSavings(streams.map((s) => s.flow), snapshot, { groupId, limit: 5 }) : []), [snapshot, streams, groupId]);
+  // Founder-build r2 ui-7 (BO-13): once a dry run measured this stream + treatment, its unclaimed line moves to the dry
+  // run's basis too, so the screen never shows one pack at two yearly figures (the list stays ranked).
+  const dryRunEstimate = derived.estimate && derived.estimate.ok && derived.estimate.basis === 'dry-run' ? derived.estimate : null;
+  const unclaimed = useMemo(() => {
+    if (!dryRunEstimate || !stream) return unclaimedBase;
+    let moved = false;
+    const lines = unclaimedBase.map((line) => {
+      if (line.streamKey !== stream.key || line.treatment !== treatmentKey) return line;
+      moved = true;
+      return { ...line, estimate: dryRunEstimate, deltaPerYearM: dryRunEstimate.mid.deltaSavedPerYearM };
+    });
+    if (!moved) return unclaimedBase;
+    return lines
+      .filter((l) => l.deltaPerYearM > 0)
+      .sort((a, b) => b.deltaPerYearM - a.deltaPerYearM || (a.streamKey < b.streamKey ? -1 : a.streamKey > b.streamKey ? 1 : 0));
+  }, [unclaimedBase, dryRunEstimate, stream, treatmentKey]);
+  const unclaimedEmpty = useMemo(
+    () => (snapshot && unclaimed.length === 0 ? unclaimedEmptyReason(streams.map((s) => s.flow), snapshot, { groupId }) : undefined),
+    [snapshot, unclaimed, streams, groupId],
+  );
   const linkFor = useCallback(
     (streamKey: StreamKey, treatment: TreatmentKey): string => {
       const next = new URLSearchParams(search);
@@ -350,6 +385,7 @@ export function useWhatIf(snapshot: Snapshot | null, groupId: string): WhatIfMod
     appliedProjection,
     tiles,
     unclaimed,
+    unclaimedEmpty,
     linkFor,
     markApplied: (atMs) => {
       const e = derived.estimate;

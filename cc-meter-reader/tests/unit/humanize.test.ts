@@ -26,6 +26,19 @@ describe('humanize', () => {
     expect(humanize('mrd_analytics')).toBe('Analytics');
     expect(humanize('mrd_archive_s3')).toBe('Archive (S3)');
   });
+  it("m19 (#47, founder-build r1 core-14): Cribl's default Source and destination ids read as the product names them", () => {
+    expect(humanize('in_syslog')).toBe('Syslog');
+    expect(humanize('in_splunk_hec')).toBe('Splunk HEC');
+    expect(humanize('in_syslog_tls')).toBe('Syslog (TLS)');
+    expect(humanize('in_cribl_http')).toBe('Cribl HTTP');
+    expect(humanize('in_splunk_tcp')).toBe('Splunk TCP');
+    expect(humanize('out_splunk')).toBe('Splunk');
+    expect(humanize('out_splunk_hec_0')).toBe('Splunk HEC 0');
+    expect(humanize('in_datagen_00012')).toBe('Datagen 00012');
+    // An unknown token leaves the dictionary to decide; an override still wins.
+    expect(humanize('in_acme_widget')).toBe('In acme widget');
+    expect(humanize('in_syslog', { in_syslog: 'Edge syslog' })).toBe('Edge syslog');
+  });
   it('applies the dictionary, strips prefixes and title-cases the first word', () => {
     expect(humanize('win_trim')).toBe('Windows trimming');
     expect(humanize('mr_fw_dedupe')).toBe('Firewall duplicate suppression');
@@ -78,14 +91,19 @@ describe('displayAuthor (NOTIFY-3a issue 8)', () => {
     // Rules round 2: two automations (a GitOps pipeline, a CI job) read apart; the id itself never travels.
     expect(displayAuthor('Zx9QvK3mTt0pLr7bN2cW5yH8dJ4aF6gE@clients')).toBe('API client ··F6gE');
     expect(displayAuthor('Ab12Cd34Ef56Gh78@clients')).toBe('API client ··Gh78');
-    expect(displayAuthor(' abc@CLIENTS ')).toBe('API client');
+    // C5 (founder-build r1 core-4): one rule with the cards — the tail is the label key's (the id's last four characters).
+    expect(displayAuthor(' abc@CLIENTS ')).toBe('API client ··abc');
     expect(displayAuthor('s.koelpin')).toBe('s.koelpin');
     expect(displayAuthor('Cribl System')).toBe('Cribl System');
     expect(displayAuthor('jane@example.com')).toBe('jane@example.com');
     expect(displayAuthor('two words@clients')).toBe('two words@clients');
-    expect(displayAuthor('')).toBe('unknown');
-    expect(displayAuthor('   ')).toBe('unknown');
-    expect(displayAuthor(undefined)).toBe('unknown');
-    expect(displayAuthor(null)).toBe('unknown');
+    expect(displayAuthor('')).toBe('unknown author');
+    expect(displayAuthor('   ')).toBe('unknown author');
+    expect(displayAuthor(undefined)).toBe('unknown author');
+    expect(displayAuthor(null)).toBe('unknown author');
+    // The member's name for a client (Settings → Alerts → API clients, settings.humanize "client:<last four>").
+    expect(displayAuthor('Zx9QvK3mTt0pLr7bN2cW5yH8dJ4aF6gE@clients', { 'client:F6gE': 'GitOps pipeline' })).toBe('GitOps pipeline');
+    expect(displayAuthor('Zx9QvK3mTt0pLr7bN2cW5yH8dJ4aF6gE@clients', { 'client:F6gE': '  ' })).toBe('API client ··F6gE');
+    expect(displayAuthor('s.koelpin', { 'client:F6gE': 'GitOps pipeline' })).toBe('s.koelpin');
   });
 });

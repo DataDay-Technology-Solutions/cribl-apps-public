@@ -121,3 +121,97 @@ describe('the alert money line, per incident type × state, on every channel', (
     );
   });
 });
+
+// Founder-build r1 core-3 (FOUNDER_PLAN row 9, PACK_PAYOFF F1): good news is a one-shot incident the detector opens and
+// closes in the same minute (closedAt = openedAt), sent as `incident.opened`. Its channels used to print recovery copy
+// ("Opened … · Recovered …" in the target and ServiceNow text) and hid its caught-in line in Slack as if it had closed.
+describe('good news never reads as a recovery on any channel (row 9, PACK_PAYOFF F1)', () => {
+  const settled = (): CanonicalPayload => {
+    const opened = '2026-09-27T12:42:25.000Z';
+    const inc = incident('goodnews', {
+      severity: 'info',
+      label: 'Palo Alto firewall',
+      objectKey: 'route:default:mrd_pan_firewall',
+      before: 0,
+      after: 0.3418,
+      impactPerDayM: 4_614_642,
+      openedAt: opened,
+      closedAt: opened,
+      caughtInSec: 155,
+      commit: { hash: 'e1e9889aa', message: 'demo: apply the pack on mrd_pan_firewall', author: 'Steve Koelpin', committedAt: '2026-09-27T12:39:46.000Z', deployedAt: '2026-09-27T12:39:50.157Z', groupId: 'default', match: 'message' },
+      notes: ['demo-profile'],
+    });
+    return canonicalPayload('incident.opened', { incident: inc, workspace: 'w', linkBase: 'https://x' });
+  };
+
+  it('no surface says recovered, back to, or closed itself; the settled figure and its year are there', () => {
+    const c = settled();
+    const s = surfaces(c);
+    for (const [k, v] of Object.entries(s)) {
+      expect(v, k).not.toMatch(/recover|back to|closed itself|Closed:|New normal/i);
+    }
+    expect(s.bell).toBe('$46 a day · $16,843 a year · commit e1e9889 by Steve Koelpin · Meter Reader by Steve Koelpin');
+    expect(s.target).toContain('0% → 34%');
+    expect(renderAlert(c).title).toBe('Savings improved: Palo Alto firewall');
+    expect(renderAlert(c).severity).toBe('info');
+  });
+
+  it('Slack keeps the caught-in line and the time it was found, like an opened alert', () => {
+    const slack = slackPayload(settled());
+    const context = JSON.stringify(slack.blocks[2]);
+    expect(context).toContain('caught in 2:35');
+    expect(slack.text).toContain('Savings improved: Palo Alto firewall');
+    expect(slack.text).not.toMatch(/Recovered/);
+  });
+});
+
+// Founder-build r1 core-10 (FINDINGS_R1 M9, #33): a regression the $5/day floor closed (D26) recovered nowhere — its
+// ratio is still down, the flow just got cheap (D47) — yet every channel announced it as a green "Recovered:". Now it
+// reads "Closed: …", a neutral glyph, severity info, and "fell under the $5/day floor; savings still at {after}".
+// m15 (#36): a drop a member accepted or muted reads as open on every channel ("… a year if left"); the Slack grid's
+// label now says so too ("Per year if left"), agreeing with its own fallback text.
+describe('core-10 · M9: a below-floor close is never "Recovered"; m15: the Slack label follows closedReason', () => {
+  const belowFloor = (): CanonicalPayload =>
+    canonicalPayload('incident.closed', { incident: incident('regression', { closedAt: CLOSED, notes: ['below-floor'] }), workspace: 'w', linkBase: 'https://x' });
+
+  it('no channel prints "Recovered" for a below-floor close; it reads Closed, neutral, info, with the floor line', () => {
+    const c = belowFloor();
+    const s = surfaces(c);
+    for (const [k, v] of Object.entries(s)) expect(v, k).not.toMatch(/recover/i);
+    const bell = renderAlert(c);
+    expect(bell.title).toBe('Closed: Savings dropped: Payments API sampling');
+    expect(bell.severity).toBe('info');
+    expect(bell.line).toContain('fell under the $5/day floor; savings still at 50%');
+    expect(impactPhrase(c.incident!)).toBe('fell under the $5/day floor; savings still at 50%');
+    const slack = slackPayload(c);
+    expect(JSON.stringify(slack.blocks[0])).toContain(':large_blue_circle:');
+    expect(JSON.stringify(slack.blocks[0])).not.toContain(':large_green_circle:');
+    expect(slack.text).toContain('Closed: Savings dropped');
+    expect(servicenowPayload(c).short_description).toBe('Closed: Savings dropped: Payments API sampling');
+    // Never annualized: the drop is under the floor now.
+    for (const [k, v] of Object.entries(s)) expect(v, k).not.toMatch(/a year|Per year/);
+  });
+
+  it('names the floor the workspace set (carried by the sweep), $5 when none is given', () => {
+    const c = canonicalPayload('incident.closed', {
+      incident: incident('regression', { closedAt: CLOSED, notes: ['below-floor'] }),
+      workspace: 'w',
+      linkBase: '',
+      regressionFloorCentsPerDay: 1_000,
+    });
+    expect(renderAlert(c).line).toContain('fell under the $10/day floor; savings still at 50%');
+  });
+
+  it('m15: an accepted or muted drop reads "Per year if left" in the grid, as its fallback text says "a year if left"', () => {
+    for (const reason of ['accepted', 'muted'] as const) {
+      const c = canonicalPayload('incident.closed', { incident: incident('regression', { closedAt: CLOSED, closedReason: reason, closedBy: 'Steve Koelpin' }), workspace: 'w', linkBase: '' });
+      const slack = slackPayload(c);
+      expect(slack.text, reason).toContain('a year if left');
+      const fields = JSON.stringify(slack.blocks[1]);
+      expect(fields, reason).toContain('*Per year if left*');
+      expect(fields, reason).not.toMatch(/\*Per year\*/);
+    }
+    // A recovery keeps what it came to (no year at all).
+    expect(JSON.stringify(slackPayload(payload('regression', 'recovered')).blocks[1])).not.toMatch(/Per year/);
+  });
+});

@@ -3,9 +3,10 @@
 //
 // The snapshot's headline carries saved / would-have-paid / paid for today, month to date and the last
 // 30 days, but only the SAVED figure of the annualized run rate. Its would-have-paid and paid are derived
-// here from the same days the headline annualized (snapshot.trend), so the receipt bar and Show the math
-// agree with the hero to the dollar.
+// here from the same days the headline annualized (snapshot.trend), each scaled by saved's own factor, so the
+// receipt bar and Show the math agree with the hero to the dollar.
 
+import { footColumn, footMoney, MC_PER_DOLLAR, roundToDollarsM, shownUnderOneDollar } from '../../../core/format.ts';
 import type {
   Counterfactual,
   DestinationFigures,
@@ -40,6 +41,12 @@ import { isOtherFlow, type SnapshotFold } from '../../state/selectors.ts';
 
 export const PERIOD_ORDER: readonly HeadlinePeriod[] = ['mtd', 'today', '30d', 'annualized'];
 
+/**
+ * How the annualized would-have-paid and paid were derived (annualizedParts): scaled by saved over the rate's own days
+ * ('trend') or a period's triple ('ratio'), or, when the rate saved nothing, their own run rates ('rate', 1.1.4).
+ */
+export type AnnualizedDerivation = 'trend' | 'ratio' | 'rate';
+
 export interface PeriodFigures {
   period: HeadlinePeriod;
   savedM: number;
@@ -50,10 +57,14 @@ export interface PeriodFigures {
   /** Whether the figure accrues second by second (the annualized run rate is a whole-day rate; it doesn't). */
   accrues: boolean;
   /** For 'annualized': how would-have-paid / paid were derived. */
-  derivedFrom?: 'trend' | 'ratio';
+  derivedFrom?: AnnualizedDerivation;
   /** For 'annualized': the whole days behind the rate (fractional while under one day). */
   annualizedDays?: number;
 }
+
+// The Receipt's view zone (r2 ui-3) lives in src/lib/zone.ts since r3 ui-1, so the Report, the Ledger and the incident
+// cards share it; re-exported here for its existing callers.
+export { receiptZone } from '../../lib/zone.ts';
 
 /**
  * The local days the annualized run rate is built from (core computeHeadline, REVIEW-3a #6): the last 30 local
@@ -72,19 +83,44 @@ export function annualizedDays(snapshot: Snapshot, tz: string): TrendPoint[] {
 
 /**
  * Annualized would-have-paid and paid, consistent with `headline.annualizedM`.
- * The run rate is Σ saved ÷ Σ metered minutes × 525,600 over those days; would-have-paid over the same days
- * and minutes scales by the same factor, so it is the rate × (Σ would-have-paid ÷ Σ saved) — exact whenever
- * the trend holds those days ('trend'). Otherwise the rate is split by the last 30 days', today's or the
- * month's savings ratio ('ratio'). Saved always equals the headline.
+ * The run rate is Σ saved ÷ Σ metered minutes × 525,600 over those days; would-have-paid and paid over the same
+ * days and minutes scale by the same factor (founder-build r2 ui-1, BO-3: one factor for all three), so each is the
+ * rate × (Σ part ÷ Σ saved) — exact whenever the trend holds those days ('trend'). Otherwise the rate is split by the
+ * last 30 days', today's or the month's own triple ('ratio'). Saved always equals the headline.
+ *
+ * Paid is never derived as would-have-paid − saved: a destination whose counterfactual is "none" is paid for and saves
+ * nothing, so that difference hid its spend (EX3 printed Paid $146,000 for $255,500). Printed through footMoney
+ * (D53), paid is the printed difference only when the exact triple foots.
+ *
+ * 1.1.4 (judge path g): a rate that saved nothing has no saved figure to scale by. Would-have-paid and paid are then
+ * their own run rates over the same metered minutes, as core computeHeadline records them ('rate'), so a plain Datagen
+ * with no Drop reads what it pays a year and 0% saved, never "You would have paid $0 · You paid $0". A snapshot without
+ * those rates (written before 1.1.4, rewritten by the next sweep) keeps the arithmetic below: nothing is guessed.
  */
-export function annualizedParts(snapshot: Snapshot, tz: string): { whpM: number; paidM: number; derivedFrom: 'trend' | 'ratio' } {
+export function annualizedParts(snapshot: Snapshot, tz: string): { whpM: number; paidM: number; derivedFrom: AnnualizedDerivation } {
   const h = snapshot.headline;
   const days = annualizedDays(snapshot, tz);
   const whp = days.reduce((s, d) => s + d.whpM, 0);
+  const paid = days.reduce((s, d) => s + d.paidM, 0);
   const saved = days.reduce((s, d) => s + d.savedM, 0);
   if (whp > 0 && saved > 0 && h.annualizedM > 0) {
-    const whpM = Math.round((h.annualizedM * whp) / saved);
-    return { whpM, paidM: Math.max(0, whpM - h.annualizedM), derivedFrom: 'trend' };
+    return { whpM: Math.round((h.annualizedM * whp) / saved), paidM: Math.max(0, Math.round((h.annualizedM * paid) / saved)), derivedFrom: 'trend' };
+  }
+  // The window the fallback splits the rate by: the last 30 days, else today, else month to date (as before).
+  const w =
+    h.whp30dM > 0
+      ? { savedM: h.d30M, whpM: h.whp30dM, paidM: h.paid30dM }
+      : h.whpTodayM > 0
+        ? { savedM: h.todayM, whpM: h.whpTodayM, paidM: h.paidTodayM }
+        : { savedM: h.mtdM, whpM: h.whpMtdM, paidM: h.paidMtdM };
+  if (w.savedM > 0 && w.whpM > 0 && h.annualizedM > 0) {
+    const k = h.annualizedM / w.savedM;
+    return { whpM: Math.round(k * w.whpM), paidM: Math.max(0, Math.round(k * w.paidM)), derivedFrom: 'ratio' };
+  }
+  const ownWhp = h.annualizedWhpM;
+  const ownPaid = h.annualizedPaidM;
+  if (!(h.annualizedM > 0) && typeof ownWhp === 'number' && Number.isFinite(ownWhp) && typeof ownPaid === 'number' && Number.isFinite(ownPaid)) {
+    return { whpM: Math.max(0, Math.round(ownWhp)), paidM: Math.max(0, Math.round(ownPaid)), derivedFrom: 'rate' };
   }
   const r = h.whp30dM > 0 ? ratio(h.d30M, h.whp30dM) : h.whpTodayM > 0 ? ratio(h.todayM, h.whpTodayM) : h.ratioMtd;
   const whpM = r > 0 ? Math.round(h.annualizedM / r) : h.annualizedM;
@@ -141,9 +177,10 @@ export function collectingAfterStart(period: HeadlinePeriod, snapshot: Snapshot,
 }
 
 /**
- * The Receipt's landing period when the URL names none (P1-H08): a workspace that began metering less than a
- * day ago lands on the annualized run rate — month to date would be the first hour's few dollars, and the run
- * rate's caption already says "from today so far" — then on the settings default (MTD) once a day is in.
+ * The Receipt's landing period when the URL names none (P1-H08): the settings default — the annualized run rate for a
+ * new install since founder-build r2 ui-2 (named item (a); a projection with its pill while under a day) — and, for a
+ * member whose settings chose month to date (a stored 'mtd' is never migrated), the run rate still while the workspace
+ * is under a day old: month to date would be the first hour's few dollars.
  */
 export function landingPeriod(snapshot: Snapshot, settingsDefault: HeadlinePeriod | undefined): HeadlinePeriod {
   const fallback = settingsDefault ?? 'mtd';
@@ -151,6 +188,139 @@ export function landingPeriod(snapshot: Snapshot, settingsDefault: HeadlinePerio
   const sweep = fromIso(snapshot.sweepAt);
   if (fallback !== 'mtd' || !Number.isFinite(since) || !Number.isFinite(sweep)) return fallback;
   return sweep - since < DAY_MS && snapshot.headline.annualizedM > 0 ? 'annualized' : fallback;
+}
+
+/**
+ * Net after Cribl as it prints (founder-build r1 ui-8, FINDINGS_R1 m9; D53's footing rule): the saved figure as printed
+ * minus the cost as printed, so "saved − cost = net" always adds up to the dollar ("$597,932 − $220,546 = $377,386",
+ * never $377,387 from the unrounded net). `netM` and `costM` as core/net.ts returns them (saved = net + cost).
+ */
+export function printedNetM(netM: number, costM: number): number {
+  return roundToDollarsM(netM + costM) - roundToDollarsM(costM);
+}
+
+/** A non-zero amount fmtDollars prints '< $1' (it rounds to $0). */
+function underOneDollarShown(mc: number): boolean {
+  return Number.isFinite(mc) && mc !== 0 && roundToDollarsM(mc) === 0;
+}
+
+/**
+ * Rows printed under column totals (founder-build r1 ui-8, m10): would have paid and saved each footed to their
+ * total as printed (core/format.ts footColumn), paid the difference on every row — so every column sums to the
+ * "These rows add up to …" sentence and every row still reads would have paid − paid = saved. A row can take a
+ * dollar from its neighbour, never below $0 paid.
+ *
+ * Final 1.1.4 (FINDINGS_R4 #1): a row with real spend never prints "Paid $0", just as the formula line above the rows
+ * (footMoney) never does. When a row's would have paid and saved foot to the same dollar, a spend under a dollar prints
+ * '< $1' ("$2 − < $1 = $2", the formula line's own form). A spend of a dollar or more moves a dollar of the row's saved
+ * to the row with the most room, so the column still adds up; when no row has room, the dollar comes off the column.
+ */
+export function footRows(rows: readonly MoneyTripleM[], total: MoneyTripleM): MoneyTripleM[] {
+  const whp = footColumn(rows.map((r) => r.whpM), total.whpM);
+  const saved = footColumn(rows.map((r) => r.savedM), total.savedM);
+  // A row never saves more than it would have paid: a dollar the saved column's rounding put above a row's would-have-
+  // paid moves to the row with the most room (still the column's total, never below $0 paid).
+  for (let i = 0; i < rows.length; i++) {
+    while (saved[i] > whp[i]) {
+      let best = -1;
+      for (let j = 0; j < rows.length; j++) if (j !== i && whp[j] - saved[j] >= 100_000 && (best < 0 || whp[j] - saved[j] > whp[best] - saved[best])) best = j;
+      if (best < 0) {
+        saved[i] = whp[i];
+        break;
+      }
+      saved[i] -= 100_000;
+      saved[best] += 100_000;
+    }
+  }
+  const paid = rows.map((_, i) => whp[i] - saved[i]);
+  // Final 1.1.4 (integration): a saved line kept at its exact amount of $0.50 prints "$1", and the difference then rounds
+  // half up to the would have paid's own dollar ("$1 − $1 = $1", "$4 − $4 = $1"). When no figure on the row prints
+  // '< $1' and the printed row does not add up, paid is the printed difference; a $0 left beside real spend is then
+  // handled below like any other ("$1 − < $1 = $1", footMoney's own form for the same triple).
+  for (let i = 0; i < rows.length; i++) {
+    if (underOneDollarShown(whp[i]) || underOneDollarShown(paid[i]) || underOneDollarShown(saved[i])) continue;
+    const printedPaid = roundToDollarsM(whp[i]) - roundToDollarsM(saved[i]);
+    if (roundToDollarsM(paid[i]) !== printedPaid) paid[i] = printedPaid;
+  }
+  const whole = (mc: number): boolean => mc % MC_PER_DOLLAR === 0;
+  for (let i = 0; i < rows.length; i++) {
+    const spend = rows[i].paidM;
+    if (!(spend > 0) || paid[i] !== 0) continue;
+    if (spend < MC_PER_DOLLAR) {
+      paid[i] = shownUnderOneDollar(spend);
+      continue;
+    }
+    if (!whole(saved[i]) || saved[i] < MC_PER_DOLLAR) {
+      // Not a split of whole dollars (would have paid under the spend): the spend prints its own rounding.
+      paid[i] = roundToDollarsM(spend);
+      continue;
+    }
+    // A donor keeps a dollar of paid when it has a dollar or more of real spend, so the "$0" never moves to another row.
+    // A donor whose real spend is under a dollar may give its printed dollar away: it then prints '< $1' (below), the
+    // form footMoney prints for its own triple. Final 1.1.4 (integration): holding that dollar left no donor for a row
+    // with $1.00 of spend beside one with a fraction of a cent, and the saved column came up a dollar short.
+    let best = -1;
+    for (let j = 0; j < rows.length; j++) {
+      if (j === i || !whole(saved[j]) || !whole(paid[j])) continue;
+      if (paid[j] - MC_PER_DOLLAR < (rows[j].paidM >= MC_PER_DOLLAR ? MC_PER_DOLLAR : 0)) continue;
+      if (best < 0 || paid[j] > paid[best]) best = j;
+    }
+    saved[i] -= MC_PER_DOLLAR;
+    paid[i] += MC_PER_DOLLAR;
+    if (best >= 0) {
+      saved[best] += MC_PER_DOLLAR;
+      paid[best] -= MC_PER_DOLLAR;
+    }
+  }
+  // A donor that gave its only printed dollar away and has real spend under a dollar prints it '< $1', never "Paid $0".
+  for (let i = 0; i < rows.length; i++) {
+    const spend = rows[i].paidM;
+    if (paid[i] === 0 && spend > 0 && spend < MC_PER_DOLLAR) paid[i] = shownUnderOneDollar(spend);
+  }
+  return rows.map((_, i) => ({ whpM: whp[i], paidM: paid[i], savedM: saved[i] }));
+}
+
+/**
+ * Each priced destination's month to date as Show the math and its statement both print it (founder-build r2 ui-8,
+ * FINDINGS_R2 #9 / #10): footed to the reconciliation's totals when the rows add up to the hero (m10, footRows), else
+ * each row on its own (footMoney). One selector, so the drawer and the statement never print a destination a dollar
+ * apart. Keyed by the row's key (`groupId:outputId`).
+ */
+export function footedMtdRows(
+  rows: readonly { key: string; unpriced?: boolean; mtdWhpM?: number; mtdPaidM?: number; mtdSavedM?: number }[],
+  reconciliation: Pick<MtdReconciliation, 'whpM' | 'paidM' | 'savedM' | 'matches'> | undefined,
+): Map<string, MoneyTripleM> {
+  const priced = rows.filter((r) => !r.unpriced);
+  const triples = priced.map((r) => ({ whpM: r.mtdWhpM ?? 0, paidM: r.mtdPaidM ?? 0, savedM: r.mtdSavedM ?? 0 }));
+  const footed = reconciliation?.matches ? footRows(triples, reconciliation) : triples.map((m) => footMoney(m));
+  return new Map(priced.map((r, i) => [r.key, footed[i]]));
+}
+
+/**
+ * A statement month as it prints (r2 ui-8): the snapshot's own month to date reads exactly as Show the math prints it
+ * (`drawer`, from footedMtdRows); any other month — last month, or a running total that moved on — foots on its own.
+ */
+export function footedMonth<M extends MoneyTripleM>(month: M | undefined, snapshotMonth: MoneyTripleM | undefined, drawer: MoneyTripleM | undefined): M | undefined {
+  if (!month) return undefined;
+  const same = snapshotMonth !== undefined && month.whpM === snapshotMonth.whpM && month.paidM === snapshotMonth.paidM && month.savedM === snapshotMonth.savedM;
+  return same && drawer ? { ...month, ...drawer } : { ...month, ...footMoney(month) };
+}
+
+/**
+ * An aside line's whole dollars (founder-build r2 ui-8, FINDINGS_EXTRA BO-7): what the hero's meter would print for that
+ * period — floored while it ticks (motion allowed, a rate, a period that accrues), as its wheels show it; half up when it
+ * is static (reduced motion, a rate of 0, the run rate), as fmtDollars prints it everywhere else (r1 ui-8 m12).
+ */
+export function asideWholeM(period: HeadlinePeriod, savedM: number, ticking: boolean): number {
+  const v = Math.max(0, Number.isFinite(savedM) ? savedM : 0);
+  return ticking && period !== 'annualized' ? Math.floor(v / 100_000) * 100_000 : roundToDollarsM(v);
+}
+
+/** Would have paid, paid and saved, millicents. */
+export interface MoneyTripleM {
+  whpM: number;
+  paidM: number;
+  savedM: number;
 }
 
 /** Net after Cribl for the hero, the drawer and the copied receipt: the core figures plus what they cover. */
@@ -178,6 +348,7 @@ export function netFigures(
   period: HeadlinePeriod,
   criblCostCentsPerMonth: number | undefined,
   tz: string,
+  opts: { frozen?: boolean } = {},
 ): NetBreakdown | null {
   const cents = criblCostCents(criblCostCentsPerMonth);
   if (cents === undefined) return null;
@@ -187,8 +358,23 @@ export function netFigures(
     const net = netOfCribl(snapshot.headline.annualizedM, MINUTES_PER_YEAR, cents);
     return net ? { ...net, monthlyCostCents: cents, per: 'year', toMs: sweepMs } : null;
   }
-  const span = meteredSpan(periodStartMs(period, sweepMs, tz) ?? sweepMs, sweepMs, fromIso(snapshot.collectingSince));
-  const net = netOfCribl(periodFigures(snapshot, period, tz).savedM, span.minutes, cents);
+  // Founder-build r2 ui-12 (FINDINGS_EXTRA BO-12): a frozen sample (the tour) moves its sweep to the wall clock while
+  // its savings change only at a day boundary, so its cost covers the span those savings cover — the whole days before
+  // today plus today's recorded minutes (headline.minutesToday, D49) — never the minutes the clock adds.
+  const recordedToday = snapshot.headline?.minutesToday;
+  const spanEnd =
+    opts.frozen && typeof recordedToday === 'number' && Number.isFinite(recordedToday) && recordedToday > 0
+      ? localMidnightMs(sweepMs, tz) + recordedToday * 60_000 // the recording's today, whatever the clock reads (M2)
+      : sweepMs;
+  const span = meteredSpan(periodStartMs(period, sweepMs, tz) ?? sweepMs, spanEnd, fromIso(snapshot.collectingSince));
+  // Founder-build r1 ui-7 (FINDINGS_R1 M2): Today's cost covers the minutes its savings were metered in
+  // (headline.minutesToday, D49's rule), not the wall-clock span. The sample tour's Today holds the recording's own
+  // minutes whatever the clock reads, so a cost prorated from midnight to the wall clock paid for 21 hours against 11.7
+  // hours of savings (1.8×), or for 30 minutes against 11.7 hours at 12:30 AM (74.6×). A workspace metering all day
+  // has minutesToday ≈ that span; a snapshot without the field keeps the span.
+  const minutesToday = snapshot.headline?.minutesToday;
+  const minutes = period === 'today' && typeof minutesToday === 'number' && Number.isFinite(minutesToday) && minutesToday > 0 ? minutesToday : span.minutes;
+  const net = netOfCribl(periodFigures(snapshot, period, tz).savedM, minutes, cents);
   return net ? { ...net, monthlyCostCents: cents, fromMs: span.fromMs, toMs: sweepMs, sinceCollecting: span.sinceCollecting } : null;
 }
 
@@ -507,6 +693,8 @@ export interface WeekCardData {
   /** The window stops at the last whole hour (hour-granular reads). */
   throughLastHour?: boolean;
   savedM: number;
+  /** What the week would have paid (founder-build r2 ui-13, IC-7: a week with traffic that saved nothing says so). */
+  whpM?: number;
   /** Signed whole percent against the same span a week earlier; undefined when not comparable. */
   changePct?: number;
   /** Top lines by what saves them (live); undefined on sample data (no rollups to read). */
@@ -543,6 +731,7 @@ export function weekFromRange(
     toMs: cur.toMs,
     throughLastHour: cur.granularity !== 'minute',
     savedM: cur.savedM,
+    whpM: cur.whpM,
     changePct: comparable ? changePct(cur.savedM, prior.savedM) : undefined,
     lines: receipt.lines,
     receipt: { ...receipt, savedM: cur.savedM },
@@ -573,7 +762,7 @@ export function weekFromSnapshotTrend(snapshot: Snapshot, tz: string, sample = t
     ...(week.compare ? { priorSavedM: week.compare.priorSavedM } : {}),
     ...(pct !== undefined ? { trendPct: pct } : {}),
   };
-  return { status: 'ready', span: rangeSpanLabel(w.startMs, w.endMs, tz), fromMs: w.startMs, toMs: w.endMs, savedM: week.savedM, changePct: pct, receipt, sample };
+  return { status: 'ready', span: rangeSpanLabel(w.startMs, w.endMs, tz), fromMs: w.startMs, toMs: w.endMs, savedM: week.savedM, whpM: week.whpM, changePct: pct, receipt, sample };
 }
 
 // ─── A destination's statement (P2-W25) ─────────────────────────────────────

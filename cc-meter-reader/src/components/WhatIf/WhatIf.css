@@ -203,7 +203,7 @@
   box-shadow: token('shadow.medium.down');
 }
 .mr-whatif-range-input:focus-visible ~ .mr-whatif-range-thumb {
-  outline: token('border.focus');
+  outline: 2px solid token('color.foreground.accent.default');
   outline-offset: 2px;
 }
 .mr-whatif-range-ends {
@@ -734,6 +734,12 @@
 .mr-whatif-tile-foot--why {
   color: token('color.foreground.subtle');
   font-style: italic;
+}
+/* r1 ui-10 (FINDINGS_R1 m20): on the selected tile's light-theme highlight (#c2e5ff) the saved green read 3.71:1
+   (axe, all three engines). The same hue, mixed toward black, reads ≥ 4.5:1 there; the dark theme keeps its own green
+   (its highlight is dark, where darkening would lower the contrast). */
+body:not(.dark) .mr-whatif-tiles-grid [data-checked='true'] .mr-whatif-tile-range {
+  color: color-mix(in srgb, var(--mr-color-saved) 78%, black);
 }
 /* A disabled tile's range is not a saving on offer: no green. */
 [data-applicable='false'] .mr-whatif-tile-range,

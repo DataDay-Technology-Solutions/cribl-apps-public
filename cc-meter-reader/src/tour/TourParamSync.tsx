@@ -19,7 +19,7 @@ import { t } from '../copy/en.ts';
 import { notify } from '../components/common/notify.tsx';
 import { useAppParams } from '../lib/params.ts';
 import { useServices } from '../state/react.tsx';
-import { clearTourStop, useTourBeat } from './status.ts';
+import { clearTourStop, meterYoursPending, useTourBeat } from './status.ts';
 
 export function TourParamSync() {
   const [params, setParams] = useAppParams();
@@ -48,6 +48,9 @@ export function TourParamSync() {
   useEffect(() => {
     if (!wantsTour || active) return;
     if (lastStop === 'user' || lastStop === 'cleared') {
+      // After "See your own number" the stop's own navigation already leaves ?tour behind (on its way to Prices); a
+      // drop from this render's stale path would send the member back to it (founder-build r1 ui-11, row 12).
+      if (meterYoursPending()) return;
       setParams({ tour: null });
       return;
     }

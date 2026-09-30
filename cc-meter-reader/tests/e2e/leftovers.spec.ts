@@ -63,7 +63,8 @@ async function secondEndpointJustTyped(page: Page): Promise<void> {
   await page.getByTestId('endpoint-0-relay').getByRole('button', { name: 'Connect' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Connect' }).click();
   await expect(page.getByTestId('endpoint-0-relay')).toHaveAttribute('data-relay', 'ready');
-  await page.locator('section[data-section="notifications"]').getByRole('button', { name: /^(Save changes|Start the meter)$/ }).click();
+  // M1 (founder-build r1 ui-5): a Connect that succeeded stores the endpoint at once; nothing is left to save.
+  await expect(page.locator('section[data-section="notifications"] .mr-set-savebar')).toContainText('No unsaved changes');
   await page.getByTestId('endpoint-0-test').getByRole('button').click();
   await expect(page.getByTestId('endpoint-0-result')).toContainText(`Handed to Cribl for ${TARGET} (200)`);
   await expect(page.getByTestId('endpoint-0').locator('.mr-ep-preview')).toBeVisible();

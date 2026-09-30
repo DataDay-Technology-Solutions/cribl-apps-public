@@ -167,7 +167,7 @@ export function draftReceipt(
 export interface PendingChange {
   key: string;
   name: string;
-  /** '$2.25', or 'unpriced' for a never-priced row */
+  /** '$2.25', 'unpriced' for a never-priced row, or 'free' for a free output type priced at $0 (D33) */
   before: string;
   /** '$2.50' */
   after: string;
@@ -193,7 +193,8 @@ export function pendingChanges(
     const change: PendingChange = {
       key: row.key,
       name: row.name,
-      before: row.stored ? `$${mcToDollarInput(row.stored.milliCentsPerGb)}` : t('settings.prices.diffNew'),
+      // A free output type priced at $0 by D33 was "free" before this save, not "unpriced" (r1 ui-9, m4).
+      before: row.stored ? `$${mcToDollarInput(row.stored.milliCentsPerGb)}` : row.unpriced ? t('settings.prices.diffNew') : t('settings.prices.diffFree'),
       after: `$${mcToDollarInput(entry.milliCentsPerGb)}`,
     };
     const cfBefore = counterfactualKey(row.stored?.counterfactual);

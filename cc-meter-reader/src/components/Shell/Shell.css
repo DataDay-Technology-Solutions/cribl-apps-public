@@ -55,7 +55,7 @@
 .mr-skip-link:focus {
   transform: none;
   box-shadow: token('shadow.medium.down');
-  outline: token('border.focus');
+  outline: 2px solid token('color.foreground.accent.default');
   outline-offset: 2px;
 }
 .mr-shell-main:focus,
@@ -88,6 +88,12 @@
 }
 .mr-topnav-tabs::-webkit-scrollbar {
   display: none;
+}
+/* Founder-build r2 ui-13 (IC-17): a top tab's focus ring at 3:1 or more in both themes (Capra's tab ring read 1.79:1
+   light, 2.8:1 dark), drawn inside the tab so the scrolling tab row never clips its top and bottom. */
+.mr-topnav-tabs a:focus-visible {
+  outline: 2px solid token('color.foreground.accent.default');
+  outline-offset: -2px;
 }
 .mr-topnav-tabs[data-fade-end='true'] {
   -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - var(--mr-topnav-fade)), transparent);
@@ -368,7 +374,7 @@
   color: token('color.foreground.default');
 }
 .mr-diag:focus-visible {
-  outline: token('border.focus');
+  outline: 2px solid token('color.foreground.accent.default');
   outline-offset: 2px;
 }
 .mr-diag-head {
@@ -461,7 +467,7 @@
     pointer-events: none;
   }
   .mr-status-pulse:has(button[aria-expanded]:focus-visible) {
-    outline: token('border.focus');
+    outline: 2px solid token('color.foreground.accent.default');
     outline-offset: 2px;
   }
 }

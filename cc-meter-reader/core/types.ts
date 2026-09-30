@@ -154,7 +154,7 @@ export interface Settings {
   schemaVersion: 1;
   updatedAt: ISO;
   displayTimezone: string; // IANA
-  headlinePeriodDefault: HeadlinePeriod; // 'mtd'
+  headlinePeriodDefault: HeadlinePeriod; // 'annualized' (founder-build r2 ui-2; a stored 'mtd' is kept)
   /** chime: the takeover's chime when an alert lands (P2-W19); absent = off. */
   presenter: { headlinePeriod: HeadlinePeriod; qrUrl?: string; chime?: boolean }; // 'annualized'
   /** Single-character shortcuts (P, Y, ?, /, the levers) on or off (WCAG 2.1.4, EPIC_AUDIT P1-A09); absent = on. */
@@ -177,7 +177,18 @@ export interface Settings {
   includeInternal: boolean; // false
   notifications: NotificationEndpoint[];
   humanize: Record<string, string>;
-  demo: { enabled: boolean; replayMode: boolean; profile: boolean }; // false/false/true
+  demo: {
+    enabled: boolean; // false
+    replayMode: boolean; // false
+    profile: boolean; // true
+    /**
+     * Founder-build r1 (FOUNDER_PLAN row 9): under the demo profile, good news waits for the first minute that starts
+     * ≥ 60 s after its commit's deploy, so the green card prints the settled figure, not the Worker reload's
+     * transitional minute (core/detector.ts SETTLE_MS). Absent means on (core/settings.ts demoSettleOn); only a stored
+     * boolean is kept. `scripts/lever.ts settle off` is the rollback, with no redeploy and no runner restart.
+     */
+    settle?: boolean;
+  };
   /** 'backend' (scheduled meter) or 'ui' (PRD 2.6 fallback: the open tab meters every 30 s). */
   runtime: 'backend' | 'ui';
 }
@@ -203,6 +214,12 @@ export interface OutputInfo {
   pipeline?: string;
   /** For the built-in `default` output (type 'default'): the output id it forwards to. */
   defaultId?: string;
+  /**
+   * Founder-build r1 core-12 (M12, #45): an Output Router's rules (type 'router') — where each sends. A router whose
+   * enabled rules all lead to one destination is followed to it (core/flows.ts resolveRouteOutput); one that splits
+   * across destinations is not free (core/presets.ts isFreeOutput), so its traffic reads unpriced, never a silent $0.
+   */
+  rules?: { output: string; filter?: string; final?: boolean; disabled?: boolean }[];
 }
 export interface PipelineFunctionInfo {
   id: string; // function type e.g. 'eval', 'sampling', 'drop'
@@ -304,6 +321,12 @@ export interface TotalsDoc {
    */
   meteredThrough?: ISO;
   meteredAt?: ISO;
+  /**
+   * Founder-build r1 core-2 (C1'): the IANA zone `byDay` and `byOutputMonth` are keyed in. Absent on totals written
+   * before it: the stored settings' zone, else 'UTC' (what those builds bucketed in). A sweep in another zone
+   * re-buckets the current month into its own (core/rezone.ts) and records it here.
+   */
+  zone?: string;
 }
 export interface OutputMonthTotals { whpM: number; paidM: number; savedM: number }
 
@@ -398,6 +421,16 @@ export interface Incident {
   /** Last delivery attempt, successful or not (a failed one waits 2 minutes before the next try). */
   lastAttemptAt?: ISO;
   /**
+   * Founder-build r1 core-9 (FINDINGS_R1 M8, #31): each endpoint's own state — its last attempt (`at`, `status`) and
+   * last 2xx (`ok`). A failed endpoint is retried after the failed-attempt wait even when another endpoint (the bell)
+   * delivered; its cooldown runs from its own last success. Absent on incidents written before it (the incident-wide
+   * `lastNotifiedAt` rule stands for them, and for an endpoint with no record).
+   * Founder-build r2 core-1 (FINDINGS_R2 #1): `fails` counts the endpoint's failed attempts in a row (since its last
+   * 2xx, and since the close for a closure), which sets its back-off; `final` marks a failure no retry can fix (a 4xx,
+   * a refused URL), which waits for the reminder cadence or a severity rise. Both absent after a 2xx.
+   */
+  notified?: Record<string, { at: ISO; status: number; ok?: ISO; fails?: number; final?: true }>;
+  /**
    * When the sweep that opened it ran, for incidents opened on catch-up (a backfilled minute): openedAt is
    * the minute the change showed, caughtInSec is measured to it, and detection came later (core/payloads.ts
    * caughtInSeconds()).
@@ -450,16 +483,27 @@ export interface NotifyLogDoc { schemaVersion: 1; items: DeliveryLog[] } // last
 export interface DemoState {
   schemaVersion: 1;
   rigAppliedAt?: ISO;
-  routes: Record<string, { previousPipelineId: string; previousPreProcessingId?: string; appliedAt: ISO; level: 'pack' | 'aggressive' }>;
+  /**
+   * `levelsBefore` (founder-build r1 core-5, M5): the warm baseline level of each object the apply touched (route,
+   * pipelines, Source), as it was before the first apply; Revert re-seats them there.
+   */
+  routes: Record<string, { previousPipelineId: string; previousPreProcessingId?: string; appliedAt: ISO; level: 'pack' | 'aggressive'; levelsBefore?: Record<ObjectKey, number> }>;
   scene?: { name: string; step: string; startedAt: ISO; expectedAlertAt?: ISO; stepAt?: ISO; /** when each step began, by step index ('' = not recorded); the console's run of show */ stepsAt?: ISO[]; changed: { trims: string[]; rates: string[]; budgets: string[]; routes: string[] } };
   measuredLagSec: number; // default 240 until measured
-  trim: Record<string, { functionIndex: number; previous: Record<string, unknown>; brokenAt: ISO }>;
+  /** `levelsBefore` (core-5): the warm baseline level of each object the break touched, before it; Restore re-seats them. */
+  trim: Record<string, { functionIndex: number; previous: Record<string, unknown>; brokenAt: ISO; levelsBefore?: Record<ObjectKey, number> }>;
   rates: Record<string, { baselineEps: number; multiplier: number; setAt: ISO }>;
   muted: Record<ObjectKey, ISO>; // until
   inFlight?: { lever: string; since: ISO };
   budgetsOverride?: Record<string, { previousCentsPerMonth?: number }>;
   /** Leader calls spent by demo levers in one UTC minute ('YYYY-MM-DDTHH:MM'); added to meta.callsThisMinute for the lever budget. */
   leverCalls?: { minute: string; calls: number };
+  /**
+   * Founder-build r1 core-5 (m25): shared files (route.yml, inputs.yml) a lever left pending itself — its commit failed
+   * and it put the object back, but the Leader may still list the file. The shared-file guard does not count them as
+   * someone else's edit; the next lever commit that includes them clears them.
+   */
+  leftPending?: string[];
 }
 
 export interface Meta {
@@ -508,10 +552,27 @@ export interface Meta {
   meteredThrough?: ISO;
   /** Last automatic weekly receipt (scheduled or ui runtime), so Monday 12:00 UTC sends once. */
   lastWeeklySentAt?: ISO;
+  /**
+   * Founder-build r3 core-2 (FINDINGS_R3 #1, D83): the wall time of the first sweep that metered (a priced first run),
+   * written once and never overwritten; never by the tour or the sample. The automatic weekly receipt covers only a
+   * week that ended after it (core/weekly.ts shouldAutoSendWeekly), so a fresh install's day of back-fill never posts
+   * a receipt for a week it did not meter. Absent on a workspace metering before r3: collectingSince decides, as before.
+   */
+  meteringStartedAt?: ISO;
   /** Last expiry pass over dated keys (at most hourly). */
   lastExpiredAt?: ISO;
   /** Dated keys (roll/*, incidents/*) left in the App's KV after the last expiry pass: the store's size for the diag panel. */
   kvDatedKeys?: number;
+  /**
+   * Founder-build r1 core-7 (M11): the hours of minute documents the store keeps — 25 (SPEC 4), or fewer on an estate
+   * whose hourly minute document runs to many chunks (core/rollups.ts minuteRetentionHours; ~400 keys for them).
+   */
+  minuteRetentionHours?: number;
+  /**
+   * Founder-build r1 core-14 (m18, #44): a catch-up whose metrics query failed (a timeout, a 5xx, the time budget) meters
+   * at most this span per sweep — half the one that failed, never under an hour — until it has caught up.
+   */
+  metricsSpanMs?: number;
   /** Expired keys the last expiry pass had no room to delete; a later sweep with room continues (EPIC_AUDIT P1-E08). */
   expiryBacklog?: number;
   /** Last change-timeline refresh from the version API (demo lever appends do not count). */
@@ -627,6 +688,13 @@ export interface Headline {
   d30M: number;
   annualizedM: number;
   annualizedFromDays: number;
+  /**
+   * 1.1.4 (judge path g): would-have-paid and paid as run rates over the annualized run rate's own metered minutes
+   * (Σ part ÷ Σ minutes × 525,600, core computeHeadline). Present only when that rate saved nothing (annualizedM 0)
+   * over minutes that were metered: the Receipt scales both by saved otherwise, and has nothing to scale by here.
+   */
+  annualizedWhpM?: number;
+  annualizedPaidM?: number;
   whpMtdM: number;
   paidMtdM: number;
   ratioMtd: number;
@@ -692,6 +760,24 @@ export interface Snapshot {
    * sources the detector watches. `flows.length` is only what the snapshot still lists. Absent on older snapshots.
    */
   flowCounts?: { flows: number; routes: number; sources: number };
+  /**
+   * Founder-build r1 core-2 (C1'): the IANA zone the headline, the trend and the per-destination month totals were
+   * bucketed in (the totals' zone). Absent on older snapshots and on documents built outside a sweep (the tour).
+   */
+  zone?: string;
+  /**
+   * Founder-build r1 core-6 (#42): no minute before this carried priced traffic — the first one that did, once traffic
+   * has begun (while none has, the last metered minute). The annualized run rate rests on the minutes from here
+   * (core/pricing.ts computeHeadline). Absent on older snapshots and outside a sweep (the tour): collecting since.
+   */
+  pricedSince?: ISO;
+  /**
+   * Founder-build r3 core-5 (FINDINGS_R3 #3): of the minutes metered on pricedSince's local day (in `zone`), how many
+   * came before it — none of them carried priced traffic. Recorded by the sweep that found pricedSince and carried with
+   * it; the annualized basis leaves out exactly these (computeHeadline). Absent on older snapshots and outside a sweep:
+   * r2's arithmetic stands.
+   */
+  pricedSinceEmptyMinutes?: number;
 }
 
 // ─── Notification payload (SPEC 12.1) ────────────────────────────────────────
@@ -723,6 +809,11 @@ export interface CanonicalPayload {
     closedAt?: ISO;
     link: string;
     notes: string[];
+    /**
+     * Founder-build r1 core-10 (M9): a regression the dollar floor closed (note 'below-floor') names the floor it fell
+     * under, formatted ('$5'); set by the caller that knows the workspace's threshold (the sweep), else $5 (D26).
+     */
+    floorPerDay?: string;
   };
   receipt?: WeeklyReceipt;
 }

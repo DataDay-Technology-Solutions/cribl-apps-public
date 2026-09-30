@@ -23,6 +23,11 @@ async function outage(hours: number): Promise<{ w: World; from: number }> {
   const from = Date.parse((await w.meta())!.meteredThrough!);
   w.advance(hours * HOUR);
   w.set(Math.floor(w.now() / MINUTE) * MINUTE + 25_000);
+  // These cases read every minute row of the outage back (rowsBetween). Since founder-build r1 core-7 a due hourly expiry
+  // pass also runs in a catch-up sweep (it used to find no room there), and minute documents are kept 25 h: mark the pass
+  // done so the rows stay to be counted — the expiry itself is tests/integration/r1-core-expiry-scale.test.ts's.
+  const meta = (await w.meta())!;
+  await w.docs.putMeta({ ...meta, lastExpiredAt: iso(w.now()) });
   return { w, from };
 }
 

@@ -96,6 +96,9 @@ export function NotificationsSection() {
   const loading = load.live && !load.hydrated && load.phase !== 'error';
   const tz = stored.displayTimezone;
   const runnerWebhooks = useAppState((s) => s.meta?.deliveryWebhooks);
+  // The sample tour's endpoints read as connected (founder-build r1 ui-7, m1): its alerts were handed to Cribl, and a
+  // sample never asks the Leader about a relay.
+  const sample = useAppState((s) => s.source !== 'live');
   const currentSettings = useCurrentSettings();
   const { save, saving } = useSaveSettings();
 
@@ -172,7 +175,7 @@ export function NotificationsSection() {
   const chosenIds = [...new Set(drafts.filter((d) => d.channel === 'cribl-target').map((d) => d.criblTargetId.trim()))].filter((id) => id !== '');
   const unchecked = chosenIds.filter((id) => !relays[id]).join('\n');
   useEffect(() => {
-    if (!unchecked) return;
+    if (!unchecked || sample) return;
     const ids = unchecked.split('\n');
     const known = new Set(targets.targets.map((tg) => tg.id));
     const delay = ids.every((id) => known.has(id)) ? 0 : RELAY_CHECK_DELAY_MS;
@@ -187,17 +190,17 @@ export function NotificationsSection() {
       }
     }, delay);
     return () => clearTimeout(timer);
-  }, [unchecked, targets.targets, http]);
+  }, [unchecked, targets.targets, http, sample]);
 
   const cribl: CriblChannelProps = useMemo(
     () => ({
       http,
       targets,
-      relayFor: (id: string) => relays[id] ?? { status: 'unknown' },
+      relayFor: (id: string) => (sample ? { status: 'ready' } : (relays[id] ?? { status: 'unknown' })),
       onConnect: (id: string) => setConnecting(id),
       onLoadTargets: loadTargets,
     }),
-    [http, targets, relays, loadTargets],
+    [http, targets, relays, loadTargets, sample],
   );
 
   const { errors: allErrors, listError } = applyEndpoints(currentSettings(), drafts, bell);
@@ -242,6 +245,36 @@ export function NotificationsSection() {
     const r = await ensureRelay(http, id);
     if (!r.ok) throw new Error(cc(CHANNEL_COPY.target.connectFailed, { status: r.status || '—', detail: r.detail ?? '' }).trim());
     setRelays((prev) => ({ ...prev, [id]: { status: 'ready' } }));
+    await persistConnected(id);
+  };
+
+  /**
+   * Founder-build r1 ui-5 (FINDINGS_R1 M1): a Connect that succeeded stores the endpoints it connected at once, so a
+   * member who goes on to Send a test alert and leaves never loses them (the documented steps never said Save). An
+   * empty Name becomes the target's id. Only those endpoints are written: the other drafts and the bell keep their
+   * edits as drafts. When one still has an error (a Name that is a web address), it stays a draft whose relay line says
+   * to save; a refused write is reported and leaves the draft as it was.
+   */
+  const persistConnected = async (targetId: string) => {
+    if (!writable) return;
+    const connected = drafts
+      .filter((d) => d.criblTargetId.trim() === targetId && !(d.saved && d.savedTargetId === targetId))
+      .map((d) => (d.name.trim() === '' ? { ...d, name: targetId } : d));
+    if (connected.length === 0) return;
+    const byId = new Map(connected.map((d) => [d.id, d]));
+    const current = currentSettings();
+    const storedList = draftsFromSettings(current);
+    const list = [...storedList.map((d) => byId.get(d.id) ?? d), ...connected.filter((d) => !storedList.some((x) => x.id === d.id))];
+    const { next, errors: e, listError: le } = applyEndpoints(current, list, bellFromSettings(current));
+    // The empty Name is filled in the draft either way, so the card shows what would be stored.
+    setDrafts((ds) => ds.map((d) => (byId.has(d.id) && d.name.trim() === '' ? { ...d, name: targetId } : d)));
+    if (le || list.some((d, i) => byId.has(d.id) && e[i] !== undefined)) return;
+    const outcome = await saveSettings(next);
+    if (!outcome.ok) {
+      reportWrite(outcome, { bar: false });
+      return;
+    }
+    setDrafts((ds) => ds.map((d) => (byId.has(d.id) ? { ...byId.get(d.id)!, saved: true, savedTargetId: targetId } : d)));
   };
 
   const recordTest = async (draft: EndpointDraft, result: TestResult) => {

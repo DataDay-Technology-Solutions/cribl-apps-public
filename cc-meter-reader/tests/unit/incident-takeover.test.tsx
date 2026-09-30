@@ -294,7 +294,7 @@ describe('<TakeoverCard>', () => {
     vi.useRealTimers();
   });
 
-  it('counts live until the delivery lands, then shows the measured number and "Sent to Slack ✓" with seconds', () => {
+  it('is live (at the measured catch) until the delivery lands, then settles with "Sent to Slack ✓" and seconds', () => {
     vi.useFakeTimers();
     vi.setSystemTime(T + 9_000);
     const endpoints = [
@@ -314,7 +314,8 @@ describe('<TakeoverCard>', () => {
     );
     const clock = container.querySelector('.mr-tk-caught')!;
     expect(clock.getAttribute('data-live')).toBe('true');
-    expect(container.querySelector('.mr-tk-caught-text')!.textContent).toBe('Caught in 3:00');
+    // r2 ui-11 (R2 #14): the measured catch, still, while the delivery is on its way (it used to count on to 3:00).
+    expect(container.querySelector('.mr-tk-caught-text')!.textContent).toBe('Caught in 2:51');
     // Assistive tech hears the measured number once, not a ticking clock.
     expect(container.querySelector('.mr-tk-caught-text')!.getAttribute('aria-hidden')).toBe('true');
     expect(clock.querySelector('.mr-visually-hidden')!.textContent).toBe('Caught in 2:51');

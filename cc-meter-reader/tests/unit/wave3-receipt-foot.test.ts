@@ -160,3 +160,80 @@ describe('W3-RECEIPT-1: the range and comparison receipts from the tour snapshot
     }
   });
 });
+
+// Founder-build r2 core-9, BO-9 (AA/extra/fuzz FUZZ.md §4, results/examples.json EX4; fuzz RT2 57,546 of 300,000): the
+// item lines of the weekly receipt (the bell, targets, Slack, ServiceNow) and the range "Copy receipt" were each rounded
+// on their own, so $109.50 + $2.50 printed "$110" and "$3" above "Saved by Cribl, last week $112". Now the printed lines
+// are footed to the printed total (core/format.ts footColumn, D53), with an "Other" line for the savers beyond the five.
+describe('r2 core-9 · BO-9: the item lines add up to the total they are printed above', () => {
+  const PAY = 'default|pay|r_pay|mrd_pay_sample|siem';
+  const WIN = 'default|win|r_win|win_xml_pack|siem';
+  const week = { periodStartMs: Date.UTC(2026, 8, 21, 4), periodEndMs: Date.UTC(2026, 8, 28, 4), tz: 'America/New_York' };
+  /** The dollar amounts of the item lines (the dot-leader lines) and of the total line. */
+  // R2 core-10 (IC-4): '< $1' is a non-zero amount under half a dollar; it counts as $0 in whole-dollar sums.
+  const amount = (s: string): number => (/< \$1\s*$/.test(s) ? 0 : dollars(/(\$[\d,]+)[^$]*$/.exec(s)![1]));
+  function printed(text: string, totalLine: RegExp): { items: number[]; total: number } {
+    const lines = text.split('\n');
+    const items = lines.filter((l) => / \.{2,} *\S*\$[\d,]+/.test(l)).map(amount);
+    const total = lines.find((l) => totalLine.test(l))!;
+    return { items, total: amount(total) };
+  }
+
+  it('EX4: $109.50 + $2.50 print $110 + $2 under $112', async () => {
+    const { buildWeeklyReceipt } = await import('../../core/receipt.ts');
+    const r = buildWeeklyReceipt({ ...week, flowSums: { [PAY]: { whpM: 10_950_000, paidM: 0, savedM: 10_950_000 }, [WIN]: { whpM: 250_000, paidM: 0, savedM: 250_000 } } });
+    const text = receiptText(r);
+    expect(text).toMatch(/Payments API sampling \.+ +\$110$/m);
+    expect(text).toMatch(/Windows XML pack \.+ +\$2$/m);
+    expect(text).toMatch(/Saved by Cribl, last week +\$112$/m);
+    const p = printed(text, /^Saved by Cribl, last week/);
+    expect(p.items.reduce((a, b) => a + b, 0)).toBe(p.total);
+    // The receipt's data is unchanged (the JSON a webhook receives keeps the exact amounts).
+    expect(r.lines.map((l) => l.savedM)).toEqual([10_950_000, 250_000]);
+  });
+
+  it('more than five savers: an "Other" line carries the rest, and every line adds up (property)', async () => {
+    const { buildWeeklyReceipt } = await import('../../core/receipt.ts');
+    const fc = await import('fast-check');
+    fc.assert(
+      fc.property(fc.array(fc.integer({ min: 1, max: 5_000_000_000 }), { minLength: 1, maxLength: 12 }), (amounts) => {
+        const flowSums = Object.fromEntries(amounts.map((m, i) => [`default|in${i}|r${i}|p${i}|siem`, { whpM: m * 2, paidM: m, savedM: m }]));
+        const r = buildWeeklyReceipt({ ...week, flowSums });
+        const text = receiptText(r);
+        const p = printed(text, /^Saved by Cribl, last week/);
+        expect(p.total).toBe(amount(fmtDollars(amounts.reduce((a, b) => a + b, 0))));
+        expect(p.items.reduce((a, b) => a + b, 0)).toBe(p.total);
+        const other = text.split('\n').filter((l) => /^Other \.+/.test(l));
+        expect(other).toHaveLength(amounts.length > 5 && amount(fmtDollars(amounts.slice().sort((a, b) => b - a).slice(5).reduce((a, b) => a + b, 0))) > 0 ? 1 : 0);
+        // IC-4: a line that saved something never reads "$0".
+        for (const l of text.split('\n').filter((x) => / \.{2,}/.test(x))) expect(l).not.toMatch(/ \$0$/);
+      }),
+      { numRuns: 400, seed: 20260928 },
+    );
+  });
+
+  it('the range "Copy receipt" foots its lines too', async () => {
+    const { receiptTextForRange } = await import('../../core/receipt.ts');
+    const byFlow = { [PAY]: { whpM: 21_900_000, paidM: 10_950_000, savedM: 10_950_000 }, [WIN]: { whpM: 500_000, paidM: 250_000, savedM: 250_000 } };
+    const figures: RangeFigures = {
+      fromMs: week.periodStartMs,
+      toMs: week.periodEndMs,
+      granularity: 'hour',
+      savedM: 11_200_000,
+      whpM: 22_400_000,
+      paidM: 11_200_000,
+      ratio: 0.5,
+      rows: 2,
+      minutesMetered: 10_080,
+      expectedMinutes: 10_080,
+      byFlow,
+      byOutput: { 'default:siem': { whpM: 22_400_000, paidM: 11_200_000, savedM: 11_200_000 } },
+      docsRead: 1,
+      docsMissing: 0,
+    } as RangeFigures;
+    const text = receiptTextForRange(figures, { tz: 'UTC', nowMs: week.periodEndMs });
+    const p = printed(text, /^Saved by Cribl/);
+    expect(p.total).toBe(112);
+    expect(p.items).toEqual([110, 2]);
+  });
+});

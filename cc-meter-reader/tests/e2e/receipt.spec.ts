@@ -13,10 +13,10 @@
 import { expect, test, type Page } from '@playwright/test';
 import { computeHeadline } from '../../core/pricing.ts';
 import { defaultSettings } from '../../core/settings.ts';
-import { fmtDollars, fmtDollarsCents, fmtDollarsCompact, footMoney } from '../../core/format.ts';
+import { fmtDollars, fmtDollarsCents, fmtDollarsCompact, footMoney, roundToDollarsM } from '../../core/format.ts';
 import { goalPace, mondayOf } from '../../core/goal.ts';
 import { formatRangeParam } from '../../core/range.ts';
-import { statementMonths } from '../../src/views/Receipt/model.ts';
+import { destinationRows, footedMtdRows, mathDestinations, mtdReconciliation, statementMonths } from '../../src/views/Receipt/model.ts';
 import { netOfCribl, type NetOfCribl } from '../../core/net.ts';
 import { DAY_MS, addDaysToKey, formatLocalMonthDay, localDayKey, localDayStartMs, localMidnightMs, localMonthStartMs } from '../../core/time.ts';
 import type {
@@ -365,6 +365,12 @@ async function putKv(page: Page, docs: Record<string, unknown>): Promise<void> {
 }
 
 /** Loads the Receipt over the enterprise fixture. Seeds twice so a sweep from the first (empty) load can't win. */
+/**
+ * Founder-build r2 ui-2 (named item (a)): a new install opens the Receipt on the annualized run rate. The specs about
+ * month to date pin it in the URL, as a member who chose MTD does.
+ */
+const MTD = '/?period=mtd';
+
 async function openSeeded(page: Page, path = '/', opts: FixtureOptions & { mutate?: (f: Fixture) => void } = {}): Promise<Fixture> {
   await gotoApp(page, '/first-run');
   await resetMock(page);
@@ -412,12 +418,18 @@ async function meterValue(page: Page): Promise<number> {
  * Net after Cribl as the Receipt figures it (core/net.ts): saved − the Cribl cost for the minutes from the later of
  * the period's start and when collecting began, to the sweep.
  */
-function expectedNet(fx: Fixture, savedM: number, periodStartMs: number): NetOfCribl {
+/**
+ * The net the Receipt prints: saved − Cribl's cost over the minutes the savings were metered in (Today: the headline's
+ * minutesToday, founder-build r1 ui-7 M2), printed as round(saved) − round(cost) so the line adds up (r1 ui-8, m9).
+ */
+function expectedNet(fx: Fixture, savedM: number, periodStartMs: number, opts: { today?: boolean } = {}): NetOfCribl {
   const sweep = Date.parse(fx.snapshot.sweepAt);
   const from = Math.max(periodStartMs, Date.parse(fx.snapshot.collectingSince));
-  const net = netOfCribl(savedM, (sweep - from) / 60_000, fx.settings.criblCostCentsPerMonth);
+  const minutesToday = fx.snapshot.headline.minutesToday;
+  const minutes = opts.today && minutesToday !== undefined && minutesToday > 0 ? minutesToday : (sweep - from) / 60_000;
+  const net = netOfCribl(savedM, minutes, fx.settings.criblCostCentsPerMonth);
   if (!net) throw new Error('the fixture sets a Cribl cost');
-  return net;
+  return { ...net, netM: roundToDollarsM(savedM) - roundToDollarsM(net.costM) };
 }
 
 // ─── Behaviour ───────────────────────────────────────────────────────────────
@@ -425,7 +437,7 @@ function expectedNet(fx: Fixture, savedM: number, periodStartMs: number): NetOfC
 test.describe('Receipt view', () => {
   test('hero shows month to date with the receipt bar, net line and callouts', async ({ page }) => {
     const errors = trackConsoleErrors(page);
-    const fx = await openSeeded(page);
+    const fx = await openSeeded(page, MTD);
     const hero = page.getByTestId('receipt-hero');
     await expect(hero.getByRole('heading', { level: 1, name: 'Saved by Cribl' })).toBeVisible();
     await expect(page.getByTestId('hero-caption')).toHaveText('month to date');
@@ -446,7 +458,7 @@ test.describe('Receipt view', () => {
   });
 
   test('the meter ticks at the snapshot rate inside a fixed box', async ({ page }) => {
-    await openSeeded(page);
+    await openSeeded(page, MTD);
     const figure = page.locator('[data-testid="receipt-hero"] [data-callout="saved"]');
     await expect(figure).toHaveAttribute('data-ticking', 'true');
     const first = await meterValue(page);
@@ -465,7 +477,7 @@ test.describe('Receipt view', () => {
 
   test('a long figure never overflows a 390 px card: the meter shrinks to its box', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await openSeeded(page, '/', {
+    await openSeeded(page, MTD, {
       mutate: (f) => {
         f.snapshot.headline.mtdM = 1_234_567_800_000; // $12,345,678
       },
@@ -487,7 +499,7 @@ test.describe('Receipt view', () => {
   });
 
   test('period toggle drives ?period= and the annualized rate holds still', async ({ page }) => {
-    const fx = await openSeeded(page);
+    const fx = await openSeeded(page, MTD);
     await page.getByRole('radio', { name: 'Annualized' }).or(page.getByRole('button', { name: 'Annualized' })).first().click();
     await expect.poll(() => new URL(page.url()).searchParams.get('period')).toBe('annualized');
     const figure = page.locator('[data-testid="receipt-hero"] [data-callout="saved"]');
@@ -505,13 +517,13 @@ test.describe('Receipt view', () => {
     await expect(page.getByTestId('hero-caption')).toHaveText('today');
     expect(await meterValue(page)).toBeGreaterThanOrEqual(fx.snapshot.headline.todayM);
     // Today has a net too: its Cribl cost is prorated to the hours metered since midnight.
-    const today = expectedNet(fx, fx.snapshot.headline.todayM, localMidnightMs(Date.parse(fx.snapshot.sweepAt), TZ));
+    const today = expectedNet(fx, fx.snapshot.headline.todayM, localMidnightMs(Date.parse(fx.snapshot.sweepAt), TZ), { today: true });
     await expect(page.getByTestId('receipt-net')).toContainText(`Net after Cribl ${fmtDollars(today.netM)}`);
     await expect(page.getByTestId('receipt-net-basis')).toContainText(`Cribl cost ${fmtDollars(today.costM)}, prorated to the`);
   });
 
   test('Show the math shows every formula, price, counterfactual and basis, live', async ({ page }) => {
-    await openSeeded(page);
+    await openSeeded(page, MTD);
     await page.locator('.mr-hero-actions').getByRole('button', { name: 'Show the math' }).click();
     const drawer = page.getByTestId('math-drawer');
     await expect(drawer).toBeVisible();
@@ -532,7 +544,7 @@ test.describe('Receipt view', () => {
 
   test('Copy receipt writes the SPEC 12.4 text and confirms', async ({ page, context, browserName }) => {
     await allowClipboard(context, browserName);
-    await openSeeded(page);
+    await openSeeded(page, MTD);
     await page.getByRole('button', { name: 'Copy receipt' }).click();
     await expect(page.getByText('Receipt copied.')).toBeVisible();
     expectReceiptText(await readClipboard(page));
@@ -551,7 +563,7 @@ test.describe('Receipt view', () => {
       const errors = trackConsoleErrors(page);
       await allowClipboard(context, browserName);
       await stubClipboardApi(context, api);
-      await openSeeded(page);
+      await openSeeded(page, MTD);
       const button = page.getByRole('button', { name: 'Copy receipt' });
       await button.focus();
       const scrollY = await page.evaluate(() => window.scrollY);
@@ -649,7 +661,7 @@ test.describe('Receipt view', () => {
 
   test('reduced motion: no ticking, whole dollars', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    const fx = await openSeeded(page);
+    const fx = await openSeeded(page, MTD);
     const figure = page.locator('[data-testid="receipt-hero"] [data-callout="saved"]');
     await expect(figure).toHaveAttribute('data-ticking', 'false');
     await expect(page.locator('.mr-meter-cents')).toHaveCount(0);
@@ -753,7 +765,7 @@ test.describe('Receipt view', () => {
 });
 
 test.describe('Receipt on the bundled tour', () => {
-  test('Tour with sample data lands on a ticking Receipt under the sample band', async ({ page }) => {
+  test('Tour with sample data lands on the annualized run rate under the sample band; month to date ticks', async ({ page }) => {
     const errors = trackConsoleErrors(page);
     await gotoApp(page, '/first-run');
     await resetMock(page);
@@ -765,10 +777,21 @@ test.describe('Receipt on the bundled tour', () => {
     await expect(page.getByTestId('receipt-hero')).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('[data-callout="sample-band"]')).toBeVisible();
     const figure = page.locator('[data-testid="receipt-hero"] [data-callout="saved"]');
+    // Founder-build r1 ui-2: the sample opens on its annualized run rate (about $8.1M a year), a whole-day rate that
+    // holds still; month to date is one click away and ticks.
+    await expect(page.locator('.mr-receipt-view')).toHaveAttribute('data-period', 'annualized');
+    await expect(figure).toHaveAttribute('data-ticking', 'false');
+    const annualizedDollars = (await meterValue(page)) / 100_000;
+    expect(annualizedDollars).toBeGreaterThan(8_000_000);
+    expect(annualizedDollars).toBeLessThan(8_300_000);
+    await page.getByRole('radio', { name: 'MTD' }).click();
+    await expect(page.locator('.mr-receipt-view')).toHaveAttribute('data-period', 'mtd');
     await expect(figure).toHaveAttribute('data-ticking', 'true');
     const v0 = await meterValue(page);
     await page.waitForTimeout(1_500);
     expect(await meterValue(page)).toBeGreaterThan(v0);
+    await page.getByRole('radio', { name: 'Annualized' }).click();
+    await expect(page.locator('.mr-receipt-view')).toHaveAttribute('data-period', 'annualized');
     for (const theme of ['dark', 'light'] as const) {
       await setTheme(page, theme);
       for (const width of [1440, 390]) {
@@ -803,6 +826,13 @@ async function unreachableScrollRegions(page: Page): Promise<string[]> {
     }
     return out;
   });
+}
+
+/** The SIEM destination's month to date as Show the math and its statement print it (r2 ui-8, footedMtdRows). */
+function footedSiemRow(fx: Fixture): { whpM: number; paidM: number; savedM: number } {
+  const rows = mathDestinations(destinationRows(fx.snapshot, fx.prices), 'mtd');
+  const siem = rows.find((r) => r.outputId === 'mrd_siem_prod')!;
+  return footedMtdRows(rows, mtdReconciliation(rows, fx.snapshot.headline.mtdM)).get(siem.key)!;
 }
 
 async function openMath(page: Page): Promise<void> {
@@ -857,7 +887,9 @@ test.describe('Receipt on a young workspace (P0-18, P1-H08)', () => {
     await expect(page.getByTestId('trend-chart')).toHaveCount(0);
   });
 
-  test('metering for an hour opens on the annualized run rate; after a day, month to date (P1-H08)', async ({ page }) => {
+  // Founder-build r2 ui-2 (named item (a)): after a day a new install stays on the annualized run rate (no pill); a
+  // member whose settings stored 'mtd' keeps month to date (never migrated).
+  test('metering for an hour opens on the annualized run rate; after a day, still the run rate unless MTD was chosen (P1-H08)', async ({ page }) => {
     const fx = await openSeeded(page, '/', { collectingSince: (now) => now - 60 * 60_000 });
     await expect(page.locator('.mr-receipt-view')).toHaveAttribute('data-period', 'annualized');
     expect(new URL(page.url()).searchParams.get('period')).toBeNull();
@@ -876,6 +908,16 @@ test.describe('Receipt on a young workspace (P0-18, P1-H08)', () => {
     await expect(page.getByTestId('hero-projection')).toHaveCount(0);
 
     await openSeeded(page, '/', { collectingSince: (now) => now - DAY_MS - 60 * 60_000 });
+    await expect(page.locator('.mr-receipt-view')).toHaveAttribute('data-period', 'annualized');
+    await expect(page.getByTestId('hero-caption')).toHaveText(/^annualized run rate, from the last \d+ days?$/);
+    await expect(page.getByTestId('hero-projection')).toHaveCount(0);
+
+    await openSeeded(page, '/', {
+      collectingSince: (now) => now - DAY_MS - 60 * 60_000,
+      mutate: (f) => {
+        f.settings.headlinePeriodDefault = 'mtd';
+      },
+    });
     await expect(page.locator('.mr-receipt-view')).toHaveAttribute('data-period', 'mtd');
     await expect(page.getByTestId('hero-caption')).toContainText('month to date');
   });
@@ -925,7 +967,7 @@ test.describe('Receipt when the snapshot cannot be read (P1-H03)', () => {
 
 test.describe('Show the math (P1-F09, P1-H07, net of Cribl)', () => {
   test('month to date: each destination shows its month, and the rows add up to the figure above (P1-F09)', async ({ page }) => {
-    const fx = await openSeeded(page);
+    const fx = await openSeeded(page, MTD);
     await openMath(page);
     const drawer = page.getByTestId('math-drawer');
     await expect(drawer.getByRole('heading', { name: 'At each destination, month to date' })).toBeVisible();
@@ -936,8 +978,9 @@ test.describe('Show the math (P1-F09, P1-H07, net of Cribl)', () => {
     await expect(page.getByTestId('math-reconcile')).toHaveText(
       `These rows add up to the figures above: ${fmtDollars(hf.whpM)} would have paid − ${fmtDollars(hf.paidM)} paid = ${fmtDollars(hf.savedM)} saved month to date.`,
     );
-    const siem = fx.snapshot.destinations.find((d) => d.outputId === 'mrd_siem_prod')!;
-    const sf = footMoney({ whpM: siem.mtdWhpM, paidM: siem.mtdPaidM, savedM: siem.mtdSavedM });
+    // r2 ui-8 (R2 #9/#10): the row is the footed-rows selector's (footRows against the sentence above, m10), the one the
+    // statement prints too; asserting footMoney per row failed in 309 of 1,440 minutes (AA/r2/5/foot).
+    const sf = footedSiemRow(fx);
     await expect(drawer.getByTestId('math-dest-mtd').first()).toContainText(`${fmtDollars(sf.whpM)} − ${fmtDollars(sf.paidM)} = ${fmtDollars(sf.savedM)} saved`);
     expect(Math.round((sf.whpM - sf.paidM) / 100_000)).toBe(Math.round(sf.savedM / 100_000));
     await expect(page.getByTestId('math-rate-note')).toHaveCount(0);
@@ -952,6 +995,27 @@ test.describe('Show the math (P1-F09, P1-H07, net of Cribl)', () => {
     );
     await expect(page.getByTestId('math-reconcile')).toHaveCount(0);
   });
+
+  // r2 ui-8 (FINDINGS_R2 #10): the minute the per-row assertion failed at (00:14:30Z: "$71,161 = $84,048" against
+  // "$71,162 = $84,047") and one it passed at; at both, the drawer row and the destination's statement print the selector's.
+  for (const at of ['2026-09-28T00:14:30Z', '2026-09-28T00:02:30Z']) {
+    test(`pinned at ${at}: Show the math's SIEM row and its statement print one month to date (R2 #9/#10)`, async ({ page }) => {
+      await page.clock.setFixedTime(new Date(at));
+      const fx = await openSeeded(page, MTD);
+      const sf = footedSiemRow(fx);
+      const row = `${fmtDollars(sf.whpM)} − ${fmtDollars(sf.paidM)} = ${fmtDollars(sf.savedM)} saved`;
+      await openMath(page);
+      await expect(page.getByTestId('math-drawer').getByTestId('math-dest-mtd').first()).toContainText(row);
+      await page.keyboard.press('Escape');
+      await page.getByTestId('math-drawer').waitFor({ state: 'detached' });
+      await page.locator('.mr-wmg-row:has(.mr-wmg-name[title="mrd_siem_prod"])').getByTestId('open-statement').click();
+      const st = page.getByTestId('statement');
+      await expect(st).toBeVisible();
+      await expect(st.locator('tr[data-row="whpM"] td[data-col="this"]')).toHaveText(fmtDollars(sf.whpM));
+      await expect(st.locator('tr[data-row="paidM"] td[data-col="this"]')).toHaveText(fmtDollars(sf.paidM));
+      await expect(st.locator('tr[data-row="savedM"] td[data-col="this"]')).toHaveText(fmtDollars(sf.savedM));
+    });
+  }
 
   test('destination heads say "priced as <preset>" like Where the money goes; unpriced ones keep their type', async ({ page }) => {
     await openSeeded(page);
@@ -969,7 +1033,7 @@ test.describe('Show the math (P1-F09, P1-H07, net of Cribl)', () => {
   });
 
   test("net after Cribl: the formula with values, the payback, the cost's basis and Cribl's list price (D48)", async ({ page }) => {
-    const fx = await openSeeded(page);
+    const fx = await openSeeded(page, MTD);
     await openMath(page);
     const net = expectedNet(fx, fx.snapshot.headline.mtdM, localMonthStartMs(Date.parse(fx.snapshot.sweepAt), TZ));
     const section = page.getByTestId('math-net');
@@ -1053,10 +1117,18 @@ test.describe('Show the math (P1-F09, P1-H07, net of Cribl)', () => {
     await net.getByTestId('receipt-net-estimate-link').click();
     await expect(page.locator('.mr-settings[data-section="cost"]')).toBeVisible();
     await page.goBack();
+    // r2 ui-8 (FINDINGS_EXTRA BO-5): Show the math shows the same estimate — never "No Cribl cost is set" beside the
+    // hero's net — with its basis and the way to the contract cost, and its net is the hero's to the dollar.
+    const heroNet = (await net.locator('.mr-rbar-net-amount').first().innerText()).trim();
     await openMath(page);
-    await expect(page.getByTestId('math-net-none')).toHaveText(
-      'No Cribl cost is set. Add what you pay Cribl each month under Settings → Cribl cost to see net savings and how many times Cribl paid for itself.',
-    );
+    const section = page.getByTestId('math-drawer');
+    await expect(page.getByTestId('math-net-none')).toHaveCount(0);
+    await expect(section.getByRole('heading', { name: 'Net after Cribl (estimate)' })).toBeVisible();
+    await expect(page.getByTestId('math-net')).toHaveAttribute('data-estimate', 'true');
+    await expect(page.getByTestId('math-net')).toContainText(heroNet.replace(/^≈\s*/, ''));
+    await expect(page.getByTestId('math-net-estimate')).toContainText(/Estimate at Cribl's list price: .+ a day × \$0\.32 per GB ≈ \$[\d,]+ a month\./);
+    await expect(page.getByTestId('math-net-estimate-link')).toHaveText('Set your contract cost');
+    await expect(page.getByTestId('math-net-estimate-link')).toHaveAttribute('href', /\/settings\?section=cost/);
   });
 
   test('the drawer body is a keyboard stop, so its formulas can be scrolled (P1-H07, WCAG 2.1.1)', async ({ page }) => {
@@ -1082,7 +1154,7 @@ test.describe('Show the math (P1-F09, P1-H07, net of Cribl)', () => {
   });
 
   test('the live line is a rate a minute in cents, and never more than two decimals (P1-H07)', async ({ page }) => {
-    const fx = await openSeeded(page);
+    const fx = await openSeeded(page, MTD);
     await openMath(page);
     const section = page.getByTestId('math-drawer').locator('.mr-math-section').filter({ has: page.getByRole('heading', { name: 'Between sweeps' }) });
     await expect(section).toContainText(`The meter adds ${fmtDollarsCents(fx.snapshot.ratePerSecM * 60)} a minute (the last completed minute of savings) since the sweep at`);
@@ -1343,7 +1415,8 @@ test.describe('Receipt wave 2 (WP-H)', () => {
     const floor = (m: number) => fmtDollars(Math.floor(m / 100_000) * 100_000);
     await expect(page.getByTestId('hero-aside-today')).toContainText(floor(fx.snapshot.headline.todayM));
     await expect(page.getByTestId('hero-aside-30d')).toContainText(floor(fx.snapshot.headline.d30M));
-    await expect(page.getByTestId('hero-aside-annualized')).toContainText(floor(fx.snapshot.headline.annualizedM));
+    // The annualized run rate is a still figure: half-up whole dollars, as every other surface prints it (r1 ui-8, m12).
+    await expect(page.getByTestId('hero-aside-annualized')).toContainText(fmtDollars(roundToDollarsM(fx.snapshot.headline.annualizedM)));
     await expect(page.getByTestId('hero-aside-annualized')).toContainText('/ year');
     const perDay = fx.snapshot.flows.reduce((sum, f) => sum + Math.max(0, f.savedPerDayM), 0);
     await expect(page.getByTestId('hero-aside-now')).toContainText(fmtDollars(perDay));

@@ -175,6 +175,8 @@ describe('renderAlert and bell ids', () => {
     // D47: the bell's body keeps the drop and states where it recovered to.
     expect(renderAlert(canonical('incident.closed', { closedAt: '2026-09-30T17:00:00.000Z', recoveredTo: 0.89 })).text).toContain('Savings ratio 75% → 50% · recovered to 89%');
     expect(renderAlert(canonical('test')).title).toBe('Test: Savings dropped: Payments API sampling');
+    // Founder-build r1 core-11 (m2, #5): a test posts as info (README: tests post as info), whatever its sample's severity.
+    expect(renderAlert(canonical('test')).severity).toBe('info');
     expect(renderAlert(canonical('incident.opened', { commit: { hash: 'b2', message: 'm', author: 'a', committedAt: NOW_ISO, groupId: 'default', match: 'nearby' } })).line).toContain('commit b2 by a (nearby change)');
     expect(renderAlert(canonical('incident.opened', { commit: undefined, cause: 'unknown' })).line).toContain('no configuration change found nearby');
     // An API credential's client id reads 'API client' in the bell and target text (NOTIFY-3a issue 8).
@@ -346,7 +348,8 @@ describe('sendChannelTest', () => {
     const bell = await sendChannelTest(deps(bellHttp), BELL, ctx);
     expect(bell.logs).toHaveLength(1);
     expect(bell.last).toMatchObject({ event: 'test', status: 503, incidentId: testPayload('main-org', NOW_ISO).incident?.id });
-    expect((bellHttp.calls[0].body as { id: string; title: string }).title).toBe('Test: Savings dropped: Payments API sampling');
+    // Core-11: the release's neutral sample (m8), posted as info (m2).
+    expect(bellHttp.calls[0].body as { id: string; title: string; severity: string }).toMatchObject({ title: 'Test: Savings dropped: Example pipeline', severity: 'info' });
 
     const targetHttp = fakeHttp({ [SAVED]: RELAY_READY, 'POST /search/notifications': ok() });
     expect((await sendChannelTest(deps(targetHttp), TARGET, ctx)).last?.status).toBe(200);
@@ -532,6 +535,8 @@ describe('EndpointEditor model — channels', () => {
     expect(logs).toHaveLength(1);
     const bell = await sendCriblTest({ ...ctx, http: fakeHttp({ 'POST /system/messages': ok() }), sender: { post: async () => ({ status: 200 }) }, endpoint: BELL });
     expect(bell.result.kind).toBe('sent');
-    expect(testTargetText(ctx).split('\n')[0]).toBe('Test: Savings dropped: Payments API sampling');
+    expect(testTargetText(ctx).split('\n')[0]).toBe('Test: Savings dropped: Example pipeline');
+    expect(testTargetText(ctx)).not.toMatch(/mrd_|demo:|\d{2}:\d{2}:\d{2}\.\d{3}Z/);
+    expect(testTargetText(ctx)).toContain(`Open in Ledger: ${LINK.replace(/\/+$/, '')}/ledger\n`);
   });
 });

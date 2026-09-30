@@ -9,6 +9,8 @@ import type { DemoState, Incident, NotificationEndpoint } from '../../core/types
 import { IncidentCard } from '../../src/components/IncidentCard/IncidentCard.tsx';
 import { renderTemplate } from '../../src/components/IncidentCard/context.tsx';
 import { StoreProvider } from '../../src/state/providers.tsx';
+import { appLinkBase } from '../../src/lib/links.ts';
+import { linkBaseFrom } from '../../core/runtime.ts';
 import { createAppStore } from '../../src/state/store.ts';
 
 const T = Date.parse('2026-09-30T16:42:03.000Z');
@@ -110,7 +112,7 @@ describe('<IncidentCard variant="full">', () => {
     expect(screen.queryByRole('link', { name: 'View in Ledger' })).toBeNull();
   });
 
-  it('counts live and says "Retrying" while the delivery fails; says so when no change is found', () => {
+  it('is live and says "Retrying" while the delivery fails; says so when no change is found', () => {
     const i = inc({
       cause: 'unknown',
       commit: undefined,
@@ -121,7 +123,8 @@ describe('<IncidentCard variant="full">', () => {
     expect(screen.getByText('No configuration change found nearby')).toBeTruthy();
     expect(screen.getByText('Delivery failed (503). Retrying.')).toBeTruthy();
     expect(container.querySelector('.mr-inc-caught')?.getAttribute('data-live')).toBe('true');
-    expect(container.querySelector('.mr-inc-caught')?.textContent).toBe('Caught in 2:30');
+    // r2 ui-11 (R2 #14): the measured catch (caughtInSec 120), not a clock counting on while the retry is owed.
+    expect(container.querySelector('.mr-inc-caught')?.textContent).toBe('Caught in 2:00');
     expect(container.querySelector('[data-callout="commit"]')).toBeNull();
   });
 
@@ -173,6 +176,55 @@ describe('<IncidentCard variant="full">', () => {
       <IncidentCard incident={inc({ type: 'spike', before: 41_200_000, after: 190_400_000, closedAt: iso(300), recoveredTo: 11_900_000 })} tz="UTC" nowMs={T} />,
     );
     expect(recoveredSpike.querySelector('.mr-inc-recovered-to')?.textContent).toBe('recovered to $119 / hour');
+  });
+});
+
+describe('<IncidentCard> closes that are not recoveries (founder-build r1 ui-6)', () => {
+  it('a below-floor close is neutral and says so (M9)', () => {
+    const { container } = render(
+      <IncidentCard incident={inc({ before: 0.75, after: 0.25, closedAt: iso(300), notes: ['demo-profile', 'below-floor'] })} tz="UTC" nowMs={T} />,
+    );
+    expect(container.querySelector('.mr-inc')?.getAttribute('data-tone')).toBe('info');
+    expect(screen.getByText('Closed · the drop fell under the alert floor · savings still at 25%.')).toBeTruthy();
+    expect(screen.getByText('Closed 4:47 PM')).toBeTruthy();
+    expect(container.textContent).not.toMatch(/Recovered/);
+  });
+
+  it('a closed good-news card never prints recovery copy (PACK_PAYOFF F1)', () => {
+    const { container } = render(
+      <IncidentCard incident={inc({ type: 'goodnews', severity: 'info', before: 0, after: 0.34, closedAt: iso(300) })} tz="UTC" nowMs={T} />,
+    );
+    expect(screen.getByText('Improvement held · savings at 34%.')).toBeTruthy();
+    expect(screen.getByText('Closed 4:47 PM')).toBeTruthy();
+    expect(container.textContent).not.toMatch(/Recovered|back to/);
+  });
+
+  it('an accepted regression keeps its day and its year (m15)', () => {
+    const { container } = render(
+      <IncidentCard incident={inc({ closedAt: iso(252), closedReason: 'accepted', closedBy: 'Steve Koelpin' })} tz="UTC" nowMs={T} />,
+    );
+    expect(container.textContent).toContain('a year if left');
+    expect(container.textContent).not.toMatch(/while it lasted/);
+  });
+
+  it('the Slack preview links where the delivered message links (C2: linkBaseFrom, never the page origin)', () => {
+    const w = window as unknown as { CRIBL_API_URL?: string; CRIBL_BASE_PATH?: string };
+    const saved = { api: w.CRIBL_API_URL, base: w.CRIBL_BASE_PATH };
+    w.CRIBL_API_URL = 'https://main-org.cribl.cloud/api/v1';
+    w.CRIBL_BASE_PATH = '/app-ui/meter-reader';
+    try {
+      // The card's Slack preview is built on appLinkBase(): the sweep's own base (core/runtime.ts linkBaseFrom), so it
+      // follows C2 (core-8 makes it /apps/a/meter-reader) and never the iframe's origin (jsdom: http://localhost).
+      expect(appLinkBase()).toBe(linkBaseFrom('https://main-org.cribl.cloud/api/v1', '/app-ui/meter-reader'));
+      expect(appLinkBase().startsWith('https://main-org.cribl.cloud/')).toBe(true);
+      expect(appLinkBase()).not.toContain(window.location.origin);
+      const { container } = render(<IncidentCard incident={inc()} tz="UTC" nowMs={T} slackPreview="always" />);
+      fireEvent.click(screen.getByRole('button', { name: 'Show the Slack message' }));
+      expect(container.querySelector('.mr-slack-actions')).not.toBeNull();
+    } finally {
+      w.CRIBL_API_URL = saved.api;
+      w.CRIBL_BASE_PATH = saved.base;
+    }
   });
 });
 
@@ -230,7 +282,8 @@ describe('store fallback', () => {
       ...defaultSettings(iso(0), 'America/Chicago'),
       notifications: [{ ...SLACK, name: 'Slack #finops' }],
     };
-    const store = createAppStore(settings);
+    // A stored zone (the member saved Chicago). r3 ui-1: a settings-less workspace reads snapshot.zone (below).
+    const store = createAppStore(settings, { settingsStored: true });
     const demoState = {
       muted: { 'pipe:default:mrd_pay_sample': iso(3 * 60) },
     } as unknown as DemoState;
@@ -242,6 +295,20 @@ describe('store fallback', () => {
     );
     expect(screen.getByText('Sent to Slack #finops ✓ 11:42 AM')).toBeTruthy();
     expect(screen.getByText('muted after a demo change · 3 min')).toBeTruthy();
+  });
+
+  it('r3 ui-1: a settings-less live workspace times its alerts in the zone it was metered in (snapshot.zone)', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T);
+    // The boot defaults carry the browser's zone (Los Angeles); the workspace was metered in New York.
+    const settings = { ...defaultSettings(iso(0), 'America/Los_Angeles'), notifications: [{ ...SLACK, name: 'Slack #finops' }] };
+    const store = createAppStore(settings, { snapshot: { zone: 'America/New_York' } as never });
+    render(
+      <StoreProvider store={store}>
+        <IncidentCard incident={inc()} variant="compact" />
+      </StoreProvider>,
+    );
+    expect(screen.getByText('Sent to Slack #finops ✓ 12:42 PM')).toBeTruthy();
   });
 });
 

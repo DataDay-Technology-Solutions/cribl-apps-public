@@ -6,6 +6,7 @@
 import type { DeliveryRef, Incident, IncidentType, NotificationEndpoint, ObjectKind, Severity } from '../../../core/types.ts';
 import { fmtDollars, fmtDurationShort, fmtPct, perYear } from '../../../core/format.ts';
 import { parseObjectKey } from '../../../core/flows.ts';
+import { DEFAULT_THRESHOLDS } from '../../../core/settings.ts';
 import { humanizeObjectKey } from '../../../core/humanize.ts';
 import { incidentReadings, severityRank, titleFor } from '../../../core/incidents.ts';
 import { BELL_ENDPOINT_ID, channelOf } from '../../../core/delivery.ts';
@@ -300,10 +301,11 @@ export interface CaughtState {
 }
 
 /**
- * The "Caught in m:ss" figure. Once a delivery has landed (or when nothing is due to be delivered) it is
- * the measured number — `caughtInSec`, the same figure the Slack message and the Story caption print. While
- * an enabled endpoint is still owed a delivery (or the last attempt failed), it counts live from the
- * deploy until the delivery lands (PRD 8.1), for at most CAUGHT_LIVE_WINDOW_MS after the incident opened.
+ * The "Caught in m:ss" figure: the measured number — `caughtInSec` (else the open time less the deploy), the same figure
+ * the alert's text, the toast and the Story caption print. `live` says a delivery is still owed (an enabled endpoint not
+ * yet reached, or the last attempt failed), for at most CAUGHT_LIVE_WINDOW_MS after the incident opened. Founder-build
+ * r2 ui-11 (FINDINGS_R2 #14): the figure no longer counts on past the catch while the delivery is owed (it climbed
+ * 2:51 → 2:57, then snapped back to 2:51 when the delivery landed).
  */
 export function caughtState(
   incident: Pick<Incident, 'type' | 'commit' | 'caughtInSec' | 'openedAt' | 'closedAt' | 'severity'>,
@@ -325,14 +327,8 @@ export function caughtState(
   const delivered = list.some(isDelivered);
   const owed = expectDeliveryNow || list.length > 0;
   const recent = Number.isFinite(opened) && nowMs - opened < CAUGHT_LIVE_WINDOW_MS;
-  if (!incident.closedAt && !delivered && owed && recent && Number.isFinite(start)) {
-    return {
-      seconds: Math.max(measured ?? 0, (nowMs - start) / 1000),
-      live: true,
-    };
-  }
   if (measured === undefined) return undefined;
-  return { seconds: measured, live: false };
+  return { seconds: measured, live: !incident.closedAt && !delivered && owed && recent && Number.isFinite(start) };
 }
 
 // ─── Figures ─────────────────────────────────────────────────────────────────
@@ -428,9 +424,23 @@ export function impactFigures(incident: Pick<Incident, 'impactPerDayM'>): {
  * for how long when that is known. Good news and budget pace keep the day and the year (a rate that persists).
  * The duration keeps its number and unit together (no-break spaces).
  */
-export function impactWording(incident: Pick<Incident, 'type' | 'openedAt' | 'closedAt'>): { template: string; duration?: string } {
+export function impactWording(
+  incident: Pick<Incident, 'type' | 'openedAt' | 'closedAt'> &
+    Partial<Pick<Incident, 'before' | 'after' | 'recoveredTo'>> & { closedReason?: Incident['closedReason']; notes?: Incident['notes'] },
+  opts: { floorCentsPerDay?: number } = {},
+): { template: string; duration?: string } {
   if (incident.type !== 'regression' && incident.type !== 'spike') return { template: t('incidents.perDayPerYear') };
-  if (incident.closedAt) {
+  // Founder-build r2 ui-4 (FINDINGS_R2 #2, C3): the $/day floor closed it, not a recovery — the savings are still where
+  // they fell (the head says so), so the money line never says "while it lasted" and never projects a year: the floor
+  // wording every channel prints (core/payloads impactPhrase). The workspace's floor when the card knows it, else $5.
+  if (isBelowFloorClose(incident)) {
+    const floor = fmtDollars(Math.max(0, opts.floorCentsPerDay ?? DEFAULT_THRESHOLDS.regressionMinCentsPerDay ?? 500) * 1000);
+    const after = incidentReadings(incident as MeasureIncident).after;
+    return { template: after === undefined ? t('incidents.impact.belowFloorGeneric', { floor }) : t('incidents.impact.belowFloor', { floor, after: fmtPct(after) }) };
+  }
+  // Founder-build r1 ui-6 (m15): a member accepted, muted or left it out: nothing ended, so it is worded as the channels
+  // word it (a day, and for a regression a year if left), never "while it lasted".
+  if (incident.closedAt && !incident.closedReason) {
     const sec = openSeconds(incident);
     return sec === undefined
       ? { template: t('incidents.impact.closedNoDuration') }
@@ -440,8 +450,12 @@ export function impactWording(incident: Pick<Incident, 'type' | 'openedAt' | 'cl
 }
 
 /** The money line as plain text (the Demo Console's mini takeover). */
-export function impactText(incident: Pick<Incident, 'type' | 'openedAt' | 'closedAt' | 'impactPerDayM'>): string {
-  const { template, duration } = impactWording(incident);
+export function impactText(
+  incident: Pick<Incident, 'type' | 'openedAt' | 'closedAt' | 'impactPerDayM'> &
+    Partial<Pick<Incident, 'before' | 'after' | 'recoveredTo'>> & { closedReason?: Incident['closedReason']; notes?: Incident['notes'] },
+  opts: { floorCentsPerDay?: number } = {},
+): string {
+  const { template, duration } = impactWording(incident, opts);
   const money = impactFigures(incident);
   return interpolate(template, { perDay: money.perDay, perYear: money.perYear, duration: duration ?? '' });
 }
@@ -491,15 +505,23 @@ export function recoveryDeliveries(incident: Pick<Incident, 'closedAt'>, deliver
  * 'Recovered · savings back to 75% · closed itself.' (spike / budget variants), from the reading at close
  * (D47); a closed incident with no recovery reading (a demo reset) gets the plain sentence.
  */
-export function recoveryText(incident: Pick<Incident, 'type' | 'before' | 'after' | 'recoveredTo' | 'closedAt' | 'closedReason' | 'closedBy'>): string {
+export function recoveryText(
+  incident: Pick<Incident, 'type' | 'before' | 'after' | 'recoveredTo' | 'closedAt' | 'closedReason' | 'closedBy'> & { notes?: Incident['notes'] },
+): string {
   // P1-F07: a member closed it — nothing recovered; say what they did, and who.
   if (incident.closedReason) return memberClosedText(incident);
   const r = incidentReadings(incident);
-  // Good news closes as it opens: its `after` is the new level.
-  const to = incident.type === 'goodnews' ? r.after : r.recoveredTo;
+  // Founder-build r1 ui-6 (M9): the $/day floor closed it, not a recovery: the savings are still where they fell (D47).
+  if (isBelowFloorClose(incident)) {
+    return r.after === undefined ? t('incidents.closedBelowFloorGeneric') : t('incidents.closedBelowFloor', { pct: fmtPct(r.after) });
+  }
+  // Good news never recovers from anything (row 9, PACK_PAYOFF F1): it closes as it opens, its `after` the new level.
+  if (incident.type === 'goodnews') {
+    return r.after === undefined ? t('incidents.goodNewsHeldGeneric') : t('incidents.goodNewsHeld', { pct: fmtPct(r.after) });
+  }
+  const to = r.recoveredTo;
   switch (incident.type) {
     case 'regression':
-    case 'goodnews':
       return to === undefined ? t('incidents.recoveredGeneric') : t('incidents.recovered', { pct: fmtPct(to) });
     case 'spike':
       return to === undefined ? t('incidents.recoveredGeneric') : t('incidents.recoveredSpike', { amount: fmtDollars(to) });
@@ -525,6 +547,18 @@ export function memberClosedText(incident: Pick<Incident, 'closedReason' | 'clos
 // ─── Notes and muting ────────────────────────────────────────────────────────
 
 export const DEMO_PROFILE_NOTE = 'demo-profile';
+/** core/detector.ts: a regression closed because its drop fell under the $/day floor, not because savings came back. */
+export const BELOW_FLOOR_NOTE = 'below-floor';
+
+/** A close the $/day floor made (M9): no recovery reading, the savings still where they fell. */
+export function isBelowFloorClose(incident: Pick<Incident, 'closedAt' | 'closedReason'> & { notes?: Incident['notes'] }): boolean {
+  return !!incident.closedAt && !incident.closedReason && (incident.notes ?? []).includes(BELOW_FLOOR_NOTE);
+}
+
+/** A close that is not a recovery: a member's (accepted, muted, left out) or the floor's (M9). Neutral, never green. */
+export function isNeutralClose(incident: Pick<Incident, 'closedAt' | 'closedReason'> & { notes?: Incident['notes'] }): boolean {
+  return !!incident.closedAt && (!!incident.closedReason || isBelowFloorClose(incident));
+}
 export const CATCH_UP_NOTE = 'catch-up';
 
 export function hasNote(incident: Pick<Incident, 'notes'>, note: string): boolean {
@@ -541,9 +575,10 @@ export function mutedMinutesLeft(untilIso: string | undefined, nowMs: number): n
 /** Severity class suffix for styling: high · medium · info · recovered. */
 export type Tone = 'high' | 'medium' | 'info' | 'recovered';
 
-export function incidentTone(incident: Pick<Incident, 'severity' | 'closedAt' | 'type' | 'closedReason'>): Tone {
-  // P1-F07: accepted, muted or left out is closed but not recovered — neutral, never the saved green.
-  if (incident.closedAt && incident.closedReason) return 'info';
+export function incidentTone(incident: Pick<Incident, 'severity' | 'closedAt' | 'type' | 'closedReason'> & { notes?: Incident['notes'] }): Tone {
+  // P1-F07: accepted, muted or left out is closed but not recovered — neutral, never the saved green; so is a close
+  // the $/day floor made (M9, founder-build r1 ui-6).
+  if (isNeutralClose(incident)) return 'info';
   if (incident.closedAt || incident.type === 'goodnews') return 'recovered';
   if (incident.severity === 'high') return 'high';
   if (incident.severity === 'medium') return 'medium';

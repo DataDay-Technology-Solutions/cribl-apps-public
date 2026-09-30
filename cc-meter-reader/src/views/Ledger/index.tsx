@@ -57,6 +57,7 @@ import { useLedgerParams } from './params.ts';
 import { MoneyStrip } from './MoneyStrip.tsx';
 import { ratioDayDelta } from './strip.ts';
 import { Toolbar } from './Toolbar.tsx';
+import { useViewZone } from '../Receipt/useViewZone.ts';
 import './Ledger.css';
 
 const URL_DEBOUNCE_MS = 250;
@@ -75,7 +76,7 @@ function commitTouchesRow(impact: CommitImpact, row: LedgerRow): boolean {
   return row.objectKeys.some((k) => (k.startsWith('pipe:') || k.startsWith('route:')) && filesTouchObject(impact.commit.files ?? [], k, row.pipelineId) === 'object');
 }
 
-/** settings.displayTimezone when the runtime knows it, else UTC (the day keys of the 7-day trend follow it). */
+/** The view zone when it is valid, else UTC (the day keys of the 7-day trend follow it). */
 function validZone(tz: string | undefined): string {
   if (!tz) return 'UTC';
   try {
@@ -142,7 +143,9 @@ export default function LedgerView() {
   // page counts every flow the sweep meters and says so (usefulness review, round 2).
   const inventory = useAppState((s) => s.inventory);
   const fold = useMemo(() => snapshotFold(snapshot, inventory), [snapshot, inventory]);
-  const timeZone = useAppState((s) => s.settings.displayTimezone);
+  // r3 ui-1 (C3): the Receipt's zone (stored settings → snapshot.zone → this browser's), so a settings-less workspace's
+  // day keys, commit times and range words match the Receipt's and the Report's.
+  const timeZone = useViewZone();
   const [params, setParams] = useLedgerParams();
   // The Receipt's custom range follows the member here (?range=, a sticky param): the money columns sum it (P2-W14).
   // Live data only — sample and replay data have no rollup history, as on the Receipt.

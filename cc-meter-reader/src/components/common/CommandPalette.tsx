@@ -23,6 +23,7 @@ import { focusSearchWhenReady } from '../Shell/useShellEffects.ts';
 import { GROUP_ORDER, filterItems, paletteItems, withStickyParams, type PaletteGroup, type PaletteItem } from './paletteItems.ts';
 import { SingleKeySwitch } from './ShortcutSheet.tsx';
 import './CommandPalette.css';
+import { guardNavigation, targetPath } from '../../lib/navGuard.ts';
 
 export interface CommandPaletteProps {
   isOpen: boolean;
@@ -92,8 +93,12 @@ function PaletteBody({ onClose, showDemoLevers }: Omit<CommandPaletteProps, 'isO
     onClose();
     const r = item.run;
     if (r.kind === 'navigate') {
-      void navigate(withStickyParams(r.to, new URLSearchParams(search)));
-      if (r.focusSearch) focusSearchWhenReady();
+      const to = withStickyParams(r.to, new URLSearchParams(search));
+      // Asks the in-app navigation guard first (unsaved Settings drafts, src/lib/navGuard.ts).
+      guardNavigation(targetPath(to), () => {
+        void navigate(to);
+        if (r.focusSearch) focusSearchWhenReady();
+      });
     } else if (r.kind === 'sweep') {
       showShortcutChip(t('palette.sweeping'));
       void meter.sweepNow();

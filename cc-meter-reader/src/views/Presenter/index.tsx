@@ -45,6 +45,7 @@ import { shallowEqual, useAppState } from '../../state/react.tsx';
 import { HowItWorks } from '../../components/HowItWorks/HowItWorks.tsx';
 import { IncidentTakeover } from '../../components/IncidentTakeover/index.ts';
 import { Meter } from '../../components/Meter/index.ts';
+import { staticFigureM } from '../../components/Meter/meterMath.ts';
 import { Credit } from '../../components/common/Credit.tsx';
 import { QrBlock } from '../../components/QrBlock/index.ts';
 import { dataUpdatedAt, deriveDataStatus, type DataStatus } from '../../components/Shell/status.ts';
@@ -157,6 +158,7 @@ function SessionTicker() {
           label={t('presenter.session.label')}
           size="inherit"
           callout={null}
+          announce={false}
         />
       </span>
       {rateText ? <span className="mr-pv-session-rate">{rateText}</span> : null}
@@ -339,13 +341,16 @@ function PresenterStage() {
           <p className="mr-pv-figure mr-num" data-value={figure.valueM} style={{ '--mr-hero-chars': String(budget) } as CSSProperties}>
             <Meter
               key={period}
-              valueM={figure.valueM}
+              // A static figure (the run rate) is whole dollars rounded half-up, as it prints everywhere (r1 ui-8, m12).
+              valueM={figure.accrue ? figure.valueM : staticFigureM(figure.valueM)}
               ratePerSecM={figure.accrue ? (snapshot?.ratePerSecM ?? 0) : 0}
               anchorMs={anchorMs}
               label={t('presenter.heroMeterLabel', { period: basis })}
               size="inherit"
               rollStatic
               rollIn="presenter-hero"
+              // The stage announcer is the stage's one voice (r1 ui-10, m21).
+              announce={false}
             />
           </p>
         )}

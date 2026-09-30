@@ -1033,7 +1033,7 @@ export class CriblEmulator {
   }
 
   /** Commits pending files (explicit list, or — like the platform — everything pending in scope). */
-  private commit(doc: MockDoc, args: { message: string; files?: string[]; scope?: string; at: number }): SyntheticCommit | null {
+  private commit(doc: MockDoc, args: { message: string; files?: string[]; scope?: string; at: number; author?: SyntheticCommit['author'] }): SyntheticCommit | null {
     const inScope = this.pendingIn(doc, args.scope);
     let selected: string[];
     if (args.files === undefined) {
@@ -1066,7 +1066,7 @@ export class CriblEmulator {
       hash: hashHex40(`${doc.seed}|${doc.createdAt}|${args.at}|${args.message}|${selected.join(',')}|${doc.commits.length}`),
       at: args.at,
       message: args.message,
-      author: { ...COMMIT_AUTHOR },
+      author: { ...(args.author ?? COMMIT_AUTHOR) },
       files: selected,
       diff,
     };
@@ -1077,14 +1077,20 @@ export class CriblEmulator {
   }
 
   // ── levers (what a member does in the Cribl UI, or the demo backend does) ──
-  private lever(doc: MockDoc, gid: string, at: number, mutate: (cfg: GroupConfig) => { config: GroupConfig; files: string[]; message: string }): SyntheticCommit | null {
+  private lever(
+    doc: MockDoc,
+    gid: string,
+    at: number,
+    mutate: (cfg: GroupConfig) => { config: GroupConfig; files: string[]; message: string },
+    author?: SyntheticCommit['author'],
+  ): SyntheticCommit | null {
     const base = this.base(doc);
     const working = this.working(doc, gid);
     const r = mutate(working);
     if (r.files.every((f) => fileContent(working, f) === fileContent(r.config, f))) return null; // already in that state
     doc.working[gid] = overlayFrom(doc.working[gid] ?? {}, base.configs[gid], r.config, r.files);
     for (const f of r.files) this.markPending(doc, f);
-    const commit = this.commit(doc, { message: r.message, files: r.files, scope: gid, at });
+    const commit = this.commit(doc, { message: r.message, files: r.files, scope: gid, at, ...(author ? { author } : {}) });
     if (commit) this.deploy(doc, gid, commit.hash, at);
     return commit;
   }
@@ -1149,7 +1155,8 @@ export class CriblEmulator {
         if (action.withPacks)
           for (const [dt, routeId] of [[70_000, 'mrd_windows_workstations'], [55_000, 'mrd_pan_firewall'], [40_000, 'mrd_vpc_flow']] as const)
             push(this.lever(doc, gid, at - dt, (cfg) => rigApplyPack(cfg, gid, routeId)));
-        push(this.lever(doc, gid, at, (cfg) => rigBreakTrim(cfg, gid, action.pipelineId)));
+        // r2 ui-15: `author` makes the break a commit through the API (an OAuth client, "<client id>@clients").
+        push(this.lever(doc, gid, at, (cfg) => rigBreakTrim(cfg, gid, action.pipelineId), action.author));
         break;
       }
       case 'restore':

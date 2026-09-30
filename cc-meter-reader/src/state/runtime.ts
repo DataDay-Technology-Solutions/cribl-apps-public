@@ -12,7 +12,7 @@
 
 import type { Clock, Logger, Settings } from '../../core/types.ts';
 import { detectCodec } from '../../core/codec.ts';
-import { canonicalZoneName } from '../../core/time.ts';
+import { browserTimeZone } from '../lib/zone.ts';
 import { createFetchHttp, type FetchLike } from '../../core/http.ts';
 import { createFetchKvStore, createKvDocs, type KvDocs } from '../../core/kv.ts';
 import { defaultSettings, mergeSettings as mergeStoredSettings } from '../../core/settings.ts';
@@ -43,13 +43,8 @@ const logger: Logger = {
   error: (msg, data) => console.error(`[meter-reader] ${msg}`, data ?? ''),
 };
 
-function browserTimeZone(): string {
-  try {
-    return canonicalZoneName(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
-  } catch {
-    return 'UTC';
-  }
-}
+/** Re-exported for callers that already import the runtime (src/lib/zone.ts holds the one definition). */
+export { browserTimeZone };
 
 /** The platform's fetch (locked in the App iframe). core/http calls it with the right receiver. */
 function platformFetch(): FetchLike {
@@ -76,7 +71,7 @@ export function weeklyFromJson(body: unknown, httpError?: string): WeeklyResult 
     deliveries: Array.isArray(r.deliveries) ? (r.deliveries as WeeklyResult['deliveries']) : [],
     calls: num(r.calls),
   };
-  if (skipped === 'locked' || skipped === 'already_sent' || skipped === 'no_endpoints' || skipped === 'rate_limited') out.skipped = skipped;
+  if (skipped === 'locked' || skipped === 'already_sent' || skipped === 'no_endpoints' || skipped === 'rate_limited' || skipped === 'unavailable' || skipped === 'not_metered') out.skipped = skipped;
   const error = typeof r.error === 'string' ? r.error : httpError;
   if (error !== undefined) out.error = error;
   return out;
@@ -135,6 +130,8 @@ export function createBrowserRuntime(): BrowserRuntime {
         http, kv, webhook, clock, codec, logger, owner: tabId, ...APP_BUILD_INFO,
         runtime: 'ui',
         ...origin,
+        // Founder-build r1 core-2 (C1', B1): a workspace with no settings document is metered in this tab's zone.
+        defaultTimeZone: browserTimeZone(),
       };
       const result = await runSweep(deps, { mode });
       return toSummary(result, mode, clock.now() - started);
@@ -148,7 +145,7 @@ export function createBrowserRuntime(): BrowserRuntime {
         const res = await http.request('POST', '/endpoints/weeklyReceipt', { mode: 'manual' });
         return weeklyFromJson(res.json, res.ok ? undefined : `HTTP ${res.status}`);
       }
-      return runWeeklyReceipt({ http, kv, webhook, clock, codec, logger, owner: tabId, ...origin }, { mode });
+      return runWeeklyReceipt({ http, kv, webhook, clock, codec, logger, owner: tabId, ...origin, defaultTimeZone: browserTimeZone() }, { mode });
     },
 
     async invokeBackend() {

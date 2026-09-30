@@ -147,7 +147,7 @@ describe('Where to send alerts — the Cribl bell', () => {
     await waitFor(() => expect(screen.getByTestId('endpoint-bell-result').textContent).toContain('Posted to the Cribl notification bell (200)'));
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({ method: 'POST', path: '/system/messages' });
-    expect(requests[0].body).toMatchObject({ severity: 'error', title: 'Test: Savings dropped: Payments API sampling' });
+    expect(requests[0].body).toMatchObject({ severity: 'info', title: 'Test: Savings dropped: Example pipeline' });
     expect(bell.getAttribute('data-enabled')).toBe('true');
   });
 

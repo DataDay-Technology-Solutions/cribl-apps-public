@@ -444,7 +444,8 @@ function RowImpl({ row, index, layout, columns, start, active, highlighted, onSe
             <span className="mr-lt-card-reduction">
               <span className="mr-lt-card-caption">{t('ledger.columnsExtra.reduction')}</span> <ReductionCell row={row} />
             </span>
-            <span className="mr-lt-card-trend">{trend(64)}</span>
+            {/* r2 ui-9: 48 px of line on a phone card, so a 360 px card holds the figure, the reduction and the trend whole. */}
+            <span className="mr-lt-card-trend">{trend(48)}</span>
           </div>
         </div>
       </div>

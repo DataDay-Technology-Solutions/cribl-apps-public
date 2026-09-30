@@ -250,15 +250,16 @@ describe('Caught in m:ss', () => {
     expect(Number.isNaN(caughtStartMs(incident({ commit: undefined, caughtInSec: undefined })))).toBe(true);
   });
 
-  it('counts live while a delivery is owed, then shows the measured number once one lands', () => {
+  // r2 ui-11 (FINDINGS_R2 #14): the figure is the measured catch throughout; `live` marks a delivery still owed.
+  it('is live while a delivery is owed, at the measured number (never counting past the catch), then settles once one lands', () => {
     const now = T + 9_000;
     expect(caughtState(incident(), [], now, true)).toEqual({
-      seconds: 180,
+      seconds: 171,
       live: true,
     });
     const failed = [{ endpointId: 'ep_slack', status: 503, at: iso(2) }];
     expect(caughtState(incident(), failed, now, false)).toEqual({
-      seconds: 180,
+      seconds: 171,
       live: true,
     });
     const sent = [{ endpointId: 'ep_slack', status: 200, at: iso(2) }];
@@ -364,8 +365,9 @@ describe('figures and recovery', () => {
     expect(recoveryText(incident({ closedAt: iso(300), after: 0.75 }))).toBe('Recovered · savings back to 75% · closed itself.');
     // Closed with no reading at all (a demo reset): never "back to" the low.
     expect(recoveryText(incident({ closedAt: iso(300) }))).toBe('Recovered · closed itself.');
-    // Good news closes as it opens: its `after` is the new level.
-    expect(recoveryText(incident({ type: 'goodnews', before: 0.4, after: 0.62, closedAt: iso(0) }))).toBe('Recovered · savings back to 62% · closed itself.');
+    // Good news closes as it opens: its `after` is the new level, in its own words, never recovery copy (founder-build
+    // r1 ui-6, row 9 / PACK_PAYOFF F1).
+    expect(recoveryText(incident({ type: 'goodnews', before: 0.4, after: 0.62, closedAt: iso(0) }))).toBe('Improvement held · savings at 62%.');
   });
 
   it('tones by severity; closed and good news are the recovery green', () => {

@@ -59,9 +59,11 @@ svg {
   font-family: token('core.fontFamily.sans');
 }
 
-/* One visible, styled focus ring for everything we render ourselves (Capra styles its own). */
+/* One visible, styled focus ring for everything we render ourselves (Capra styles its own). Founder-build r2 ui-13
+   (IC-17, WCAG 1.4.11 / 2.4.11): drawn in the accent foreground, which holds at least 3:1 on the page in both themes
+   (4.7:1 light, 9:1 dark); Capra's border.focus measured 2.3:1 on white. */
 :where(a, button, [tabindex], summary, svg [tabindex]):focus-visible {
-  outline: token('border.focus');
+  outline: 2px solid token('color.foreground.accent.default');
   outline-offset: 2px;
   border-radius: token('radius.lg');
 }

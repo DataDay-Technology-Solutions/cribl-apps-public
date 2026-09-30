@@ -10,7 +10,7 @@
 import { Button } from '@capra/core';
 import { t } from '../../copy/en.ts';
 import { useActions, useAppState } from '../../state/react.tsx';
-import { useTourBeat } from '../../tour/status.ts';
+import { requestMeterYours, useTourBeat } from '../../tour/status.ts';
 import './common.css';
 
 export function SampleBand() {
@@ -20,6 +20,8 @@ export function SampleBand() {
   if (source === 'live') return null;
   const replay = source === 'replay';
   const beat = !replay && tour.active && tour.beats > 1 ? { beat: tour.beat, beats: tour.beats } : null;
+  // Only once the tour has played to its end, and only for the tour (never a replay, never Story).
+  const meterYours = !replay && source === 'sample' && tour.active && tour.phase === 'finished';
   return (
     <div className="mr-sample-band" role="status" data-callout="sample-band" data-source={source}>
       <span className="mr-sample-band-cap" aria-hidden="true">
@@ -37,6 +39,22 @@ export function SampleBand() {
           <span className="mr-sample-band-beat-long">{t('sampleBand.beat', beat)}</span>
           <span className="mr-sample-band-beat-short">{t('sampleBand.beatShort', beat)}</span>
         </span>
+      ) : null}
+      {meterYours ? (
+        // FOUNDER_PLAN row 12: the finished tour's next step is the member's own number — Prices, filled, unsaved.
+        <Button
+          size="sm"
+          variant="primary"
+          data-testid="sample-band-meter-yours"
+          onPress={() => {
+            // The tour's stop then lands on Prices without ?tour (src/tour/controller.ts); while that navigation is on
+            // its way, the Receipt does not bounce an unpriced workspace to first run (src/router.tsx HomeRoute).
+            requestMeterYours();
+            clearSample();
+          }}
+        >
+          {t('sampleBand.meterYours')}
+        </Button>
       ) : null}
       <Button size="sm" variant="secondary" onPress={clearSample}>
         {replay ? t('sampleBand.stopReplay') : t('sampleBand.clear')}

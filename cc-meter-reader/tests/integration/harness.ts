@@ -96,6 +96,17 @@ export interface World {
   putSettings(update: (s: Settings) => void): Promise<void>;
 }
 
+/**
+ * Founder-build r3 core-2 (D83): a world whose workspace has been metering since `ms` — not a fresh install. A world's
+ * first sweep stamps meta.meteringStartedAt with its own time, and the automatic weekly receipt covers only a week that
+ * ended after metering started; a scenario about a workspace that metered last week back-dates it here.
+ */
+export async function meteringSince(w: Pick<World, 'docs'>, ms: number): Promise<void> {
+  const m = await w.docs.getMeta();
+  if (!m) throw new Error('meteringSince: sweep the world first (no meta yet)');
+  await w.docs.putMeta({ ...m, meteringStartedAt: new Date(ms).toISOString() });
+}
+
 export function rigPrices(effectiveFromMs: number): PricesDoc {
   return appendPriceVersion(
     emptyPrices(new Date(effectiveFromMs).toISOString()),
@@ -160,7 +171,7 @@ export async function createWorld(opts: WorldOptions = {}): Promise<World> {
     build: opts.build ?? 'demo',
     runtime: 'ui',
     workspace: 'main-example-org',
-    linkBase: 'https://main-example-org.cribl.cloud/app-ui/meter-reader',
+    linkBase: 'https://main-example-org.cribl.cloud/apps/a/meter-reader',
     envWebhooks: opts.bare ? [] : [{ ...SINK_ENDPOINT }],
     // A fresh world's first sweep reaches back the hour these scenarios were written at (the harness world stores no
     // inventory, so the default would reach a whole day: D63, rules round 2). The first-run tests pass

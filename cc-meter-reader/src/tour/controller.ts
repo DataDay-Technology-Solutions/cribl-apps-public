@@ -21,10 +21,11 @@ import { useSyncExternalStore } from 'react';
 import type { AppServices } from '../state/services.ts';
 import { createTourEngine, type TourEngine } from './engine.ts';
 import { TOUR_FIXTURE } from './fixture.ts';
-import { narrate } from './narration.ts';
+import { TOUR_TOAST_TAG, narrate } from './narration.ts';
+import { notify } from '../components/common/notify.tsx';
 import { pathAfterTour } from './selectors.ts';
 import { closeTourDialogs } from './dialogs.ts';
-import { beatOf, setTourBeat } from './status.ts';
+import { beatOf, dismissTourTakeover, setTourBeat, takeMeterYoursPath } from './status.ts';
 import { planRebase, rebaseHeadline, rebaseValue } from './rebase.ts';
 import { fromIso } from '../../core/time.ts';
 import type { TourFixture, TourStopReason } from './types.ts';
@@ -80,13 +81,18 @@ export function startSampleTour(services: AppServices, opts: StartTourOptions = 
   const onStop = (reason: TourStopReason): void => {
     console.info(`[meter-reader] tour stopped (${reason})`);
     setDomFlag(null);
+    // Founder-build r2 ui-6 (IC-3): any exit (Clear sample data, Stop, the end, Story taking over) closes what the tour
+    // raised — its dialogs and its toasts — before the first-run card or the member's Receipt shows.
     closeTourDialogs();
+    notify.clearTag(TOUR_TOAST_TAG);
     if (active === engine) {
+      dismissTourTakeover(); // the takeover card (row 11) belongs to the tour that landed it
       active = null;
       setTourBeat({ active: false, phase: 'stopped', beat: 0, beats: 0, lastStop: reason });
     }
     emit();
-    if (reason === 'cleared' || reason === 'user') opts.navigate?.(pathAfterTour(store.getState()));
+    // "See your own number" (row 12) asked for Prices; otherwise first run, or the Receipt for a priced workspace.
+    if (reason === 'cleared' || reason === 'user') opts.navigate?.(takeMeterYoursPath() ?? pathAfterTour(store.getState()));
   };
 
   engine = createTourEngine({

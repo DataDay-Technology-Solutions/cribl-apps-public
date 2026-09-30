@@ -185,7 +185,7 @@ export type ControlAction =
   | { action: 'reset'; preset?: MockPreset; seed?: number; flows?: number; keepKv?: boolean; options?: Partial<MockOptions> }
   | { action: 'advance'; minutes: number }
   | { action: 'setClock'; at: number }
-  | { action: 'breakTrim'; pipelineId?: string; withPacks?: boolean; at?: number; minutesAgo?: number }
+  | { action: 'breakTrim'; pipelineId?: string; withPacks?: boolean; at?: number; minutesAgo?: number; author?: { name: string; email: string } }
   | { action: 'restore'; pipelineId?: string; at?: number; minutesAgo?: number }
   | { action: 'applyPack'; routeId: string; level?: 'pack' | 'aggressive'; at?: number; minutesAgo?: number }
   | { action: 'revertPack'; routeId: string; at?: number; minutesAgo?: number }

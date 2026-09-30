@@ -25,6 +25,7 @@
 //   the bell) live in core/strings.ts, re-exported below: core/ builds without src/ (the runner, the Enterprise
 //   backend), so it cannot import this file; this file stays the one index of user-facing text (EPIC_AUDIT P1-F05).
 export { CORE_STRINGS, CREDIT_STRINGS, PAYLOAD_STRINGS, RECEIPT_STRINGS } from '../../core/strings.ts';
+import { AUTHOR_STRINGS as CORE_STRINGS_AUTHOR } from '../../core/strings.ts';
 
 // ─── Demo-build-only copy ────────────────────────────────────────────────────
 //
@@ -666,6 +667,8 @@ export const en = {
       from: 'From',
       to: 'To',
       timezoneNote: 'Times are in {tz}. Windows older than 24 hours are summed in whole hours; older than 31 days, in whole UTC days.',
+      // r3 ui-5 (H9): a large estate keeps minute documents for fewer hours (meta.minuteRetentionHours).
+      timezoneNoteHours: 'Times are in {tz}. Windows older than {hours} hours are summed in whole hours; older than 31 days, in whole UTC days.',
       // What Apply will sum, for the draft as it stands: "Summed in whole hours as Sep 19, 2:00 PM–Sep 26, 2:00 PM (7 days)."
       preview: {
         minute: 'Summed minute-exact as {words}.',
@@ -811,6 +814,13 @@ export const en = {
       presetHint: '{custom} of {total} destinations at your own rates, the rest at typical list prices. Enter your contract rates under Settings → Prices.',
     },
     howToggle: 'How this number is made',
+    // Founder-build r1 ui-3 (FINDINGS_EXTRA (b)): under the hero on the annualized run rate only, this workspace's
+    // measured rate projected to 1, 5 and 10 TB a day (src/views/Receipt/atScale.ts). It names its basis (every flow and
+    // priced destination here), so it never reads as the one-pack figure quoted elsewhere; {basis} is priceBasis.
+    atScale: {
+      line: "At your scale, at this workspace's measured rate (its mix of flows and priced destinations): {rungs} a year, projected {basis}.",
+      rung: '{tb}\u00a0TB a day ≈ {amount}',
+    },
     // The hero's right column at >= 1024 px (P1-H01): the other periods as receipt lines (buttons that switch to
     // them), then what a day saves at current rates.
     // A destination's monthly statement (P2-W25): this month against last, the budget, the counterfactual, the
@@ -877,7 +887,9 @@ export const en = {
       vsPrior: '{pct} on the same days last week',
       linesLabel: 'This week, by what saves it',
       sampleLines: 'Line items read your own rollups, so they show once metering is live.',
-      empty: 'Nothing metered this week yet.',
+      // r2 ui-13 (IC-7): said beside a hero that counts the minutes metered, so never "nothing metered".
+      empty: 'No traffic this week yet.',
+      emptySaved: 'Nothing saved this week yet.',
       failed: "This week's rollups can't be read right now.",
       preview: "Preview Monday's message",
       previewTitle: "Monday's message, so far",
@@ -982,6 +994,12 @@ export const en = {
     staleBody: 'The last sweep ran {ago}. These figures stop there until metering runs again.',
     zeroPricedTitle: 'Every destination is priced at $0',
     zeroPricedBody: 'Nothing can count as saved until a destination has a price above $0.',
+    // FOUNDER_PLAN row 14 (founder-build r1 ui-11): the mixed $0 case — a pipeline reduces data into a destination priced
+    // at $0 (DevNull is free once any price is saved), so nothing counts as saved; name it, and the way to Prices.
+    zeroRow: {
+      one: '{names} is priced at $0, so what your pipelines remove before it counts as $0 saved. Price it, or set what it stands in for, under Prices.',
+      other: '{names} are priced at $0, so what your pipelines remove before them counts as $0 saved. Price them, or set what they stand in for, under Prices.',
+    },
     setPrices: 'Set prices',
     trend: {
       // The chart's accessible name names the window the heading does, then how much of it is collected (P1-H06).
@@ -1133,6 +1151,8 @@ export const en = {
       destinationsNone: 'No destinations are priced yet.',
       // Net of Cribl (core/net.ts, DECISIONS D48): saved minus what Cribl itself cost over the same span.
       netTitle: 'Net after Cribl',
+      // Founder-build r2 ui-8 (BO-5): no contract cost set, so the net is the hero's list-price estimate.
+      netTitleEstimate: 'Net after Cribl (estimate)',
       netFormula: "Net after Cribl = saved − Cribl's cost for the same span",
       netValues: '{saved} − {cost} = {net}',
       paybackFormula: "Paid for itself = saved ÷ Cribl's cost",
@@ -1165,8 +1185,17 @@ export const en = {
       annualizedLine:
         'Saved over the last 30 days (today included) ÷ the minutes metered in them × 525,600 minutes a year = {amount} a year. Minutes when nothing was metering count on neither side.',
       annualizedPartialLine: 'Less than one whole day collected: saved so far ÷ minutes collected × 525,600 minutes = {amount} a year.',
-      annualizedTrendNote: "Would have paid and paid are annualized over the same days and minutes, so they split this rate by those days' savings ratio.",
-      annualizedRatioNote: 'Would have paid and paid split this rate by the savings ratio of the last 30 days.',
+      // Founder-build r2 ui-1 (BO-3): would have paid and paid each scale by saved's own factor over the same days, so
+      // spend that saves nothing (a destination marked as going nowhere) is never hidden inside paid.
+      annualizedTrendNote: 'Would have paid and paid are annualized over the same days and minutes as saved: each is this rate × its own total ÷ saved over those days.',
+      annualizedRatioNote: 'Would have paid and paid scale this rate by their own totals ÷ saved over the last 30 days.',
+      // 1.1.4 (judge path g): the rate saved nothing, so there is no saved figure to scale by.
+      annualizedRateNote: 'Nothing was saved over these days, so would have paid and paid are their own run rates: each total ÷ the same minutes metered × 525,600 minutes a year.',
+      // Founder-build r1 ui-3: the arithmetic behind "At your scale" (annualized run rate only).
+      atScaleTitle: 'At your scale (projected)',
+      atScaleRate: '{saved} saved a day ÷ {volume} received a day ≈ {perGb} saved per GB received, at current rates (the last hour × 24, every flow and priced destination).',
+      atScaleRung: '{tb}\u00a0TB a day: {perGb} × {gb}\u00a0GB × 365 days = {exact} a year, shown as {amount} (two significant figures).',
+      atScaleNote: "A projection, not a measurement: it assumes more data would be cut in the same proportion, and priced at the same destinations, as this workspace's flows are now.",
       liveTitle: 'Between sweeps',
       liveLine: 'The meter adds {rate} a minute (the last completed minute of savings) since the sweep at {time}, then eases to each new sweep.',
       liveStatic: 'The annualized run rate changes once a day, so the meter holds still.',
@@ -1390,6 +1419,8 @@ export const en = {
     hero: {
       label: 'Saved by Cribl would read',
       caption: 'annualized, {delta}',
+      // Founder-build r2 ui-7 (IC-2): the figure rests on the workspace at today's rates, the strip's basis, and says so.
+      captionCurrent: 'a year at current rates, {delta}',
       from: 'from {amount} today',
       noRunRate: 'This stream alone would add {amount} a year.',
       midpoint: 'at the middle of the documented range',
@@ -1416,6 +1447,9 @@ export const en = {
     emptyBody: 'What if prices every stream at its destination. Add a price for at least one destination to project savings on its streams.',
     loading: 'Loading What if',
     alreadyRuns: 'This stream already runs this treatment. Its measured ratio is {pct}.',
+    // Founder-build r1 ui-4 (FOUNDER_PLAN row 2b): a Pack attached alone that is only part of the treatment (Cribl's Palo
+    // Alto Networks pack without the syslog pack). {pack} is the Pack's name ('Palo Alto Networks').
+    alreadyRunsPack: 'This stream already runs the {pack} pack. Its measured ratio is {pct}.',
     savesLess: 'This stream already saves more than the treatment would; the projection shows the difference.',
     math: {
       title: 'Show the math',
@@ -1507,6 +1541,11 @@ export const en = {
       line: '{treatment} on {stream}',
       aria: 'Load the {treatment} on {stream} in the calculator: {amount} a year',
       none: 'Every stream here already runs the pack written for it.',
+      // Founder-build r1 ui-4 (FOUNDER_PLAN row 2, HUNGER #5): why the list is empty (core/whatif.ts unclaimedEmptyReason);
+      // `none` shows only when every stream a pack fits runs it.
+      noneFit: 'No stream here is one these packs are written for (Windows event logs, Palo Alto firewall syslog, VPC Flow Logs). A custom drop works on any stream.',
+      noBasis: 'The streams a pack fits have no estimate yet: no similar stream here runs it, and the pack publishes no range.',
+      savesMore: 'The streams a pack fits already save at least what it would add.',
       listLabel: 'Biggest unclaimed savings, largest first',
     },
     // P2-W06: the good-news takeover (WhatIf/LandedCard.tsx).
@@ -1763,9 +1802,10 @@ export const en = {
 
   // A commit's author (src/lib/author.ts; usefulness review, round 2): an API-made commit's author is an OAuth client
   // id, so it reads as that client, by the last four characters of its id, until a member names it.
+  // r2 ui-15 (H3): the one set of words, core's (core/strings.ts AUTHOR_STRINGS, printed by core/humanize.ts displayAuthor).
   commits: {
-    apiClient: 'API client ··{tail}',
-    unknownAuthor: 'unknown author',
+    apiClient: CORE_STRINGS_AUTHOR.apiClient,
+    unknownAuthor: CORE_STRINGS_AUTHOR.unknownAuthor,
   },
   incidents: {
     // The compact card's eyebrow over the object's name (P1-H04): the kind, then the time.
@@ -1792,6 +1832,11 @@ export const en = {
       spike: '{perDay} a day above normal while it lasts',
       closed: '{perDay} a day above normal while it lasted · {duration}',
       closedNoDuration: '{perDay} a day above normal while it lasted',
+      // Founder-build r2 ui-4 (FINDINGS_R2 #2, C3): closed by the $/day floor, not recovered: the savings are still where
+      // they fell, so never "while it lasted" and never a year. Worded as every channel words it (core/strings.ts
+      // impact.belowFloor: the bell, a notification target, Slack).
+      belowFloor: 'fell under the {floor}/day floor; savings still at {after}',
+      belowFloorGeneric: 'fell under the {floor}/day floor',
     },
     caughtIn: 'Caught in {duration}',
     recovered: 'Recovered · savings back to {pct} · closed itself.',
@@ -1860,6 +1905,12 @@ export const en = {
     recoveredSpike: 'Recovered · cost back to {amount} an hour · closed itself.',
     recoveredBudget: 'Recovered · back under budget pace · closed itself.',
     recoveredGeneric: 'Recovered · closed itself.',
+    // Founder-build r1 ui-6: closes that are not recoveries. M9: the drop fell under the $/day alert floor, so the alert
+    // closed with the savings still where they fell (D47). Row 9 / PACK_PAYOFF F1: good news never "recovers".
+    closedBelowFloor: 'Closed · the drop fell under the alert floor · savings still at {pct}.',
+    closedBelowFloorGeneric: 'Closed · the drop fell under the alert floor.',
+    goodNewsHeld: 'Improvement held · savings at {pct}.',
+    goodNewsHeldGeneric: 'Improvement held.',
     // The green recovery takeover (BEAUTY F3: the same card, in green).
     savingAgain: 'Saving {perDay} a day again · {perYear} a year',
     openFor: 'Alert open for {duration}',
@@ -1944,6 +1995,15 @@ export const en = {
     /** Rail marker (visually hidden) and phone-picker label for a section with unsaved changes. */
     navUnsaved: 'Unsaved changes',
     sectionUnsaved: '{section} · unsaved',
+    // Founder-build r1 ui-5 (FINDINGS_R1 M1): leaving Settings in the App while a section has unsaved changes asks first
+    // (src/lib/navGuard.ts); the dialog lists the sections whose edits would be discarded.
+    leaveGuard: {
+      title: 'Leave Settings with unsaved changes?',
+      body: 'These sections have changes that are not saved yet. Leaving discards them; nothing has been written.',
+      action: 'unsaved changes are discarded',
+      stay: 'Stay',
+      leave: 'Leave without saving',
+    },
     readOnlySample: 'Settings are read-only while sample data is showing. Clear sample data to edit them.',
     readOnlyLoading: 'Still loading your saved settings. Saving is available once they arrive.',
     errors: {
@@ -1968,11 +2028,17 @@ export const en = {
       fieldCommitted: 'committed price',
       priced: 'priced',
       meta: '{id} · {type} · {group}',
+      // r2 ui-15 (r1 core-12, M12): a router that splits its traffic across destinations reads unpriced; say how to price it.
+      routerHint: "Splits its traffic across destinations: price it at its destinations' rate.",
       // P1-G03: the id only when the name does not already say it.
       metaTypeGroup: '{type} · {group}',
       count: { one: '{n} destination', other: '{n} destinations' },
       unpricedCount: { one: '{n} unpriced', other: '{n} unpriced' },
       allPriced: 'All priced',
+      // r2 ui-13 (IC-6): the destination list is the last inventory read (every 10 minutes), so a new one takes a moment.
+      newDestinations: 'New destinations appear within a few minutes · Sweep now to check',
+      // r3 ui-3 (FINDINGS_R3 #8): before the first prices there is no Sweep now; the list re-reads itself every minute.
+      newDestinationsUnpriced: 'New destinations appear here within a minute',
       // The preset picker and its info popover (core/presets.ts PRESET_NOTES).
       presetOption: '{preset} · typical {typical} / GB · range {low}–{high}',
       presetOptionFree: '{preset} · No destination charge',
@@ -2011,10 +2077,15 @@ export const en = {
       // The price field's placeholder when the row's preset has no price to suggest (Internal / free): '0.00' read as a price (P0-04).
       noSuggestedPrice: '—',
       suggestedFilled: { one: 'Filled {n} suggested price. Review it, then save.', other: 'Filled {n} suggested prices. Review them, then save.' },
+      // Row 12: after "See your own number" (the suggested prices were filled): a destination that only archives data
+      // saves nothing by being priced like a SIEM.
+      archiveHint: 'Archive-only data? Choose Nowhere.',
       cfSame: 'This destination',
       cfNone: 'Nowhere (archive-only data)',
       // P1-F01: a destination with no price yet credits diverted data at $0 until it has one.
       cfNoPrice: '{name} (no price yet)',
+      // r1 ui-9 (m4): a free output type (DevNull) priced at $0 by D33 once any price is saved, as its own row reads.
+      cfFree: '{name} (free, $0)',
       versionNote: 'Saving adds a price version that takes effect now. Minutes already metered keep their prices.',
       lastChanged: 'Prices last changed {ago}',
       // P2-W24: who saved the newest version (window.getCriblUser), and each destination's own history.
@@ -2050,6 +2121,7 @@ export const en = {
       seeReceipt: 'See the receipt',
       diffTitle: 'To save',
       diffNew: 'unpriced',
+      diffFree: 'free',
       diffCounterfactual: 'without Cribl: {label}',
       diffAria: '{before} to {after}',
       diffMore: { one: '+ {n} more', other: '+ {n} more' },
@@ -2230,6 +2302,8 @@ export const en = {
           loadFailed: "Couldn't list notification targets ({status}). Type the target id instead.",
           checking: 'Checking the connection…',
           ready: 'Connected. Alerts reach {target} through Cribl.',
+          // Founder-build r1 ui-5 (M1): the relay exists but this endpoint is not stored, so no alert goes here yet.
+          readyUnsaved: 'Connected in Cribl · Save changes to send alerts here',
           missing: 'Not connected yet. Connecting adds a small relay in Cribl Search: a saved search that never runs, and one notification.',
           checkFailed: "Couldn't check the connection ({status}).",
           connect: 'Connect',
@@ -2430,6 +2504,10 @@ export const en = {
       checksLabel: 'Before you send it',
       checkListPrices: 'The figures use typical list prices, not your contract rates. An admin can enter contract rates in Settings → Prices.',
       checkNoCost: 'No Cribl cost is set, so the report shows no return. An admin can enter the monthly cost in Settings → Cribl cost.',
+      // FOUNDER_PLAN row 13 (founder-build r1 ui-11): one click saves the list-price estimate the check quotes, flagged as
+      // an estimate (the same save as Settings → Cribl cost's "Use this estimate"); a contract figure replaces it.
+      useEstimate: 'Use the list-price estimate',
+      estimateSaved: 'Saved the list-price estimate as your Cribl cost. Enter your contract cost under Settings → Cribl cost.',
       // …with the list-price estimate the Receipt shows (usefulness review, round 2); the document itself prints no estimate.
       checkNoCostEstimate:
         "No Cribl cost is set, so the report shows no return. At Cribl's list price ({volume} a day × {list} per GB ≈ {amount} a month), Cribl pays for itself ≈{multiple}× at the annualized run rate. An admin can enter the contract cost in Settings → Cribl cost.",
@@ -2623,6 +2701,10 @@ export const en = {
         criblCost:
           "Net after Cribl subtracts the Cribl cost an admin entered ({amount} a month; it should include the license and any infrastructure Cribl runs on), prorated to the minutes metered for month to date and × 12 for the run rate. ROI is the net savings ÷ that cost. Cribl Stream bills the bytes it receives, so a pipeline's reduction lowers the destination's bill, not Cribl's.",
         criblCostUnset: 'No Cribl cost was provided, so the net after Cribl and the return are not shown.',
+        // Founder-build r1 ui-11 (row 13): the methodology line when the cost is the list-price estimate (Settings'
+        // criblCostEstimate). For core/report.ts to print when card.cribl.estimate (handoff in OUT/r1-ui.md).
+        criblCostEstimate:
+          "Net after Cribl subtracts an estimate of the Cribl cost ({amount} a month: Cribl's published list price on the ingest Meter Reader measured, not a contract figure), prorated to the minutes metered for month to date and × 12 for the run rate. ROI is the net savings ÷ that cost. An admin replaces it with the contract cost under Settings → Cribl cost.",
       },
       about: {
         title: 'About this report',
@@ -2707,6 +2789,8 @@ export const en = {
     replayNote: 'A recorded run. Numbers are from the real demo workspace.',
     beat: 'Tour · beat {beat} of {beats}',
     beatShort: '{beat} of {beats}',
+    // FOUNDER_PLAN row 12: once the tour has played to its end, the way to the member's own number (Prices, filled).
+    meterYours: 'See your own number',
   },
 
   // ── First run + Tour with sample data (PRD 8.5, DESIGN_BRIEF 5.6, SPEC 15 / 17) ──
@@ -2723,20 +2807,30 @@ export const en = {
     toast: {
       regressionBody: '{perDay} a day · {perYear} a year. Commit {hash} by {author}, caught in {caughtIn}.',
       spikeBody: '{perDay} a day above normal. No configuration change found nearby.',
-      delivered: 'Sent to {endpoint} ✓ {time}',
+      // Founder-build r1 ui-7 (m1): a Cribl notification target (D57) — Cribl accepted it for delivery.
+      handed: 'Handed to Cribl for {endpoint} ✓ {time}',
       recoveredTitle: 'Savings back: {label}',
       weeklyTitle: 'Weekly receipt ready · {label}',
-      weeklyBody: 'Saved by Cribl {amount}. Leadership gets this in Slack, without opening Cribl.',
+      // r2 ui-11 (IC-14 residue): the receipt goes wherever the weekly receipt is on (the bell, a Cribl target), not "in Slack".
+      weeklyBody: 'Saved by Cribl {amount}. Leadership gets this without opening Cribl.',
       viewMessage: 'View message',
       viewReceipt: 'View receipt',
       viewInLedger: 'View in Ledger',
     },
     dialog: {
-      slackTitle: 'Slack message sent to {endpoint}',
+      // m1: what a Cribl notification target received (plain text), as Settings' "What the target receives" shows it.
+      targetTitle: 'Handed to Cribl for {endpoint}',
+      targetCaption: 'What the target receives: plain text, which Cribl delivers to the channel behind it. Meter Reader stores only the target id.',
       receiptTitle: 'Weekly receipt · {label}',
       // Non-breaking spaces keep the last three words together (no lone "Cribl." on the dialog's second line).
       receiptCaption: 'Sent after Monday 12:00\u00a0UTC while Meter Reader is metering. Leadership never\u00a0opens\u00a0Cribl.',
       close: 'Close',
+    },
+    // FOUNDER_PLAN row 11: the savings drop lands as the takeover card on the Receipt (src/tour/TourTakeover.tsx).
+    takeover: {
+      label: 'Sample alert',
+      note: 'Sample data. Nothing is written to your workspace.',
+      dismissHint: 'Press Esc to dismiss',
     },
   },
 
@@ -2938,6 +3032,7 @@ export const en = {
     close: 'Close',
     dash: '—',
     loading: 'Loading',
+    and: 'and',
   },
 } as const;
 

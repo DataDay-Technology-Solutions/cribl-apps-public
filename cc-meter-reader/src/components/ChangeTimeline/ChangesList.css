@@ -56,7 +56,7 @@
   background: token('color.background.neutral.subtle');
 }
 .mr-changes-row:focus-visible {
-  outline: token('border.focus');
+  outline: 2px solid token('color.foreground.accent.default');
   outline-offset: -2px;
 }
 .mr-changes-row.is-selected {
@@ -89,6 +89,10 @@
 .mr-changes-row .mr-changes-meta {
   grid-row: 2;
   grid-column: 2;
+  /* Founder-build r2 ui-13 (BO-15): a row's meta (who, when, the basis and how it settled) wraps instead of cutting the
+     outcome ("Recovered Mon 2:04 AM, reverted by c8b6350") off on desktop. */
+  white-space: normal;
+  overflow: visible;
 }
 .mr-changes-line--total {
   padding-inline: token('spacing.sm');

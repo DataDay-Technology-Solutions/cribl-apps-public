@@ -336,7 +336,9 @@ describe('good news', () => {
   });
 
   it('announces a commit-backed improvement once, closed, and re-learns the new level', () => {
-    const commits = [commit('packws1', T0 - MIN, { message: 'demo: apply the pack on r_pay' })];
+    // Deployed 3 minutes before the sweep: under the demo profile the first evaluated minute starts ≥ 60 s after the
+    // deploy, so it is settled (row 9, tests/unit/detector-goodnews-settle.test.ts covers the transitional minutes).
+    const commits = [commit('packws1', T0 - 3 * MIN, { message: 'demo: apply the pack on r_pay' })];
     const r = run(base({ baselines: warmLow, settings: on(), commits }), [{ ratio: 0.33 }, { ratio: 0.33 }]);
     const [inc] = r.outs[0].opened;
     expect(inc).toMatchObject({ type: 'goodnews', severity: 'info', cause: 'commit', before: 0, after: 0.33, impactPerDayM: 3_300_000 });

@@ -9,7 +9,7 @@
 
 import { expect, test, type Page } from '@playwright/test';
 import { fmtBytes, fmtDollars, footColumn } from '../../core/format.ts';
-import { clearSink, expectPath, gotoApp, kvGet, mockCalls, resetCalls, seedPrices, setTheme, trackConsoleErrors, waitForHydration, waitForMock, type Theme } from './helpers/index.ts';
+import { clearSink, expectPath, gotoApp, kvGet, mockCalls, resetCalls, resetMock, seedPrices, setTheme, trackConsoleErrors, waitForHydration, waitForMock, type Theme } from './helpers/index.ts';
 
 const SIEM = 'mrd_siem_prod';
 const ANALYTICS = 'mrd_analytics';
@@ -242,6 +242,28 @@ test.describe('settings', () => {
     expect(errors()).toEqual([]);
   });
 
+  test('prices on the tour at 320 × 740: the "At these prices" lines wrap inside their card, nothing overflows (r1 ui-9, m22, WCAG 1.4.10)', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 740 });
+    await gotoApp(page, '/first-run');
+    await resetMock(page);
+    await gotoApp(page, '/settings/prices?tour=1');
+    await expect(page.locator('[data-callout="sample-band"]')).toBeVisible({ timeout: 20_000 });
+    const lines = page.locator('.mr-pt-totals-line');
+    await expect(lines.first()).toBeVisible({ timeout: 30_000 });
+    // Every line (and its amount, the "~ $84,435 / day" that ran 5 px out of its box) stays inside its own box.
+    const overflowing = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>('.mr-pt-totals-line, .mr-pt-totals-line .mr-pt-totals-amount')]
+        .filter((el) => {
+          const box = el.getBoundingClientRect();
+          const parent = (el.closest('.mr-pt-totals') ?? el.parentElement)!.getBoundingClientRect();
+          return el.scrollWidth > el.clientWidth + 1 || box.right > parent.right + 0.5 || box.right > window.innerWidth;
+        })
+        .map((el) => el.textContent),
+    );
+    expect(overflowing).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+  });
+
   test('prices: the preset picker is a grid of vendor tiles, at least 320 px wide, on screen, over no card copy (P0-20, P2-W24)', async ({ page }) => {
     const errors = trackConsoleErrors(page, ALLOW);
     await gotoApp(page, '/settings/prices');
@@ -420,8 +442,8 @@ test.describe('settings', () => {
     await page.getByTestId('endpoint-0-relay').getByRole('button', { name: 'Connect' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Connect' }).click();
     await expect(page.getByTestId('endpoint-0-relay')).toHaveAttribute('data-relay', 'ready');
-    await saveCard(page, 'notifications');
-    await expectSavedToast(page);
+    // M1 (founder-build r1 ui-5): a Connect that succeeded stores the endpoint at once; nothing is left to save.
+    await expect(page.locator('section[data-section="notifications"] .mr-set-savebar')).toContainText('No unsaved changes');
     await expect.poll(async () => (await settingsDoc(page))?.notifications?.[0]?.criblTargetId).toBe('mrd_slack_finops');
     const stored = (await kvGet(page, 'settings')) ?? '';
     expect(stored).not.toContain('hooks.slack.com');
@@ -722,7 +744,8 @@ test.describe('settings beauty', () => {
     await page.getByTestId('endpoint-0-relay').getByRole('button', { name: 'Connect' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Connect' }).click();
     await expect(page.getByTestId('endpoint-0-relay')).toHaveAttribute('data-relay', 'ready');
-    await saveCard(page, 'notifications');
+    // M1 (founder-build r1 ui-5): Connect stored the endpoint; nothing is left to save.
+    await expect(page.locator('section[data-section="notifications"] .mr-set-savebar')).toContainText('No unsaved changes');
     await page.getByTestId('endpoint-0-test').getByRole('button').click();
     await expect(page.getByTestId('endpoint-0-result')).toContainText('Handed to Cribl for mrd_slack_finops (200)');
     await page.getByText('Target connected').first().waitFor({ state: 'hidden', timeout: 15_000 }).catch(() => undefined);

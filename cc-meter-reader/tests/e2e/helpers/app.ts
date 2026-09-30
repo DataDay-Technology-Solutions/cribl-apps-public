@@ -32,6 +32,24 @@ export async function waitForHydration(page: Page, opts: HydrationOptions = {}):
   await page.locator(HYDRATED_SELECTOR).waitFor({ state: 'attached', timeout: opts.timeoutMs ?? 20_000 });
 }
 
+/**
+ * MR_E2E_NOW (an ISO instant) pins the page clock for a run (founder-build r3 ui-9: the specs whose Monday-only failures
+ * came from the automatic weekly receipt run once with the clock on a Monday after 12:00 UTC). Unset: the real clock.
+ */
+export function e2eNow(): Date | undefined {
+  const at = process.env.MR_E2E_NOW;
+  if (!at) return undefined;
+  const d = new Date(at);
+  if (Number.isNaN(d.getTime())) throw new Error(`MR_E2E_NOW is not a time: ${at}`);
+  return d;
+}
+
+/** Installs Playwright's clock at MR_E2E_NOW when it is set (time then runs on from it); a no-op otherwise. */
+export async function pinClockFromEnv(page: Page): Promise<void> {
+  const at = e2eNow();
+  if (at) await page.clock.install({ time: at });
+}
+
 /** Waits until the in-browser emulator has started in this page. */
 export async function waitForMock(page: Page, timeoutMs = 20_000): Promise<void> {
   await page.waitForFunction(() => '__MR_MOCK__' in window && navigator.serviceWorker?.controller !== null, undefined, { timeout: timeoutMs });
@@ -70,6 +88,14 @@ export const isCancelledLoad = (msg: ConsoleMessage): boolean => {
   }
   return /downloadable font: download failed .*\bstatus=2152398850\b/.test(text);
 };
+
+/**
+ * WebKit's words for a KV read the page's own navigation cancelled ("…/mock-api/v1/kvstore/meta due to access control
+ * checks."), raised as a page error of the document being left. Only a KV read, and only while a main-frame
+ * navigation is under way (the spec's page.goto or reload): the same words at any other moment are still reported.
+ */
+export const isNavigationCancelledKvRead = (text: string, at: PageMoment): boolean =>
+  at.leaving && /\/mock-api\/v1\/kvstore\/\S+ due to access control checks\.?$/.test(text);
 
 /**
  * Collects console errors and uncaught page errors from the moment it is called. `allow` lists
@@ -122,6 +148,8 @@ export function trackConsoleErrors(page: Page, allow: RegExp[] = [], opts: { str
     });
   };
   const onPageError = (err: Error): void => {
+    // r3 ui-9 (FT-R111-4): WebKit reports the KV reads a spec's own navigation cancels as page errors.
+    if (isNavigationCancelledKvRead(err.message, moment)) return;
     const entry = record('pageerror: ', err.message, '', { ...moment });
     if (entry) entries.push(entry);
   };

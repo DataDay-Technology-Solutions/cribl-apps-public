@@ -496,9 +496,13 @@ test.describe('P2-W27 · the product explains itself', () => {
     await page.getByTestId('start-tour').focus();
     await expect(meter).toHaveAttribute('data-rolled', 'true');
 
-    // The tour opens on that same figure (plus the seconds it has ticked since).
+    // The tour opens on the sample's annualized run rate (founder-build r1 ui-2: its Receipt defaults to Annualized); its
+    // month to date is that same figure (plus the seconds it has ticked since).
     await page.getByTestId('start-tour').click();
     await expectPath(page, '/');
+    await expect(page.locator('.mr-receipt-view')).toHaveAttribute('data-period', 'annualized');
+    await page.getByRole('radio', { name: 'MTD' }).click();
+    await expect(page.locator('.mr-receipt-view')).toHaveAttribute('data-period', 'mtd');
     const hero = page.locator('main .mr-meter-figure[data-callout="saved"]').first();
     await expect(hero).toHaveAttribute('data-value-m', /\d+/);
     const openedM = Number(await hero.getAttribute('data-value-m'));

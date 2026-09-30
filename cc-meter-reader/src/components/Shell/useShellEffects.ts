@@ -9,6 +9,7 @@
 // incident takeover's any-key dismissal listens on window in the capture phase and must run first (D35:
 // the key that clears the card is consumed).
 
+import { guardNavigation } from '../../lib/navGuard.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { t } from '../../copy/en.ts';
@@ -169,7 +170,7 @@ export function useStage(params: AppParams, setParams: (patch: ParamPatch) => vo
   const navigate = useNavigate();
   const { pathname, search } = useLocation();
 
-  const enter = useCallback(() => {
+  const enterNow = useCallback(() => {
     withViewTransition(
       () => {
         if (pathname === '/') {
@@ -187,6 +188,10 @@ export function useStage(params: AppParams, setParams: (patch: ParamPatch) => vo
     );
     showShortcutChip(t('shortcuts.chipPresenterOn'));
   }, [navigate, pathname, search, setParams]);
+  const enter = useCallback(() => {
+    // r2 ui-10 (FINDINGS_R2 #12): P from a page with unsaved work (Settings) asks the leave guard first.
+    guardNavigation('/', () => enterNow());
+  }, [enterNow]);
 
   const leave = useCallback(() => {
     const origin = stageOrigin;
@@ -345,8 +350,11 @@ export function useShellKeys({ params, setParams, openSheet }: KeyDeps): void {
     '/',
     () => {
       if (focusSearchField()) return;
-      void navigate(hrefWithStickyParams('/ledger', new URLSearchParams(search)));
-      focusSearchWhenReady();
+      // r2 ui-10 (FINDINGS_R2 #12): leaving a page with unsaved work (Settings) asks the leave guard first.
+      guardNavigation('/ledger', () => {
+        void navigate(hrefWithStickyParams('/ledger', new URLSearchParams(search)));
+        focusSearchWhenReady();
+      });
     },
     !present && !story,
   );

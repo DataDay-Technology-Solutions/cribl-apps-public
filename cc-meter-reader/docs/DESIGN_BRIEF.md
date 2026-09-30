@@ -23,7 +23,7 @@ Two motifs, used sparingly and never as decoration for its own sake:
 | Radius | `radius.xl` (8 px) for cards, `radius.md` for controls | | one radius per element class |
 | Spacing | `spacing.*` only (2/4/8/16/24/32) plus 48/64 for page margins in presenter | | no ad-hoc px |
 
-Contrast: every text/background pair ≥ 4.5:1 in both themes (the beauty test checks it programmatically).
+Contrast: every text/background pair Meter Reader defines is ≥ 4.5:1 in both themes (the contrast walkers in the Settings, shell, presenter and first-run specs check it programmatically). Two pairs are Cribl's own Capra palette and are kept as Cribl ships them: the primary button (white on `#0190ff`, 3.26:1, in both themes) and the selected toggle (Capra's `#0072de` on `#e6f4fe`, 4.20:1 in the light theme: Flow "Dollars", Ledger "24 h", the Report card's period). The Cribl shell uses the same controls, and overriding them would re-colour the protected first-run card (G8-firstrun), so the override was declined (FINDINGS_R1 m23, FINDINGS_EXTRA BO-18 and IC-16; no colour change). The Settings walker exempts only disabled controls (WCAG 1.4.3) and Capra's primary fill.
 
 ## 3. Type scale (one system)
 - **Display (hero money)**: Open Sans 600, `font-variant-numeric: tabular-nums`, `letter-spacing: -0.02em`. Sizes: 88 px desktop, 56 px at 390 px, **≥ 160 px presenter** at 1920. `clamp()` between them.

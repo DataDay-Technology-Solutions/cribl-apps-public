@@ -147,7 +147,8 @@ describe('createStore', () => {
 
 describe('hydrate', () => {
   it('reads meta, settings, snapshot and prices in one batch and applies them in one update', async () => {
-    const stored: Settings = { ...DEFAULTS, headlinePeriodDefault: 'annualized', live: { pollSeconds: 30, presenterPollSeconds: 5 } };
+    // A stored period that differs from the default (the default is 'annualized' since founder-build r2 ui-2): stored wins.
+    const stored: Settings = { ...DEFAULTS, headlinePeriodDefault: 'mtd', live: { pollSeconds: 30, presenterPollSeconds: 5 } };
     const { docs, calls } = fakeDocs({ settings: stored, prices: PRICES, snapshot: snapshotAt('2026-09-26T11:59:30.000Z'), meta: META });
     const store = createAppStore(DEFAULTS);
     const listener = vi.fn();
@@ -162,6 +163,7 @@ describe('hydrate', () => {
     const s = store.getState();
     expect(s.hasHydrated).toBe(true);
     expect(s.settingsStored).toBe(true);
+    expect(s.settings.headlinePeriodDefault).toBe('mtd');
     expect(s.snapshot?.sweepAt).toBe('2026-09-26T11:59:30.000Z');
     expect(s.meta?.lastSweepCalls).toBe(23);
     expect(s.prices).toEqual(PRICES);

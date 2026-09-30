@@ -91,7 +91,8 @@ function MiniTakeover({ takeover, labels, tz }: { takeover: StageTakeover; label
           {[
             incident.caughtInSec !== undefined ? t('incidents.caughtIn', { duration: fmtDuration(incident.caughtInSec) }) : undefined,
             incident.commit ? shortHash(incident.commit.hash) : undefined,
-            incident.commit ? displayAuthor(incident.commit.author) : undefined,
+            // r2 ui-15 (H2): the name a member gave an API client (settings.humanize), as every other card prints it.
+            incident.commit ? displayAuthor(incident.commit.author, labels) : undefined,
           ]
             .filter(Boolean)
             .join(' · ')}

@@ -3,7 +3,8 @@
 // Opt-in: skipped unless MR_README_IMAGES=1, so the regular matrix never rewrites tracked images. One pass of the sample
 // tour (?tour=1: the recorded enterprise workspace under its SAMPLE DATA band, nothing written to KV) at 1440×900 in the
 // light theme with reduced motion (the Meter's digits update in place instead of rolling mid-shot):
-//   receipt.png  the Receipt at the tour's start: Saved by Cribl month to date, would-have-paid against paid, net after Cribl
+//   receipt.png  the Receipt at the tour's start: Saved by Cribl as the annualized run rate (the tour's default since
+//                founder-build r1 ui-2), would-have-paid against paid, net after Cribl
 //   alert.png    the Ledger once the tour's regression has landed (beat 3, ~25 s in): the change timeline with the commit
 //                marker and the Alerts rail card naming the commit, its author and where the alert went
 //   flow.png     the Flow map in dollars with the open regression outlined on its ribbon

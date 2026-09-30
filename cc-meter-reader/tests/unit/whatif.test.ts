@@ -19,6 +19,7 @@ import {
   isPackTreatment,
   measureActual,
   pipelineMatchesTreatment,
+  currentRateBasis,
   previewHeadline,
   stackRatios,
   streamKeyOf,
@@ -28,6 +29,7 @@ import {
   type WhatIfFlow,
 } from '../../core/whatif.ts';
 import { leverTarget } from '../../src/components/WhatIf/leverTarget.ts';
+import { projectBar } from '../../src/components/WhatIf/figures.ts';
 
 const GB = 1_000_000_000;
 /** $2.50 / GB in millicents per byte. */
@@ -403,6 +405,72 @@ describe('previewHeadline', () => {
     expect(previewHeadline({ annualizedM: 1 }, { ok: false, treatment: 'pack-vpc', reason: 'no-basis' })).toBeNull();
   });
 });
+
+// Founder-build r2 ui-7 (FINDINGS_EXTRA IC-2): the hero and its bar on one rate basis. The strip ("Before and after") is
+// the stream at current rates; the hero used to add that current-rate delta to the Receipt's trailing annualized run
+// rate, which for a stream whose traffic covers only part of the trailing window is diluted: walkE (a Datagen 10 h old,
+// 600 of the 1,440 metered minutes) read "$2,525 annualized … 74% saved" beside a strip that said 50% → 60%, $4,075 →
+// $4,894 a year. The hero now rests on the workspace at current rates (currentRateBasis) whenever it has flows.
+describe('r2 ui-7: the What if hero and its bar on the strip\'s basis (IC-2)', () => {
+  // One stream, $2.25/GB SIEM, 50 % dropped today: the walkE world (5.94 GB/day in, 2.97 out → $4,878 a year saved).
+  const PRICE = 225_000 / GB;
+  const inB = 5.94 * GB;
+  const stream = fig({ inputId: 'mrc_datagen', pipelineId: 'mrc_trim', inBPerDay: inB, outBPerDay: inB / 2, whpPerDayM: Math.round(inB * PRICE), paidPerDayM: Math.round((inB / 2) * PRICE) });
+  const drop20 = estimateTreatment({ flow: stream, treatment: { dropPct: 20 } }) as EstimateOk;
+  const current = currentRateBasis([stream]);
+
+  it('600 of 1,440 metered minutes, custom drop 20 %: the hero reads the strip\'s after (60 %), not the diluted run rate', () => {
+    expect(drop20.ok).toBe(true);
+    expect(drop20.mid.ratio).toBeCloseTo(0.6, 4);
+    // The Receipt's trailing run rate over 1,440 minutes, of which the stream carried 600.
+    const trailing = { annualizedM: Math.round(currentProjection(stream).savedPerYearM * (600 / 1440)) };
+    const p = previewHeadline(trailing, drop20, current)!;
+    expect(p.basis).toBe('current');
+    expect(p.hasBasis).toBe(true);
+    expect(p.beforeM).toBe(currentProjection(stream).savedPerYearM);
+    expect(p.afterM).toBe(drop20.mid.savedPerYearM);
+    expect(p.deltaM).toBe(drop20.mid.deltaSavedPerYearM);
+    const bar = projectBar(p.bar!, p.deltaM);
+    expect(bar.savedM).toBe(drop20.mid.savedPerYearM);
+    expect(bar.ratio).toBeCloseTo(0.6, 4);
+    // Before the fix: the trailing run rate plus the delta, and a bar ratio matching neither 50 % nor 60 %.
+    const old = previewHeadline(trailing, drop20)!;
+    expect(old.basis).toBe('annualized');
+    expect(old.afterM).not.toBe(drop20.mid.savedPerYearM);
+  });
+
+  it('a warm workspace (the run rate equals today\'s rates): the figure and the bar are unchanged', () => {
+    const warm = { annualizedM: currentProjection(stream).savedPerYearM };
+    const was = previewHeadline(warm, drop20)!;
+    const now = previewHeadline(warm, drop20, current)!;
+    expect(now.afterM).toBe(was.afterM);
+    expect(now.beforeM).toBe(was.beforeM);
+    expect(now.deltaM).toBe(was.deltaM);
+    const wasBar = projectBar({ whpM: perYearOf(stream.whpPerDayM), paidM: perYearOf(stream.paidPerDayM), savedM: warm.annualizedM }, was.deltaM);
+    expect(projectBar(now.bar!, now.deltaM)).toEqual(wasBar);
+  });
+
+  it('the rig: several streams, the hero moves by exactly the stream\'s delta on today\'s whole-workspace rates', () => {
+    const est = estimateTreatment({ flow: WS, treatment: 'pack-windows', measuredSimilar: { ratio: 0.33, fromObject: 'x' } }) as EstimateOk;
+    const basis = currentRateBasis(RIG_FLOWS);
+    const p = previewHeadline({ annualizedM: 1 }, est, basis)!;
+    expect(p.beforeM).toBe(RIG_FLOWS.reduce((a, f) => a + Math.max(0, Math.round(f.savedPerDayM)), 0) * 365);
+    expect(p.afterM - p.beforeM).toBe(est.mid.deltaSavedPerYearM);
+    expect(p.bar!.whpM).toBe(RIG_FLOWS.reduce((a, f) => a + Math.round(f.whpPerDayM), 0) * 365);
+  });
+
+  it('no flows priced at current rates: the Receipt\'s run rate stays the basis (and none at all says so)', () => {
+    expect(currentRateBasis([])).toBeUndefined();
+    expect(currentRateBasis([fig({ inputId: 'z', pipelineId: 'p', whpPerDayM: 0, paidPerDayM: 0, savedPerDayM: 0 })])).toBeUndefined();
+    const p = previewHeadline({ annualizedM: 9_561_000_000 }, drop20, currentRateBasis([]))!;
+    expect(p.basis).toBe('annualized');
+    expect(p.beforeM).toBe(9_561_000_000);
+  });
+});
+
+function perYearOf(perDayM: number): number {
+  return Math.round(perDayM) * 365;
+}
 
 describe('measureActual', () => {
   const applied = Date.parse('2026-09-28T14:57:30.000Z');

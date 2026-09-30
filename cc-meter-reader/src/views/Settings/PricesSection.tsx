@@ -39,6 +39,7 @@ import { SaveBar, SectionCard, WaitingForInventory } from './shared.tsx';
 import { SettingsFrameContext, isWaitingForInventory, reportWrite, useInventory, useWritable } from './hooks.ts';
 import { SweepNowButton } from './SweepNowButton.tsx';
 import { criblMemberName } from '../../lib/env.ts';
+import { takeSuggestedPrefill } from '../../tour/status.ts';
 
 /** Keeps edited drafts, resets untouched ones to what is stored, adds new rows. */
 function reconcileDrafts(rows: readonly PriceRow[], previousRows: readonly PriceRow[], drafts: Record<string, PriceDraft>): Record<string, PriceDraft> {
@@ -105,6 +106,21 @@ export function PricesSection() {
     setDrafts(next);
     if (filled.length > 0) notify.info(tn('settings.prices.suggestedFilled', filled.length));
   };
+
+  // FOUNDER_PLAN row 12 (founder-build r1 ui-11): arriving from the finished tour's "See your own number", the suggested
+  // prices are filled once, unsaved (nothing is written until Start the meter), with the archive hint. Only on that path.
+  const prefill = useRef<boolean | null>(null);
+  if (prefill.current === null) prefill.current = takeSuggestedPrefill();
+  const [archiveHint, setArchiveHint] = useState(false);
+  useEffect(() => {
+    if (!prefill.current || !live || rows.length === 0) return;
+    prefill.current = false;
+    const { drafts: next, filled } = fillSuggested(rows, drafts);
+    setDrafts(next);
+    if (filled.length > 0) notify.info(tn('settings.prices.suggestedFilled', filled.length));
+    setArchiveHint(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as soon as the destinations are listed
+  }, [rows, live]);
 
   const loadDemoPrices = async () => {
     // Demo build only: the branch (and the demo module) is dropped from the release bundle.
@@ -237,8 +253,19 @@ export function PricesSection() {
             </div>
           </div>
         )}
+        {archiveHint ? (
+          <p className="mr-set-muted" data-testid="prices-archive-hint">
+            {t('settings.prices.archiveHint')}
+          </p>
+        ) : null}
         <PriceTable rows={rows} drafts={drafts} errors={changes.errors} dirty={dirtySet} onChange={onChange} disabled={!writable} receipt={receipt?.rows} tz={view.tz} />
         {receipt && receipt.total.destinations > 0 ? <ReceiptTotals receipt={receipt} /> : null}
+        {live ? (
+          <p className="mr-set-footnote" data-testid="prices-new-destinations">
+            {/* r3 ui-3: no Sweep now before the first prices (the header's is off until then); the list re-reads each minute. */}
+            {t(neverPriced ? 'settings.prices.newDestinationsUnpriced' : 'settings.prices.newDestinations')}
+          </p>
+        ) : null}
         <p className="mr-set-footnote">{t('settings.prices.versionNote')}</p>
       </>
     );

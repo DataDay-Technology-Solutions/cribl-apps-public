@@ -284,7 +284,7 @@ function DemoConsole() {
         </div>
       </div>
 
-      {live ? <LeverLedger entries={ledger} tz={view.settings.displayTimezone} /> : null}
+      {live ? <LeverLedger entries={ledger} tz={view.settings.displayTimezone} labels={view.settings.humanize} /> : null}
 
       <BottomBar lever={lever} disabled={leversDisabled} onBreak={() => void demo.breakTrim()} onRestore={() => void demo.restore()} />
     </Page>

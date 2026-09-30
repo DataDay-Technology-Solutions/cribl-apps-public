@@ -30,8 +30,10 @@ export function Unclaimed({ model, humanizeOverrides }: { model: WhatIfModel; hu
         <p className="mr-whatif-note">{t('whatif.unclaimed.caption')}</p>
       </div>
       {lines.length === 0 ? (
-        <p className="mr-whatif-note" data-testid="whatif-unclaimed-none">
-          {t('whatif.unclaimed.none')}
+        // Why the list is empty (founder-build r1 ui-4, row 2): "already runs the pack" only when every stream a pack
+        // fits runs it, never on a workspace no pack fits.
+        <p className="mr-whatif-note" data-testid="whatif-unclaimed-none" data-reason={model.unclaimedEmpty ?? 'none'}>
+          {t(`whatif.unclaimed.${model.unclaimedEmpty ?? 'none'}` as CopyKey)}
         </p>
       ) : (
         <ol className="mr-rlist mr-whatif-unclaimed-list" aria-label={t('whatif.unclaimed.listLabel')}>

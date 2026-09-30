@@ -23,7 +23,7 @@ import { canonicalPayload, slackPayload } from '../../../core/payloads.ts';
 import { fmtDuration } from '../../../core/format.ts';
 import { t, tn } from '../../copy/en.ts';
 import { commitAuthor } from '../../lib/author.ts';
-import { basePath } from '../../lib/env.ts';
+import { appLinkBase } from '../../lib/links.ts';
 import { useNow } from '../../lib/ticker.ts';
 import { SlackPreview } from '../SlackPreview/index.ts';
 import { renderTemplate, useIncidentContext } from './context.tsx';
@@ -43,6 +43,7 @@ import {
   incidentMeasure,
   incidentTitle,
   incidentTone,
+  isNeutralClose,
   ledgerHref,
   mutedMinutesLeft,
   muteEndParts,
@@ -87,12 +88,6 @@ export interface IncidentCardProps {
   showDemoNote?: boolean;
 }
 
-function linkBase(): string {
-  if (typeof window === 'undefined') return '';
-  const base = basePath();
-  return `${window.location.origin}${base === '/' ? '' : base}`;
-}
-
 function DeliveryText({ line }: { line: DeliveryLine }) {
   return (
     <span className={`mr-inc-delivery mr-inc-delivery--${line.tone}`} data-tone={line.tone}>
@@ -123,10 +118,11 @@ export function IncidentCard(props: IncidentCardProps) {
   const caught = caughtState(incident, deliveries, nowMs, expectsDelivery(incident.severity, endpoints));
   const mutedMin = mutedMinutesLeft(mutedUntil, nowMs);
   const closed = !!incident.closedAt;
-  // P1-F07: accepted, muted or left out by a member — closed, not recovered.
-  const memberClosed = closed && !!incident.closedReason;
+  // P1-F07: accepted, muted or left out by a member — closed, not recovered; so is a close the $/day floor made (M9)
+  // and a good-news card (it never recovers from anything: row 9, PACK_PAYOFF F1).
+  const memberClosed = closed && isNeutralClose(incident);
   const when = closed
-    ? t(memberClosed ? 'incidents.closedAt' : 'incidents.recoveredAt', {
+    ? t(memberClosed || incident.type === 'goodnews' ? 'incidents.closedAt' : 'incidents.recoveredAt', {
         time: formatClockTime(Date.parse(incident.closedAt ?? ''), tz),
       })
     : t('incidents.openedAt', {
@@ -143,7 +139,7 @@ export function IncidentCard(props: IncidentCardProps) {
           canonicalPayload(incident.closedAt ? 'incident.closed' : 'incident.opened', {
             incident,
             workspace: '',
-            linkBase: linkBase(),
+            linkBase: appLinkBase(),
             labels,
           }),
           { tz, labels },
@@ -170,7 +166,7 @@ export function IncidentCard(props: IncidentCardProps) {
   ) : null;
 
   // Only an open regression is projected to a year (as its cost if left); a spike or a closed incident never is.
-  const impact = impactWording(incident);
+  const impact = impactWording(incident, { floorCentsPerDay: ctx.floorCentsPerDay });
   const moneyLine = renderTemplate(impact.template, {
     perDay: <span className="mr-num">{money.perDay}</span>,
     perYear: <span className="mr-num">{money.perYear}</span>,

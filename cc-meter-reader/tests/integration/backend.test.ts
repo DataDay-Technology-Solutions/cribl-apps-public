@@ -92,7 +92,7 @@ describe('backend endpoints (backend variant)', () => {
       post('sendTest', {
         endpointId: 'cribl-bell',
         workspace: 'main',
-        linkBase: 'https://x/app-ui/meter-reader',
+        linkBase: 'https://x/apps/a/meter-reader',
       }),
       ctx,
     );

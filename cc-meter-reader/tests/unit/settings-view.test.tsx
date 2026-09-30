@@ -167,8 +167,11 @@ describe('SettingsView', () => {
     await act(async () => {
       fireEvent.click(screen.getAllByRole('button', { name: 'Start the meter' })[0]);
     });
-    await waitFor(() => expect(writes).toHaveLength(1));
-    const doc = writes[0].doc as PricesDoc;
+    // A fresh install's first prices save stores its settings first (r1 ui-1, B1: the display zone reaches KV
+    // before the first sweep); the prices document is still one save with one version.
+    await waitFor(() => expect(writes.filter((w) => w.key === 'prices')).toHaveLength(1));
+    expect(writes.map((w) => w.key)).toEqual(['settings', 'prices']);
+    const doc = writes.find((w) => w.key === 'prices')!.doc as PricesDoc;
     expect(doc.versions).toHaveLength(1);
     expect(doc.versions[0].byOutputId).toEqual({
       'default:splunk_hec_out': { milliCentsPerGb: 250_000, preset: 'splunk_cloud', counterfactual: { kind: 'same' } },

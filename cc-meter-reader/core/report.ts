@@ -34,15 +34,17 @@ import type {
   Settings,
   Snapshot,
 } from './types.ts';
-import { MC_PER_DOLLAR, footMoney, fmtBytes, fmtDollars, fmtDollarsCents, fmtDollarsCompact, fmtDurationShort, fmtPct, fmtPriceShown, perYear, type MoneyTriple } from './format.ts';
+import { MC_PER_DOLLAR, footMoney, fmtBytes, fmtDollars, fmtDollarsCents, fmtDollarsCompact, fmtDurationShort, fmtPct, fmtPriceShown, perYear, roundToDollarsM, shownUnderOneDollar, type MoneyTriple } from './format.ts';
 import { displayAuthor, humanize } from './humanize.ts';
 import { incidentReadings } from './incidents.ts';
 import { meteredSpan, netOfCribl } from './net.ts';
 import { effectivePrices, priceEntryAt, ratio } from './pricing.ts';
 import { PRESET_NOTES, presetById } from './presets.ts';
 import { rangeSpanLabel, type RangeFigures } from './range.ts';
-import { CREDIT_STRINGS } from './strings.ts';
-import { addDaysToKey, fromIso, localDayKey, localDayStartMs, localMonthStartMs, toIso, weekRangeLabel } from './time.ts';
+import { CREDIT_STRINGS, PAYLOAD_STRINGS, REPORT_STRINGS } from './strings.ts';
+import { closedAsNewNormal, closedBelowFloor } from './payloads.ts';
+import { DEFAULT_REGRESSION_MIN_CENTS_PER_DAY } from './detector.ts';
+import { addDaysToKey, fromIso, localDayKey, localDayStartMs, localMidnightMs, localMonthStartMs, toIso, weekRangeLabel } from './time.ts';
 
 // ─── The words (src/copy/en.ts `report.doc` satisfies this shape) ────────────
 
@@ -163,6 +165,8 @@ export interface ReportCopy {
     notCounted: string;
     criblCost: string;
     criblCostUnset: string;
+    /** R2 core-7 (#3): the line when the cost is the list-price estimate (Settings' criblCostEstimate). */
+    criblCostEstimate: string;
     currentRates: string;
   };
   about: {
@@ -214,7 +218,8 @@ export type ReportPeriod = { kind: ReportPeriodKey } | { kind: 'range'; figures:
 export interface ReportInput {
   snapshot: Snapshot;
   prices: PricesDoc | null;
-  settings: Pick<Settings, 'criblCostCentsPerMonth' | 'criblCostEstimate' | 'humanize'>;
+  /** R2 core-6: `thresholds.regressionMinCentsPerDay` names the floor a below-floor close fell under (else D26's $5). */
+  settings: Pick<Settings, 'criblCostCentsPerMonth' | 'criblCostEstimate' | 'humanize'> & { thresholds?: Partial<Pick<Settings['thresholds'], 'regressionMinCentsPerDay'>> };
   period: ReportPeriod;
   /** When the report is generated (epoch ms). */
   nowMs: number;
@@ -298,8 +303,28 @@ export interface ReportIncident {
   caughtText?: string;
   commit?: { hash: string; message: string; author: string };
   causeText: string;
-  status: 'open' | 'recovered';
+  /**
+   * R2 core-6 (FINDINGS_R2 #2): why it is closed. Only 'recovered' came back on its own; a below-floor close (D26) and
+   * a member's accept, mute or stop — and P1-F06's new normal — did not, and read as the channels word them.
+   */
+  status: ReportIncidentStatus;
   statusText: string;
+}
+
+export type ReportIncidentStatus = 'open' | 'recovered' | 'belowFloor' | 'accepted' | 'muted' | 'excluded' | 'newNormal';
+
+/** How a renderer colours an alert: open (red), recovered (green), or closed without recovering (neutral). */
+export function reportIncidentTone(status: ReportIncidentStatus): 'open' | 'recovered' | 'closed' {
+  return status === 'open' || status === 'recovered' ? status : 'closed';
+}
+
+/** R2 core-6: an incident's Report status, by the channels' rules (core/payloads.ts closedPrefix). */
+export function reportIncidentStatus(i: Pick<Incident, 'closedAt' | 'closedReason' | 'notes'>): ReportIncidentStatus {
+  if (!i.closedAt) return 'open';
+  if (i.closedReason === 'accepted' || i.closedReason === 'muted' || i.closedReason === 'excluded') return i.closedReason;
+  if (closedBelowFloor(i)) return 'belowFloor';
+  if (closedAsNewNormal(i)) return 'newNormal';
+  return 'recovered';
 }
 
 export interface ReportCard {
@@ -382,8 +407,12 @@ export interface ReportCard {
     rows: ReportIncident[];
     count: number;
     openCount: number;
-    /** Σ per-day impact of the alerts still open. */
+    /** R2 core-6: the alerts that came back on their own ("all recovered" / "now recovered" count only these). */
+    recoveredCount: number;
+    /** Σ per-day impact of the regressions still open ("at risk until fixed"; core-10 M4: spikes are not in it). */
     atRiskPerDayM: number;
+    /** Σ per-day impact of the cost spikes still open (a day above normal while they last). */
+    spikePerDayM?: number;
     /** Σ per-day impact of every alert listed. */
     totalPerDayM: number;
     fastestSec?: number;
@@ -678,16 +707,21 @@ function destinationGap(rows: ReportDestination[], totals: MoneyTriple, copy: Re
   return plural(copy.destinations.gap, names.length, { amount: fmtDollars(gapM), names: names.join(', ') });
 }
 
-/** Column sums of the printed amounts of the priced rows (so the totals row adds up on the page). */
+/**
+ * Column sums of the printed amounts of the priced rows (so the totals row adds up on the page). Final 1.1.4 (follows
+ * hunt r3 #7): a figure printed '< $1' adds its exact amount. footMoney prints a $0.50–$0.99 spend with a display figure,
+ * and three such rows would otherwise total "$1" against a real $2.10. A paid total under a dollar prints '< $1', as its rows do.
+ */
 function destinationTotals(rows: ReportDestination[]): MoneyTriple {
   const t = { whpM: 0, paidM: 0, savedM: 0 };
+  const part = (shownM: number, exactM: number): number => (shownM !== 0 && Math.abs(shownM) < MC_PER_DOLLAR ? exactM : shownM);
   for (const r of rows) {
     if (r.unpriced) continue;
-    t.whpM += r.shown.whpM;
-    t.paidM += r.shown.paidM;
-    t.savedM += r.shown.savedM;
+    t.whpM += part(r.shown.whpM, r.whpPerDayM);
+    t.paidM += part(r.shown.paidM, r.paidPerDayM);
+    t.savedM += part(r.shown.savedM, r.savedPerDayM);
   }
-  return t;
+  return { ...t, paidM: shownUnderOneDollar(t.paidM) };
 }
 
 // ─── Top savers ──────────────────────────────────────────────────────────────
@@ -728,6 +762,11 @@ function topSaversFor(snapshot: Snapshot, labels: Record<string, string> | undef
   return { rows, total: Math.max(total, rows.length) };
 }
 
+/** R2 core-7 (#8, D53): Net after Cribl as printed — the saved figure as printed minus the cost as printed (whole $). */
+export function footedNetM(savedM: number, costM: number): number {
+  return roundToDollarsM(savedM) - roundToDollarsM(costM);
+}
+
 // ─── Protection ──────────────────────────────────────────────────────────────
 
 /**
@@ -736,11 +775,13 @@ function topSaversFor(snapshot: Snapshot, labels: Record<string, string> | undef
  * closed before D47 back on the recovered side kept no drop, so only its close shows; one closed on the wrong
  * side (a demo reset, a below-floor close) keeps its drop and has no recovery reading.
  */
-function incidentMeasure(i: Incident & { type: 'regression' | 'spike' }, copy: ReportCopy): string {
+function incidentMeasure(i: Incident & { type: 'regression' | 'spike' }, copy: ReportCopy, recovered = true): string {
   const r = incidentReadings(i);
   const spike = i.type === 'spike';
   const fmt = spike ? fmtDollars : fmtPct;
   const before = fmt(r.before);
+  // R2 core-6: a close that was not a recovery shows the drop only (never "recovered to").
+  if (!recovered) return fill(spike ? copy.measure.spike : copy.measure.ratio, { before, after: fmt(r.after ?? i.after) });
   if (r.after === undefined) {
     // Closed before D47: `after` held the reading at close, which the helper returns as `recoveredTo`.
     const recovered = fmt(r.recoveredTo ?? i.after);
@@ -756,6 +797,8 @@ function protectionFor(
   window: { fromMs: number; toMs: number },
   copy: ReportCopy,
   periodWords: string,
+  labels?: Record<string, string>,
+  floorCentsPerDay: number = DEFAULT_REGRESSION_MIN_CENTS_PER_DAY,
 ): ReportCard['protection'] {
   const sweepMs = fromIso(snapshot.sweepAt);
   const inPeriod = (snapshot.incidents ?? []).filter((i): i is Incident & { type: 'regression' | 'spike' } => {
@@ -767,14 +810,26 @@ function protectionFor(
     .map((i): ReportIncident => {
       const impact = Math.max(0, finite(i.impactPerDayM));
       const caught = typeof i.caughtInSec === 'number' && Number.isFinite(i.caughtInSec) && i.caughtInSec >= 0 ? i.caughtInSec : undefined;
-      const commit = i.commit ? { hash: i.commit.hash.slice(0, 7), message: i.commit.message, author: displayAuthor(i.commit.author) } : undefined;
-      const status = i.closedAt ? 'recovered' : 'open';
+      // C5 (row 10): an API client reads as the member's name for it, else masked — the channels' and the cards' rule.
+      const commit = i.commit ? { hash: i.commit.hash.slice(0, 7), message: i.commit.message, author: displayAuthor(i.commit.author, labels) } : undefined;
+      // R2 core-6 (FINDINGS_R2 #2): only an incident that came back on its own is "Recovered".
+      const status = reportIncidentStatus(i);
       const openedAtMs = fromIso(i.openedAt);
       const lasted = i.closedAt ? (fromIso(i.closedAt) - openedAtMs) / 1000 : Number.NaN;
       const durationSec = Number.isFinite(lasted) && lasted >= 0 ? lasted : undefined;
       const perDay = fmtDollars(impact);
       let impactText: string;
-      if (status === 'open') impactText = fill(copy.impact.open, { perDay, perYear: fmtDollarsCompact(perYear(impact)) });
+      // Founder-build r1 core-10 (M4, #18; D62): only an open regression is annualized, as what it costs if left; an
+      // open spike is a day above normal while it lasts — the words the card, the toast, the bell, targets and Slack
+      // print (core/strings.ts, the same as en.ts incidents.impact.spike).
+      if (status === 'open' && i.type === 'spike') impactText = fill(PAYLOAD_STRINGS.impact.spike, { perDay });
+      else if (status === 'open') impactText = fill(copy.impact.open, { perDay, perYear: fmtDollarsCompact(perYear(impact)) });
+      // R2 core-6: the floor closed it — still down, never "while it lasted" (M9, the channels' words).
+      else if (status === 'belowFloor')
+        impactText = fill(PAYLOAD_STRINGS.impact.belowFloor, { floor: fmtDollars(floorCentsPerDay * (MC_PER_DOLLAR / 100)), after: fmtPct(incidentReadings(i).after ?? i.after) });
+      // A member's close (accept, mute, stop) or a new normal did not end the drop: it reads as open (m15, D62).
+      else if (status !== 'recovered')
+        impactText = i.type === 'spike' ? fill(PAYLOAD_STRINGS.impact.spike, { perDay }) : fill(PAYLOAD_STRINGS.impact.open, { perDay, perYear: fmtDollars(perYear(impact)) });
       else if (durationSec !== undefined) impactText = fill(copy.impact.closed, { perDay, duration: fmtDurationShort(durationSec) });
       else impactText = fill(copy.impact.closedNoDuration, { perDay });
       return {
@@ -782,7 +837,7 @@ function protectionFor(
         type: i.type,
         title: fill(i.type === 'spike' ? copy.alert.spike : copy.alert.regression, { label: i.label }),
         openedAtMs,
-        measure: incidentMeasure(i, copy),
+        measure: incidentMeasure(i, copy, status === 'open' || status === 'recovered'),
         impactPerDayM: impact,
         impactText,
         ...(durationSec !== undefined ? { durationSec } : {}),
@@ -790,7 +845,7 @@ function protectionFor(
         ...(commit ? { commit } : {}),
         causeText: commit ? fill(copy.commit, commit) : copy.noCommit,
         status,
-        statusText: copy.status[status],
+        statusText: status === 'open' || status === 'recovered' ? copy.status[status] : REPORT_STRINGS.status[status],
       };
     })
     .sort((a, b) => b.openedAtMs - a.openedAtMs);
@@ -798,7 +853,11 @@ function protectionFor(
   const fastestSec = caughts.length > 0 ? Math.min(...caughts) : undefined;
   const medianSec = median(caughts);
   const open = rows.filter((r) => r.status === 'open');
-  const atRiskPerDayM = open.reduce((s, r) => s + r.impactPerDayM, 0);
+  const recoveredCount = rows.filter((r) => r.status === 'recovered').length;
+  // Core-10 (M4): "at risk until fixed" sums the open regressions; an open spike is a day while it lasts.
+  const openSpikes = open.filter((r) => r.type === 'spike');
+  const atRiskPerDayM = open.filter((r) => r.type !== 'spike').reduce((s, r) => s + r.impactPerDayM, 0);
+  const spikePerDayM = openSpikes.reduce((s, r) => s + r.impactPerDayM, 0);
   const totalPerDayM = rows.reduce((s, r) => s + r.impactPerDayM, 0);
   // The snapshot keeps the open alerts plus the last 24 hours of closed ones.
   const coverage: 'period' | 'last24h' = Number.isFinite(sweepMs) && window.fromMs < sweepMs - LAST_24H_MS ? 'last24h' : 'period';
@@ -806,14 +865,23 @@ function protectionFor(
   let summary = copy.protection.none;
   if (rows.length > 0) {
     const alerts = plural(copy.kpi.protectionValue, rows.length);
-    summary = open.length > 0 ? fill(copy.protection.summaryOpen, { alerts, amount: fmtDollars(atRiskPerDayM) }) : fill(copy.protection.summaryRecovered, { alerts });
+    summary =
+      open.length === 0
+        ? recoveredCount === rows.length
+          ? fill(copy.protection.summaryRecovered, { alerts })
+          : fill(REPORT_STRINGS.summaryNoneOpen, { alerts })
+        : open.length > openSpikes.length
+          ? fill(copy.protection.summaryOpen, { alerts, amount: fmtDollars(atRiskPerDayM) })
+          : `${alerts} · ${fill(PAYLOAD_STRINGS.impact.spike, { perDay: fmtDollars(spikePerDayM) })}`;
     if (fastestSec !== undefined && medianSec !== undefined) summary += fill(copy.protection.fastest, { fastest: fmtDurationShort(fastestSec), median: fmtDurationShort(medianSec) });
   }
   return {
     rows,
     count: rows.length,
     openCount: open.length,
+    recoveredCount,
     atRiskPerDayM,
+    ...(spikePerDayM > 0 ? { spikePerDayM } : {}),
     totalPerDayM,
     ...(fastestSec !== undefined ? { fastestSec } : {}),
     ...(medianSec !== undefined ? { medianSec } : {}),
@@ -926,23 +994,31 @@ export function buildReportCard(input: ReportInput): ReportCard {
   if (costCents !== undefined && Number.isFinite(costCents) && costCents > 0) {
     const costPerMonthM = costCents * 1000;
     const yearCostM = costPerMonthM * 12;
+    // R2 core-7 (FINDINGS_R2 #8; D53, the Receipt's r1 ui-8 rule): the net prints as the saved figure as printed minus
+    // the cost as printed, in whole dollars, so the Report and the Receipt never read $1 apart.
     cribl = {
       costPerMonthM,
       ...(input.settings.criblCostEstimate === true ? { estimate: true as const } : {}),
       runRate: {
         costM: yearCostM,
-        netM: annualM - yearCostM,
+        netM: footedNetM(annualM, yearCostM),
         ...(yearCostM > 0 ? { paybackX: annualM / yearCostM } : {}),
-        monthlyNetM: monthlyM - costPerMonthM,
+        monthlyNetM: footedNetM(monthlyM, costPerMonthM),
       },
     };
     if (period.kind === 'mtd') {
       // The Receipt's month-to-date net (src/views/Receipt/model.ts netFigures): the cost prorated to the minutes
       // metered this month (core/net.ts meteredSpan), not the calendar days, so a workspace metering since the
       // 26th is not charged 26 days of Cribl against one day of savings.
-      const monthSpan = meteredSpan(localMonthStartMs(sweepMs, tz), sweepMs, sinceMs);
+      // Founder-build r3 core-6 (FINDINGS_R3 #4, BO-12's Report half): the sample (the tour) moves its sweepAt with the
+      // wall clock while its savings change only at a day boundary, so its span ends where the recording's savings do —
+      // local midnight + today's recorded minutes (headline.minutesToday, D49) — exactly as the Receipt's netFigures
+      // does for it ({ frozen: true }). A live report prorates to the sweep, as before.
+      const recordedToday = h.minutesToday;
+      const spanEnd = sample && typeof recordedToday === 'number' && Number.isFinite(recordedToday) && recordedToday > 0 ? localMidnightMs(sweepMs, tz) + recordedToday * 60_000 : sweepMs;
+      const monthSpan = meteredSpan(localMonthStartMs(sweepMs, tz), spanEnd, sinceMs);
       const net = netOfCribl(h.mtdM, monthSpan.minutes, costCents);
-      if (net) cribl.period = { costM: net.costM, netM: net.netM, ...(net.paybackX !== undefined ? { paybackX: net.paybackX } : {}) };
+      if (net) cribl.period = { costM: net.costM, netM: footedNetM(h.mtdM, net.costM), ...(net.paybackX !== undefined ? { paybackX: net.paybackX } : {}) };
     }
   }
 
@@ -950,7 +1026,8 @@ export function buildReportCard(input: ReportInput): ReportCard {
   const top = topSaversFor(snapshot, labels, copy);
   const { rows: destinations, all: allDestinations } = destinationRowsFor(snapshot, input.prices, labels, copy);
   const unpricedLabels = destinations.filter((d) => d.unpriced).map((d) => d.label);
-  const protection = protectionFor(snapshot, window, copy, periodWords);
+  const floor = input.settings.thresholds?.regressionMinCentsPerDay;
+  const protection = protectionFor(snapshot, window, copy, periodWords, labels, typeof floor === 'number' && Number.isFinite(floor) && floor >= 0 ? floor : undefined);
   const priced = destinations.filter((d) => !d.unpriced);
   // A price is a typical list price (a preset at its own figure) or an admin's rate (a price entry at any other
   // figure). Without the prices document neither is known, and the card makes no claim about them.
@@ -972,13 +1049,15 @@ export function buildReportCard(input: ReportInput): ReportCard {
   if (cribl) {
     const usePeriod = cribl.period?.paybackX !== undefined;
     const payback = usePeriod ? cribl.period?.paybackX : cribl.runRate.paybackX;
-    const net = usePeriod && cribl.period ? fill(copy.kpi.netPeriod, { amount: fmtDollars(cribl.period.netM), period: periodWords }) : fill(copy.kpi.netRunRate, { amount: fmtDollars(cribl.runRate.netM) });
+    // R2 core-7 (FINDINGS_R2 #3): a cost from the list-price estimate labels every figure built on it.
+    const est = (text: string): string => (cribl.estimate ? `${text} ${REPORT_STRINGS.estimateLabel}` : text);
+    const net = est(usePeriod && cribl.period ? fill(copy.kpi.netPeriod, { amount: fmtDollars(cribl.period.netM), period: periodWords }) : fill(copy.kpi.netRunRate, { amount: fmtDollars(cribl.runRate.netM) }));
     kpis.push({
       label: copy.kpi.roi,
       value: payback !== undefined ? fill(copy.kpi.roiValue, { multiple: fmtMultiple(payback) }) : copy.kpi.roiUnset,
       lines:
         payback !== undefined
-          ? [fill(copy.kpi.roiEvery, { amount: fmtDollarsCents(Math.round(payback * MC_PER_DOLLAR)) }), fill(copy.kpi.roiPct, { pct: fmtPct(payback - 1) }), net]
+          ? [est(fill(copy.kpi.roiEvery, { amount: fmtDollarsCents(Math.round(payback * MC_PER_DOLLAR)) })), est(fill(copy.kpi.roiPct, { pct: fmtPct(payback - 1) })), net]
           : [net],
       tone: 'neutral',
     });
@@ -1000,9 +1079,13 @@ export function buildReportCard(input: ReportInput): ReportCard {
   if (protection.count > 0) {
     const lines = [...window24];
     lines.push(
-      protection.openCount > 0
-        ? fill(copy.kpi.protectionAtRisk, { amount: fmtDollars(protection.atRiskPerDayM) })
-        : fill(copy.kpi.protectionRecovered, { amount: fmtDollars(protection.totalPerDayM) }),
+      protection.openCount === 0
+        ? protection.recoveredCount === protection.count
+          ? fill(copy.kpi.protectionRecovered, { amount: fmtDollars(protection.totalPerDayM) })
+          : fill(REPORT_STRINGS.kpiNoneOpen, { amount: fmtDollars(protection.totalPerDayM) })
+        : protection.atRiskPerDayM > 0 || !protection.spikePerDayM
+          ? fill(copy.kpi.protectionAtRisk, { amount: fmtDollars(protection.atRiskPerDayM) })
+          : fill(PAYLOAD_STRINGS.impact.spike, { perDay: fmtDollars(protection.spikePerDayM) }),
     );
     if (protection.fastestSec !== undefined) lines.push(fill(copy.kpi.protectionCaught, { time: fmtDurationShort(protection.fastestSec) }));
     kpis.push({ label: copy.kpi.protection, value: String(protection.count), unit: plural(copy.kpi.protectionUnit, protection.count), lines, tone: 'neutral' });
@@ -1017,7 +1100,11 @@ export function buildReportCard(input: ReportInput): ReportCard {
 
   // ── Methodology ──
   const methodology: string[] = [];
-  const periodSentence = period.kind === 'range' ? fill(copy.methodology.period.range, { span, tz }) : fill(copy.methodology.period[period.kind], { tz });
+  // C1' (founder-build r1 core-2, B1): Today, MTD and 30 days are the snapshot's figures, bucketed in its zone; name that
+  // zone (a custom range is summed from the rows in the viewer's own zone). Older snapshots carry none: the viewer's.
+  const figuresZone = snapshot.zone ?? tz;
+  const periodSentence =
+    period.kind === 'range' ? fill(copy.methodology.period.range, { span, tz }) : fill(copy.methodology.period[period.kind], { tz: figuresZone });
   methodology.push(`${periodSentence} ${fill(copy.methodology.runRate, { basis: runRateBasis })}`);
   const others = priced
     .filter((d): d is ReportDestination & { counterfactual: { kind: 'other'; outputId: string } } => d.counterfactual.kind === 'other')
@@ -1027,7 +1114,8 @@ export function buildReportCard(input: ReportInput): ReportCard {
   methodology.push(copy.methodology.bytes[attribution] ?? copy.methodology.bytes.route);
   methodology.push(copy.methodology.currentRates);
   methodology.push(copy.methodology.notCounted);
-  methodology.push(cribl ? fill(copy.methodology.criblCost, { amount: fmtDollars(cribl.costPerMonthM) }) : copy.methodology.criblCostUnset);
+  // R2 core-7 (#3): the estimate's own line, never "an admin entered", when the cost is the list-price estimate.
+  methodology.push(cribl ? fill(cribl.estimate ? copy.methodology.criblCostEstimate : copy.methodology.criblCost, { amount: fmtDollars(cribl.costPerMonthM) }) : copy.methodology.criblCostUnset);
 
   // ── About ──
   const groups = input.groups && input.groups.length > 0 ? [...input.groups] : [...new Set((snapshot.flows ?? []).map((f) => f.groupId))].sort();

@@ -454,13 +454,13 @@ test.describe('What if · states and motion (P1-J04)', () => {
     await openWhatIf(page, whatIfUrl(WS, 'pack-windows'));
     const caption = page.getByTestId('whatif-hero-caption');
     const text = await caption.evaluate((el) => el.textContent ?? '');
-    expect(text).toMatch(/^annualized, \+\$[\d,]+ from \$[\d,]+ today$/);
+    expect(text).toMatch(/^a year at current rates, \+\$[\d,]+ from \$[\d,]+ today$/);
     const lines = await caption.locator('.mr-whatif-hero-line').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
     expect(new Set(lines).size, 'each phrase on its own line').toBe(lines.length);
     // a documented range adds where on the range the hero stands, as a third phrase
     await page.goto(whatIfUrl(PAN, 'pack-panos'));
     await expect(page.getByTestId('whatif-basis')).toHaveAttribute('data-basis', 'documented', { timeout: 30_000 });
-    await expect(caption).toHaveText(/^annualized, \+\$[\d,]+ from \$[\d,]+ today at the middle of the documented range$/);
+    await expect(caption).toHaveText(/^a year at current rates, \+\$[\d,]+ from \$[\d,]+ today at the middle of the documented range$/);
     await shootBoth(page, info, 'hero', { locator: '[data-testid="whatif-hero"]' });
   });
 
@@ -816,6 +816,34 @@ test.describe('What if · the hero is the receipt (P2-W08)', () => {
 });
 
 // ─── P2-W23 · packs as tiles, the biggest unclaimed savings ─────────────────
+
+test.describe('What if · the selected tile reads at 4.5:1 (r1 ui-10, FINDINGS_R1 m20)', () => {
+  test('the selected tile\'s saved range is ≥ 4.5:1 on its highlight, in both themes', async ({ page }) => {
+    await openWhatIf(page, whatIfUrl(WS, 'pack-windows'));
+    for (const theme of ['light', 'dark'] as const) {
+      await setTheme(page, theme);
+      const range = page.locator('[data-checked="true"] .mr-whatif-tile-range').first();
+      await expect(range).toBeVisible();
+      // The theme's colours ease in (a short transition): measure once they have landed.
+      await page.waitForTimeout(600);
+      const ratio = await range.evaluate((n) => {
+        const rgb = (c: string) => (c.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+        const lum = ([r, g, b]: number[]) => {
+          const f = (c: number) => ((c /= 255) <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+          return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+        };
+        let e: Element | null = n;
+        let bg = 'rgba(0, 0, 0, 0)';
+        while (e && ((bg = getComputedStyle(e).backgroundColor) === 'rgba(0, 0, 0, 0)' || bg === 'transparent')) e = e.parentElement;
+        const a = lum(rgb(getComputedStyle(n).color));
+        const b = lum(rgb(bg));
+        return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+      });
+      expect(ratio, `${theme}: the selected tile's range`).toBeGreaterThanOrEqual(4.5);
+    }
+    await setTheme(page, 'light');
+  });
+});
 
 test.describe('What if · packs as tiles and the biggest unclaimed savings (P2-W23)', () => {
   test('the treatment is a radio group of tiles with their ranges; a pack that does not fit is a disabled tile that says why', async ({ page }, info) => {

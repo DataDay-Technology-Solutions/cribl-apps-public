@@ -16,14 +16,15 @@
 //   • records what it changed in demo/state; Revert, Restore and Reset mute the touched objects for 10 min.
 // Volatile: callers confirm with the user before invoking a lever (AGENTS.md "Confirming Destructive Operations").
 
-import type { Clock, CriblHttp, DemoState, HttpResult, ISO, KvStore, Logger, ObjectKey, Settings } from '../types.ts';
+import type { BaselinesDoc, Clock, CriblHttp, DemoState, HttpResult, Incident, ISO, KvStore, Logger, ObjectKey, Settings } from '../types.ts';
 import { stableStringify, type Codec } from '../codec.ts';
 import { RateLimited } from '../http.ts';
 import { KEYS, createKvDocs, type KvDocs } from '../kv.ts';
 import { commitAndDeploy, pendingFiles, VersionApiError } from '../adapters/version.ts';
 import * as urls from '../adapters/cribl-urls.ts';
 import { mergeCommits } from '../timeline.ts';
-import { closeDemoIncidents, incidentsDocKey } from '../incidents.ts';
+import { acceptIntoBaselines, closeDemoIncidents, currentReading, incidentsDocKey } from '../incidents.ts';
+import { isWarm, reseedBaseline } from '../baseline.ts';
 import { objectKey } from '../flows.ts';
 import { createMeteredTransport, LOCK_TTL_MS, minuteKey, type MeteredTransport } from '../sweep.ts';
 import { DAY_MS, MINUTE_MS, fromIso, toIso } from '../time.ts';
@@ -50,6 +51,15 @@ export const DEFAULT_MEASURED_LAG_SEC = 240;
  * object GET + PATCH (2), version/status + commit + deploy (3), timeline read + write (2), final demo/state (1).
  */
 export const LEVER_CALLS = 12;
+/** Founder-build r1 core-5 (m25): a lever that commits a shared file (route.yml, inputs.yml) first reads version/status. */
+export const SHARED_CHECK_CALLS = 1;
+/** Core-5 (M5): Apply and Break read the baselines once to record the levels they leave. */
+export const LEVELS_READ_CALLS = 1;
+/** Core-5 (M5): Revert and Restore re-seat baselines under the sweep lock: lock read + write + verify, baselines read + write, release (2). */
+export const RESEED_CALLS = 7;
+/** How often a re-seat tries for the sweep lock (a sweep holds it a few seconds), and how far apart. */
+export const RESEED_LOCK_TRIES = 5;
+export const RESEED_LOCK_RETRY_MS = 1_500;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 export interface LeverDeps {
@@ -83,6 +93,8 @@ export type LeverError =
   | 'rate_limited'
   | 'commit_failed'
   | 'deploy_failed'
+  /** Core-5 (m25): the shared file this lever would commit already had someone else's uncommitted change. */
+  | 'shared_file_dirty'
   | 'failed';
 
 export interface LeverSuccess {
@@ -167,6 +179,12 @@ interface LeverChange {
   update(state: DemoState): void;
   /** Objects to mute for MUTE_MS. */
   mute?: ObjectKey[];
+  /**
+   * Founder-build r1 core-5 (M5): baselines to re-seat once the change is live — a number seats the object's baseline
+   * there, warm (Accept's rule); null forgets it, so it re-learns from the next minutes. A counting rule on the object
+   * is cleared; an open incident's rule is kept (it still recovers by itself).
+   */
+  reseed?: Record<ObjectKey, number | null>;
 }
 
 function itemsOf(res: HttpResult): Obj[] {
@@ -200,6 +218,79 @@ function requireTag(description: unknown, id: string): void {
     throw new LeverStop('not_demo_tagged', 403, `${id} is not a demo object (its description lacks [meter-reader-demo])`, id);
 }
 
+/**
+ * Founder-build r1 core-5 (FINDINGS_R1 m25, #56): a lever commits the group's shared file whole (route.yml for the
+ * route table, inputs.yml for the Sources). If that file is already pending before the lever touches anything, the
+ * pending change is someone else's (an edit to a route or Source that is not the rig's) and the commit would ship it:
+ * refuse, as scripts/rig/apply.mjs does (RIG.md "Commit safety"). One version/status call.
+ */
+async function assertSharedClean(ctx: LeverCtx, match: (path: string) => boolean, file: string): Promise<void> {
+  const own = new Set(ctx.demo.leftPending ?? []);
+  const pending = (await pendingFiles(ctx.t.http, ctx.gid, match)).filter((p) => !own.has(p));
+  if (pending.length > 0)
+    throw new LeverStop(
+      'shared_file_dirty',
+      409,
+      `${file} in ${ctx.gid} already has uncommitted changes in Cribl (${pending.join(', ')}). Commit or discard them in Cribl first, so this lever commits only its own change.`,
+    );
+}
+
+/** Core-5 (M5): the warm baseline level of each of `keys` now (a key with no warm baseline is left out). */
+async function levelsOf(ctx: LeverCtx, keys: readonly ObjectKey[]): Promise<Record<ObjectKey, number>> {
+  const b = await ctx.docs.getBaselines();
+  const warm = ctx.settings.thresholds?.warmupSamples ?? 10;
+  const out: Record<ObjectKey, number> = {};
+  for (const k of new Set(keys)) {
+    const x = b?.byObject?.[k];
+    if (x && isWarm(x, warm) && Number.isFinite(x.mean)) out[k] = x.mean;
+  }
+  return out;
+}
+
+/**
+ * Core-5 (M5): `baselines` with `reseed` applied — a level seats the object's baseline there, warm (reseedBaseline, as
+ * Accept does); null forgets it (it re-learns). Rules still counting on those objects (streak > 0, and any good-news
+ * state) are cleared; an open incident's rule (streak 0: its frozen baseline and recovery count) is kept, so a Restore's
+ * regression still closes itself on the same clock.
+ */
+export function reseededBaselines(baselines: BaselinesDoc | null | undefined, reseed: Record<ObjectKey, number | null>, warmupSamples: number, nowIso: ISO): BaselinesDoc {
+  const byObject = { ...(baselines?.byObject ?? {}) };
+  const rules = { ...(baselines?.rules ?? {}) };
+  for (const [key, level] of Object.entries(reseed)) {
+    if (typeof level === 'number' && Number.isFinite(level)) byObject[key] = reseedBaseline(level, warmupSamples, byObject[key]);
+    else delete byObject[key];
+    delete rules[`goodnews|${key}`];
+    for (const type of ['regression', 'spike'] as const) {
+      const rs = rules[`${type}|${key}`];
+      if (rs && rs.streak > 0) delete rules[`${type}|${key}`];
+    }
+  }
+  const out: BaselinesDoc = { schemaVersion: 1, updatedAt: nowIso, byObject, rules };
+  if (baselines?.budgetEvaluatedAt !== undefined) out.budgetEvaluatedAt = baselines.budgetEvaluatedAt;
+  return out;
+}
+
+/** Re-seats baselines under the sweep lock (a few tries); a busy lock is logged and left (the revert itself stands). */
+async function reseedUnderLock(deps: LeverDeps, docs: KvDocs, settings: Settings, reseed: Record<ObjectKey, number | null>, logger?: Logger): Promise<boolean> {
+  if (Object.keys(reseed).length === 0) return true;
+  const owner = deps.owner ?? `lever:${deps.author || 'unknown'}`;
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  for (let i = 0; i < RESEED_LOCK_TRIES; i++) {
+    if (await docs.acquireLock(owner, LOCK_TTL_MS)) {
+      try {
+        const now = toIso(deps.clock.now());
+        await docs.putBaselines(reseededBaselines(await docs.getBaselines(), reseed, settings.thresholds?.warmupSamples ?? 10, now));
+        return true;
+      } finally {
+        await docs.putDoc(KEYS.lock, { owner, expiresAt: toIso(deps.clock.now()) }).catch(() => undefined);
+      }
+    }
+    await sleep(RESEED_LOCK_RETRY_MS);
+  }
+  logger?.warn('lever: a sweep held the lock; the touched baselines were not re-seated (Reset baselines does it)');
+  return false;
+}
+
 /** Inputs are PATCHed without read-only provenance (config-apis.md: omit criblSourceProvenance). */
 function writableInput(input: Obj): Obj {
   const out = clone(input);
@@ -214,6 +305,8 @@ const pipelineFileMatch = (gid: string, pipelineId: string) => (p: string) =>
 const routeTableMatch = (gid: string) => (p: string) =>
   p.includes(`groups/${gid}/`) && (basename(p) === 'route.yml' || basename(p) === 'routes.yml');
 const inputsMatch = (gid: string) => (p: string) => p.includes(`groups/${gid}/`) && basename(p) === 'inputs.yml';
+/** The group-wide files a lever commits whole (every route / every Source): core-5's shared-file guard watches them. */
+const isSharedFile = (p: string): boolean => ['route.yml', 'routes.yml', 'inputs.yml'].includes(basename(p));
 const anyOf =
   (...ms: ((p: string) => boolean)[]) =>
   (p: string): boolean =>
@@ -288,6 +381,8 @@ async function runLever(
 
   let demo: DemoState | undefined;
   let marked = false;
+  /** Core-5 (m25): shared files this lever's failed commit left pending (recorded for the shared-file guard). */
+  let leftPending: string[] = [];
   try {
     const [settings, stored, meta] = await Promise.all([docs.getSettings(), docs.getDemoState(), docs.getMeta()]);
     if (!settings?.demo?.enabled) return refuse(new LeverStop('demo_disabled', 403, 'Demo mode is off. Turn it on under Settings → Demo.'));
@@ -347,6 +442,7 @@ async function runLever(
         }
         // Nothing was committed: put the object back as it was read (best effort).
         await change.rollback?.().catch(() => undefined);
+        leftPending = (files ?? []).filter((f) => isSharedFile(f));
         throw e;
       }
       const timeline = await docs.getTimeline();
@@ -372,6 +468,15 @@ async function runLever(
       );
     }
 
+    // Core-5 (M5): the change is live; re-seat what it moved, so its mute is not just a postponed alert.
+    if (change.reseed) await reseedUnderLock(deps, docs, settings, change.reseed, logger);
+    // Core-5 (m25): a commit that carried a file this lever had left pending clears it.
+    if (files && demo.leftPending?.length) {
+      const committed = new Set(files);
+      const rest = demo.leftPending.filter((f) => !committed.has(f));
+      demo = { ...demo, ...(rest.length > 0 ? { leftPending: rest } : {}) };
+      if (rest.length === 0) delete demo.leftPending;
+    }
     await finish(docs, rawDocs, demo, change, t, clock.now(), logger);
     marked = false;
     const ok: LeverSuccess = { ok: true, lever: name, calls: t.calls() };
@@ -383,7 +488,7 @@ async function runLever(
   } catch (e) {
     const stop = stopFromError(e);
     if (!(e instanceof LeverStop)) logger?.warn(`lever ${name} failed`, e);
-    if (marked) await clearInFlight(rawDocs, demo!, t, clock.now(), logger);
+    if (marked) await clearInFlight(rawDocs, leftPending.length > 0 ? { ...demo!, leftPending: [...new Set([...(demo!.leftPending ?? []), ...leftPending])] } : demo!, t, clock.now(), logger);
     return refuse(stop);
   }
 }
@@ -495,7 +600,7 @@ export function applyPack(deps: LeverDeps, args: { routeId: string; level?: 'pac
   return runLever(
     'applyPack',
     deps,
-    () => LEVER_CALLS,
+    () => LEVER_CALLS + SHARED_CHECK_CALLS + LEVELS_READ_CALLS,
     async (ctx) => {
       const rt = await getRouteTable(ctx);
       const { route, index, id: routeId } = findRoute(rt, args.routeId);
@@ -509,8 +614,12 @@ export function applyPack(deps: LeverDeps, args: { routeId: string; level?: 'pac
       const target = level === 'aggressive' && src.aggressivePipelineId ? src.aggressivePipelineId : src.packPipelineId;
       const current = typeof route.pipeline === 'string' ? route.pipeline : '';
       if (current === target) throw new LeverStop('no_change', 409, `route ${routeId} already runs ${target}`);
-      const undo = await setRoutePipeline(ctx, rt, index, target);
+      await assertSharedClean(ctx, routeTableMatch(ctx.gid), 'pipelines/route.yml');
       const prior = ctx.demo.routes[routeId];
+      // Core-5 (M5): the levels this route's objects hold before the (first) apply, for Revert to re-seat.
+      const levelsBefore =
+        prior?.levelsBefore ?? (await levelsOf(ctx, [objectKey('route', ctx.gid, routeId), ...(current ? [objectKey('pipe', ctx.gid, current)] : []), ...rigObjectKeys(src, ctx.gid, [current])]));
+      const undo = await setRoutePipeline(ctx, rt, index, target);
       return {
         message: `demo: apply the pack on ${routeId}`,
         match: routeTableMatch(ctx.gid),
@@ -520,6 +629,7 @@ export function applyPack(deps: LeverDeps, args: { routeId: string; level?: 'pac
             previousPipelineId: prior?.previousPipelineId ?? current,
             appliedAt: toIso(ctx.now()),
             level,
+            levelsBefore,
           };
         },
       };
@@ -532,7 +642,7 @@ export function revertPack(deps: LeverDeps, args: { routeId: string }): Promise<
   return runLever(
     'revertPack',
     deps,
-    () => LEVER_CALLS,
+    () => LEVER_CALLS + SHARED_CHECK_CALLS + RESEED_CALLS,
     async (ctx) => {
       const rt = await getRouteTable(ctx);
       const { route, index, id: routeId } = findRoute(rt, args.routeId);
@@ -545,15 +655,19 @@ export function revertPack(deps: LeverDeps, args: { routeId: string }): Promise<
       const previous = state?.previousPipelineId ?? src?.pipelineId;
       if (!previous) throw new LeverStop('invalid', 400, `no previous pipeline is known for route ${routeId}`);
       const current = typeof route.pipeline === 'string' ? route.pipeline : '';
-      if (current === previous) {
-        // Already reverted (e.g. by hand in the Cribl UI): forget the applied state, or say there is nothing to do.
-        if (!state) throw new LeverStop('no_change', 409, `route ${routeId} already runs ${previous}`);
-        return { update: (s) => void delete s.routes[routeId] };
-      }
-      const undo = await setRoutePipeline(ctx, rt, index, previous);
       const mute = new Set<ObjectKey>([objectKey('route', ctx.gid, routeId), objectKey('pipe', ctx.gid, previous)]);
       if (current) mute.add(objectKey('pipe', ctx.gid, current));
       if (src) for (const k of rigObjectKeys(src, ctx.gid, [previous, current])) mute.add(k);
+      // Core-5 (M5): back to the levels before the apply (unknown: forgotten, re-learned after the mute).
+      const reseed: Record<ObjectKey, number | null> = {};
+      for (const k of mute) reseed[k] = state?.levelsBefore?.[k] ?? null;
+      if (current === previous) {
+        // Already reverted (e.g. by hand in the Cribl UI): forget the applied state, or say there is nothing to do.
+        if (!state) throw new LeverStop('no_change', 409, `route ${routeId} already runs ${previous}`);
+        return { update: (s) => void delete s.routes[routeId], reseed };
+      }
+      await assertSharedClean(ctx, routeTableMatch(ctx.gid), 'pipelines/route.yml');
+      const undo = await setRoutePipeline(ctx, rt, index, previous);
       return {
         message: `demo: revert the pack on ${routeId}`,
         match: routeTableMatch(ctx.gid),
@@ -562,6 +676,7 @@ export function revertPack(deps: LeverDeps, args: { routeId: string }): Promise<
           delete s.routes[routeId];
         },
         mute: [...mute],
+        reseed,
       };
     },
   );
@@ -591,13 +706,16 @@ export function breakTrim(deps: LeverDeps, args: { pipelineId: string }): Promis
   return runLever(
     'breakTrim',
     deps,
-    () => LEVER_CALLS,
+    () => LEVER_CALLS + LEVELS_READ_CALLS,
     async (ctx) => {
       const path = urls.pipeline(ctx.gid, args.pipelineId);
       const pipeline = await getOne(ctx, path, `pipeline ${args.pipelineId}`);
       const { functions, index } = trimFunction(pipeline, args.pipelineId);
       const fn = functions[index];
       if (fn.disabled === true) throw new LeverStop('no_change', 409, `the trim on ${args.pipelineId} is already broken`);
+      const prior = ctx.demo.trim[args.pipelineId];
+      // Core-5 (M5): the levels this pipeline's objects hold before the break, for Restore to re-seat.
+      const levelsBefore = prior?.levelsBefore ?? (await levelsOf(ctx, pipelineMuteKeys(ctx.gid, args.pipelineId)));
       await patch(
         ctx,
         path,
@@ -607,7 +725,6 @@ export function breakTrim(deps: LeverDeps, args: { pipelineId: string }): Promis
         }),
         `pipeline ${args.pipelineId}`,
       );
-      const prior = ctx.demo.trim[args.pipelineId];
       return {
         message: `demo: break the trim on ${args.pipelineId}`,
         match: pipelineFileMatch(ctx.gid, args.pipelineId),
@@ -617,6 +734,7 @@ export function breakTrim(deps: LeverDeps, args: { pipelineId: string }): Promis
             functionIndex: index,
             previous: prior?.previous ?? clone(fn),
             brokenAt: toIso(ctx.now()),
+            levelsBefore,
           };
         },
       };
@@ -629,15 +747,16 @@ export function restoreTrim(deps: LeverDeps, args: { pipelineId: string }): Prom
   return runLever(
     'restoreTrim',
     deps,
-    () => LEVER_CALLS,
+    () => LEVER_CALLS + RESEED_CALLS,
     async (ctx) => {
       const path = urls.pipeline(ctx.gid, args.pipelineId);
       const pipeline = await getOne(ctx, path, `pipeline ${args.pipelineId}`);
       const change = restoreTrimOn(ctx, pipeline, args.pipelineId);
+      const reseed = trimReseed(ctx, args.pipelineId);
       if (!change) {
         // Already restored (e.g. by hand): forget the broken state, or say there is nothing to do.
         if (!ctx.demo.trim[args.pipelineId]) throw new LeverStop('no_change', 409, `the trim on ${args.pipelineId} is not broken`);
-        return { update: (s) => void delete s.trim[args.pipelineId] };
+        return { update: (s) => void delete s.trim[args.pipelineId], reseed };
       }
       await patch(ctx, path, change.next, `pipeline ${args.pipelineId}`);
       return {
@@ -648,6 +767,7 @@ export function restoreTrim(deps: LeverDeps, args: { pipelineId: string }): Prom
           delete s.trim[args.pipelineId];
         },
         mute: pipelineMuteKeys(ctx.gid, args.pipelineId),
+        reseed,
       };
     },
   );
@@ -670,6 +790,14 @@ function restoreTrimOn(ctx: LeverCtx, pipeline: Obj, pipelineId: string): { next
   return { next: withFunction(pipeline, functions, at, restored) };
 }
 
+/** Core-5 (M5): Restore's re-seat — the levels before the break (unknown: forgotten, re-learned). */
+function trimReseed(ctx: LeverCtx, pipelineId: string): Record<ObjectKey, number | null> {
+  const before = ctx.demo.trim[pipelineId]?.levelsBefore;
+  const out: Record<ObjectKey, number | null> = {};
+  for (const k of pipelineMuteKeys(ctx.gid, pipelineId)) out[k] = before?.[k] ?? null;
+  return out;
+}
+
 function pipelineMuteKeys(gid: string, pipelineId: string): ObjectKey[] {
   const keys = new Set<ObjectKey>([objectKey('pipe', gid, pipelineId)]);
   for (const src of rigSourcesUsingPipeline(pipelineId)) for (const k of rigObjectKeys(src, gid, [pipelineId])) keys.add(k);
@@ -681,7 +809,7 @@ export function setRate(deps: LeverDeps, args: { inputId: string; multiplier: nu
   return runLever(
     'setRate',
     deps,
-    () => LEVER_CALLS,
+    () => LEVER_CALLS + SHARED_CHECK_CALLS,
     async (ctx) => {
       const m = args.multiplier;
       if (!(Number.isFinite(m) && m >= MIN_RATE_MULTIPLIER && m <= MAX_RATE_MULTIPLIER)) {
@@ -698,6 +826,7 @@ export function setRate(deps: LeverDeps, args: { inputId: string; multiplier: nu
       const baseline = ctx.demo.rates[args.inputId]?.baselineEps ?? current;
       const eps = Math.max(1, Math.round(baseline * m));
       if (eps === current) throw new LeverStop('no_change', 409, `${args.inputId} already runs at ${eps} events/s`);
+      await assertSharedClean(ctx, inputsMatch(ctx.gid), 'inputs.yml');
       const next = writableInput(input);
       next.samples = samples.map((s, i) => (i === 0 ? { ...clone(s), eventsPerSec: eps } : clone(s)));
       await patch(ctx, path, next, `source ${args.inputId}`);
@@ -750,7 +879,8 @@ export function resetBaselines(deps: LeverDeps): Promise<LeverResult> {
  * (`demo: reset everything`) carries the config changes. Applied packs are left alone ("Revert all" is V).
  */
 export function resetAll(deps: LeverDeps): Promise<LeverResult> {
-  const estimate = (demo: DemoState): number => 20 + 2 * (Object.keys(demo.trim ?? {}).length + Object.keys(demo.rates ?? {}).length);
+  // Core-5: + version/status when a rate is reset (inputs.yml), + the snapshot and baselines read and the baselines write.
+  const estimate = (demo: DemoState): number => 20 + 3 + SHARED_CHECK_CALLS + 2 * (Object.keys(demo.trim ?? {}).length + Object.keys(demo.rates ?? {}).length);
   return runLever('resetAll', deps, estimate, (ctx) =>
     withSweepLock(ctx, async () => {
       // 1. Read and check everything first, so a refusal (untagged, missing) leaves the org untouched.
@@ -796,6 +926,9 @@ export function resetAll(deps: LeverDeps): Promise<LeverResult> {
         });
       }
 
+      // Core-5 (m25): a Source's rate is committed through the shared inputs.yml — never with someone else's edit in it.
+      if (writes.some((wr) => wr.what.startsWith('source '))) await assertSharedClean(ctx, inputsMatch(ctx.gid), 'inputs.yml');
+
       // 2. Apply; a failed PATCH puts back the ones already made.
       const undo: (() => Promise<void>)[] = [];
       const rollback = async (): Promise<void> => {
@@ -829,11 +962,30 @@ export function resetAll(deps: LeverDeps): Promise<LeverResult> {
 
       // Close open incidents a demo caused (today's and yesterday's docs hold every open one in a demo).
       const nowMs = ctx.now();
+      const closedNow: Incident[] = [];
       for (const key of [incidentsDocKey(nowMs), incidentsDocKey(nowMs - DAY_MS)]) {
         const doc = await ctx.docs.getIncidents(key);
         if (!doc) continue;
         const items = closeDemoIncidents(doc.items, toIso(nowMs));
+        items.forEach((it, i) => {
+          if (it.closedAt && !doc.items[i]?.closedAt) closedNow.push(it);
+        });
         if (!same(items, doc.items)) await ctx.docs.putIncidents(key, { schemaVersion: 1, items });
+      }
+
+      // Core-5 (M6, #27): re-seat what the reset touched, under the lock it already holds, or the next sweep re-opens
+      // what it just closed ("cause unknown"): every object whose incident closed, at the level it holds now (Accept's
+      // rule); every restored trim's objects at their level before the break; every reset Source forgotten (re-learned).
+      const warm = ctx.settings.thresholds?.warmupSamples ?? 10;
+      const nowIso = toIso(nowMs);
+      if (closedNow.length > 0 || writes.length > 0) {
+        const snapshot = closedNow.length > 0 ? await ctx.docs.getSnapshot() : null;
+        let next: BaselinesDoc = (await ctx.docs.getBaselines()) ?? { schemaVersion: 1, updatedAt: nowIso, byObject: {}, rules: {} };
+        for (const inc of closedNow) next = acceptIntoBaselines(next, inc, currentReading(snapshot, inc), warm, nowIso);
+        const reseed: Record<ObjectKey, number | null> = {};
+        for (const pipelineId of Object.keys(ctx.demo.trim ?? {})) Object.assign(reseed, trimReseed(ctx, pipelineId));
+        for (const inputId of Object.keys(ctx.demo.rates ?? {})) reseed[objectKey('in', ctx.gid, inputId)] = null;
+        await ctx.docs.putBaselines(reseededBaselines(next, reseed, warm, nowIso));
       }
 
       const change: LeverChange = {

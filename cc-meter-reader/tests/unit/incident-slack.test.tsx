@@ -108,18 +108,18 @@ describe('<SlackPreview>', () => {
     expect(screen.getByText('Meter Reader')).toBeTruthy();
     expect(screen.getByText('App')).toBeTruthy();
     expect(screen.getByText('4:44 PM')).toBeTruthy();
-    expect(container.querySelector('.mr-slack-header')?.textContent).toBe('Test: Savings dropped: Payments API sampling');
+    expect(container.querySelector('.mr-slack-header')?.textContent).toBe('Test: Savings dropped: Example pipeline');
     expect(container.querySelector('.mr-slack-header .mr-slack-glyph--red')).not.toBeNull();
     const fields = [...container.querySelectorAll('.mr-slack-field')].map((f) => f.textContent);
     expect(fields).toEqual([
       'Lost per day$25',
       'Per year if left$9,125',
-      'Commita1f3c9e demo: break the trim on mrd_pay_sample',
+      'Commita1f3c9e Example: a pipeline change',
       'Bymeter-reader',
       'Before75%',
       'After50%',
     ]);
-    expect(container.querySelector('.mr-slack-context')?.textContent).toBe('Meter Reader by Steve Koelpin · SIEM (prod) · 4:44 PM UTC · caught in 2:51');
+    expect(container.querySelector('.mr-slack-context')?.textContent).toBe('Meter Reader by Steve Koelpin · Example destination · 4:44 PM UTC · caught in 2:51');
     expect(container.querySelector('.mr-slack-button')?.textContent).toBe('Open in Ledger');
   });
 

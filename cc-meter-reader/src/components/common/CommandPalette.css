@@ -53,7 +53,7 @@
   background: token('color.background.panel.solid');
 }
 .mr-palette-field:focus-within {
-  outline: token('border.focus');
+  outline: 2px solid token('color.foreground.accent.default');
   outline-offset: -1px;
 }
 .mr-palette-field-icon {

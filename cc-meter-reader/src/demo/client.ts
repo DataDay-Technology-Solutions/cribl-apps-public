@@ -173,7 +173,9 @@ const defaultTimers: DemoTimers = {
 /** Maps a Leader call to the lever's stage (null = no change). Exported for tests. */
 export function stageForCall(method: string, path: string): LeverStage | null {
   if (path.includes('/version/commit')) return 'committing';
-  if (path.includes('/version/status')) return 'committing';
+  // Founder-build r1 core-5 (m25): route and rate levers read version/status before they save (the shared-file guard),
+  // so a status read is no stage of its own; the commit call is.
+  if (path.includes('/version/status')) return null;
   if (path.includes('/deploy')) return 'deploying';
   if (method === 'PATCH' && (path.includes('/pipelines/') || path.includes('/routes') || path.includes('/system/inputs/'))) return 'saving';
   if (path.startsWith('/kvstore/timeline') && method === 'PUT') return 'recording';

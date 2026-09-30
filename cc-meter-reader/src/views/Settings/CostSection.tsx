@@ -14,6 +14,7 @@ import { centsToMc, fmtBytes, mcToDollarInput } from '../../../core/format.ts';
 import { netSpanWords } from '../Receipt/text.ts';
 import { SaveBar, SectionCard } from './shared.tsx';
 import { errorCount, useCurrentSettings, useSaveSettings, useSectionDraft, useWritable } from './hooks.ts';
+import { printedNetM } from '../Receipt/model.ts';
 
 function ReceiptLine({ label, value, tone, testId }: { label: string; value: string; tone?: 'saved' | 'total'; testId?: string }) {
   return (
@@ -84,7 +85,8 @@ export function CostSection() {
           <ReceiptLine label={t('settings.cost.savedMtd')} value={formatMoney(preview.savedMtdM)} tone="saved" />
           <ReceiptLine label={t('settings.cost.proratedCost')} value={`−${formatMoney(preview.proratedM)}`} />
           <div className="mr-cost-rule" aria-hidden="true" />
-          <ReceiptLine label={t('settings.cost.net')} value={formatMoney(preview.netM)} tone="total" testId="cost-net" />
+          {/* Printed saved − printed cost, as the Receipt prints it (r1 ui-8, m9): the preview's lines add up. */}
+          <ReceiptLine label={t('settings.cost.net')} value={formatMoney(printedNetM(preview.netM, preview.proratedM))} tone="total" testId="cost-net" />
           {preview.paybackX !== undefined ? (
             <ReceiptLine label={t('settings.cost.payback')} value={t('settings.cost.paybackValue', { multiple: formatMultiple(preview.paybackX) })} testId="cost-payback" />
           ) : null}

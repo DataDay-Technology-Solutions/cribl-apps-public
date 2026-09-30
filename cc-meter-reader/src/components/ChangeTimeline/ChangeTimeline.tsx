@@ -39,7 +39,7 @@ import { Ghost } from '../common/Ghost.tsx';
 import { t, tn } from '../../copy/en.ts';
 import { commitAuthor } from '../../lib/author.ts';
 import { formatPct, formatRelative, formatTimeOfDay } from '../../lib/format.ts';
-import { isUnattributedShift, largestAttributed, reversals, signedMoney } from './money.ts';
+import { isUnattributedShift, largestAttributed, reversals, settledText, signedMoney } from './money.ts';
 import { useNow } from '../../lib/ticker.ts';
 import {
   buildMarkers,
@@ -215,6 +215,8 @@ interface CommitCardProps {
   onSelectObject?: (objectKey: string) => void;
   /** settings.humanize: an API client's name, when a member gave it one (src/lib/author.ts) */
   labels?: Record<string, string>;
+  /** Founder-build r2 ui-13 (BO-15): how the change settled ("Recovered Mon 2:04 AM, reverted by c8b6350"), as Changes lists it. */
+  settled?: string;
 }
 
 const MAX_FILES = 4;
@@ -258,7 +260,7 @@ function ImpactBlock({ impact }: { impact: CommitImpact }) {
   );
 }
 
-function CommitCard({ marker, moved, impact, tz, placement, onClose, onSelectObject, labels }: CommitCardProps) {
+function CommitCard({ marker, moved, impact, tz, placement, onClose, onSelectObject, labels, settled }: CommitCardProps) {
   const ref = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const titleId = useId();
@@ -310,6 +312,11 @@ function CommitCard({ marker, moved, impact, tz, placement, onClose, onSelectObj
       <p className="mr-ct-card-message">{c.message || t('common.dash')}</p>
       <p className="mr-ct-card-author">{t('ledger.timeline.by', { author: commitAuthor(c.author, labels) })}</p>
       {impact ? <ImpactBlock impact={impact} /> : null}
+      {settled ? (
+        <p className="mr-ct-card-impact-basis" data-testid="commit-settled">
+          {settled}
+        </p>
+      ) : null}
 
       <div className="mr-ct-card-section">
         <div className="mr-ct-card-label">{t('ledger.timeline.filesTitle')}</div>
@@ -639,6 +646,13 @@ export function ChangeTimeline({
     };
   }
 
+  // Founder-build r2 ui-13 (BO-15): how a change settled (recovered / undone), for the commit card as Changes lists it.
+  const settledRev = useMemo(() => (impacts ? reversals([...impacts.values()], snapshot) : undefined), [impacts, snapshot]);
+  const settledFor = (hash: string): string | undefined => {
+    const impact = impacts?.get(hash);
+    return impact && settledRev && impact.status === 'priced' && !isUnattributedShift(impact) ? settledText(impact, settledRev, tz) : undefined;
+  };
+
   const cardFor = (marker: TimelineMarker, at: CardPlacement | null) => (
     <CommitCard
       marker={marker}
@@ -647,6 +661,7 @@ export function ChangeTimeline({
       tz={tz}
       placement={at}
       labels={humanize}
+      settled={settledFor(marker.commit.hash)}
       onClose={close}
       onSelectObject={
         onSelectObject

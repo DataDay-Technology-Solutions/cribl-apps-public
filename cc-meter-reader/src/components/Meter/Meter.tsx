@@ -35,7 +35,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { fmtDollars } from '../../../core/format.ts';
-import { prefersReducedMotion } from '../../lib/dom.ts';
+import { useReducedMotion } from './useReducedMotion.ts';
 import {
   ARIA_THROTTLE_MS,
   DEFAULT_MAX_EXTRAPOLATION_SEC,
@@ -96,6 +96,13 @@ export interface MeterProps {
    * the snapshot's figure from the first frame, as the announcement says it, e5fc584).
    */
   rollInValue?: 'shown' | 'target';
+  /**
+   * Whether this meter speaks its own figure in a polite live region (default true). The presenter stage passes false:
+   * its one voice is the stage announcer (src/components/Shell/StageAnnouncer.tsx), so the figure is never read twice
+   * per cycle (founder-build r1 ui-10, FINDINGS_R1 m21). The figure's text stays in the DOM either way (not live), so a
+   * screen reader reading the stage still finds it.
+   */
+  announce?: boolean;
   /** Force the reduced-motion path (tests); default follows `prefers-reduced-motion`, live. */
   reducedMotion?: boolean;
   /**
@@ -106,18 +113,9 @@ export interface MeterProps {
   className?: string;
 }
 
-/** Tracks `prefers-reduced-motion`, live; an explicit override (tests) wins. */
-function useReducedMotion(override?: boolean): boolean {
-  const [media, setMedia] = useState(prefersReducedMotion);
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
-    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const onChange = () => setMedia(query.matches);
-    onChange(); // a change between the first render and this effect is not missed
-    query.addEventListener?.('change', onChange);
-    return () => query.removeEventListener?.('change', onChange);
-  }, []);
-  return override ?? media;
+/** Whether the document's address has left the path a meter was mounted on. */
+function pageLeft(mountedPath: string | undefined): boolean {
+  return mountedPath !== undefined && typeof window !== 'undefined' && window.location.pathname !== mountedPath;
 }
 
 const STRIP_DIGITS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
@@ -167,7 +165,7 @@ function Glyphs({ glyphs, register }: { glyphs: Glyph[]; register: (place: numbe
 }
 
 export function Meter(props: MeterProps) {
-  const { valueM, ratePerSecM, anchorMs, size = 'hero', callout = 'saved', label, maxExtrapolationSec, rollStatic = false, rollIn, rollInValue = 'shown', className } = props;
+  const { valueM, ratePerSecM, anchorMs, size = 'hero', callout = 'saved', label, maxExtrapolationSec, rollStatic = false, rollIn, rollInValue = 'shown', className, announce = true } = props;
   const reduced = useReducedMotion(props.reducedMotion);
   const safeAnchorMs = Number.isFinite(anchorMs) ? anchorMs : 0;
   const safeRate = Number.isFinite(ratePerSecM) && ratePerSecM > 0 && Number.isFinite(anchorMs) ? ratePerSecM : 0;
@@ -203,9 +201,13 @@ export function Meter(props: MeterProps) {
   const rootRef = useRef<HTMLSpanElement | null>(null);
   const liveRef = useRef<HTMLSpanElement | null>(null);
   const lastAnnounceRef = useRef(0);
+  /** The label the live region last spoke (1.1.4): a new one is announced at once, not after the 30 s throttle. */
+  const lastLabelRef = useRef<string | undefined>(undefined);
   const lastValueAttrRef = useRef(Number.NEGATIVE_INFINITY);
   /** Starts the frame loop if it is idle and there is something to move (set by the loop's effect). */
   const kickRef = useRef<() => void>(() => {});
+  /** The address this meter was mounted on (r2 ui-14): leaving it ends an ease. */
+  const mountedPathRef = useRef<string | undefined>(typeof window !== 'undefined' ? window.location.pathname : undefined);
   /** Whether the frame loop is running (fast wheels may spin only then). */
   const loopRunningRef = useRef(false);
 
@@ -279,7 +281,11 @@ export function Meter(props: MeterProps) {
   const drawRef = useRef<(now: number, force?: boolean) => NextMove>(() => EVERY_FRAME);
   const draw = (now: number, force = false): NextMove => {
     const current = anchorRef.current;
-    const motion = motionRef.current ?? jumpMotion(displayedRef.current, current, now);
+    let motion = motionRef.current ?? jumpMotion(displayedRef.current, current, now);
+    // Founder-build r2 ui-14 (W3-RECEIPT-5): the page this meter lives on was left mid-ease (the address moved on while
+    // the view stays mounted for the next one to load): the ease ends where the money is, so coming back never shows the
+    // wheels still rolling from the cut (a second Receipt visit read $589K for a frame against $617,891).
+    if (motion.mode === 'ease' && !motion.rollIn && pageLeft(mountedPathRef.current)) motion = jumpMotion(displayedRef.current, current, now);
     motionRef.current = motion;
     const value = displayAt(motion, current, now);
     displayedRef.current = value;
@@ -318,13 +324,20 @@ export function Meter(props: MeterProps) {
       // A roll-up that reports its target (the Receipt) says the snapshot's figure from its first frame.
       rootRef.current.dataset.valueM = String(Math.floor(rollInValue === 'target' && rollingIn(motion, now) ? targetAt(current, now) : value));
     }
-    if (liveRef.current && now - lastAnnounceRef.current >= ARIA_THROTTLE_MS) {
+    // 1.1.4 (JUDGE_PATH_VALIDATION §7.3): the Receipt keeps one meter across MTD, Today and 30 days, so a period switch
+    // changes only its label, and the throttle kept the old period's words ("month to date: …" on Today) for up to 30 s.
+    // A new label is announced at once, with the figure it now stands for (the ease's target, not the wheels mid-roll).
+    const relabelled = lastLabelRef.current !== undefined && lastLabelRef.current !== label;
+    if (liveRef.current && (relabelled || now - lastAnnounceRef.current >= ARIA_THROTTLE_MS)) {
       lastAnnounceRef.current = now;
+      lastLabelRef.current = label;
       // The words say what the figure shows: whole dollars floored on the wheels (as they turn), rounded as plain text.
       // During the first-paint roll-up (P2-W19) they say the figure it rolls to, never the $0 it rolls from: the
       // announcement is throttled to one per 30 s, and a static figure never ticks again to correct it (review W2).
-      const spoken = rollingIn(motion, now) ? targetAt(current, now) : value;
-      liveRef.current.textContent = `${label}: ${fmtDollars(wheels ? announceDollars(spoken) * 100_000 : spoken)}`;
+      const spoken = relabelled || rollingIn(motion, now) ? targetAt(current, now) : value;
+      // r2 core-10 (IC-4, handoff): a figure under a dollar is announced '< $1', never "$0".
+      const announced = wheels ? announceDollars(spoken) * 100_000 : spoken;
+      liveRef.current.textContent = `${label}: ${fmtDollars(announced === 0 && spoken > 0 ? spoken : announced)}`;
     }
     // A roll-up keeps the figure's own layout (laid out for the figure it rolls to): its wheels turn up from zeros.
     if (!rollingIn(motion, now) && digitCount(Math.floor(value / 100_000)) !== dollarDigits) setShown(value);
@@ -389,6 +402,15 @@ export function Meter(props: MeterProps) {
       timer = 0;
       setRunning(false);
     };
+    // Off screen (a hidden tab, a view kept mounted while another tab's view loads): the figure settles where the money
+    // is now before the loop stops, so a return never paints a frame of an ease cut mid-way (founder-build r2 ui-14,
+    // W3-RECEIPT-5: a second Receipt visit showed $589K for a frame against $617,891).
+    const park = () => {
+      stop();
+      const now = Date.now();
+      motionRef.current = jumpMotion(displayedRef.current, anchorRef.current, now);
+      drawRef.current(now, true);
+    };
     // Back on screen (a tab, or a scroll): jump to where the money is now instead of rolling through the gap.
     const resume = () => {
       const now = Date.now();
@@ -396,7 +418,7 @@ export function Meter(props: MeterProps) {
       drawRef.current(now, true);
       start();
     };
-    const onVisibility = () => (document.visibilityState === 'hidden' ? stop() : resume());
+    const onVisibility = () => (document.visibilityState === 'hidden' ? park() : resume());
     kickRef.current = start;
     document.addEventListener('visibilitychange', onVisibility);
     let observer: IntersectionObserver | undefined;
@@ -406,7 +428,7 @@ export function Meter(props: MeterProps) {
         if (visible === inView) return;
         inView = visible;
         if (visible) resume();
-        else stop();
+        else park();
       });
       observer.observe(rootRef.current);
     }
@@ -450,7 +472,9 @@ export function Meter(props: MeterProps) {
           <span className="mr-meter-whole mr-meter-text">{staticText}</span>
         )}
       </span>
-      <span ref={liveRef} className="mr-visually-hidden" role="status" aria-live="polite" aria-atomic="true" />
+      {/* The figure as text for assistive tech (the wheels are aria-hidden). A live region unless the host speaks for it
+          (the stage, m21): there the same text stays readable, but is never announced. */}
+      {announce ? <span ref={liveRef} className="mr-visually-hidden" role="status" aria-live="polite" aria-atomic="true" /> : <span ref={liveRef} className="mr-visually-hidden" />}
     </span>
   );
 }

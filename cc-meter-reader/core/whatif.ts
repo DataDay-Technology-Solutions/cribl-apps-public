@@ -112,6 +112,25 @@ export function pipelineMatchesTreatment(pipelineId: string, treatment: PackTrea
   }
 }
 
+/**
+ * How much of a treatment a pipeline runs (founder-build r1 ui-4, FOUNDER_PLAN row 2b). The Palo Alto treatment is two
+ * packs (the syslog pre-processing pack, then the Palo Alto Networks pack): a route whose pipeline is a Pack attached
+ * alone (`pack:cribl-palo-alto-networks`, Cribl's own pack applied in the Routes editor) runs only PART of it, so the
+ * tile must not say it runs "this treatment". A local pipeline carrying the treatment's functions (the rig's imported
+ * `mrd_pan_pack`, behind a syslog header strip) runs all of it, as does a single-pack treatment attached as its Pack.
+ */
+export type TreatmentRunState = { state: 'none' } | { state: 'all' } | { state: 'part'; packId: string };
+
+/** The treatments made of more than one pack (a Pack attached alone is only part of them). */
+const MULTI_PACK_TREATMENTS: ReadonlySet<PackTreatment> = new Set(['pack-panos']);
+
+export function treatmentRunState(pipelineId: string, treatment: PackTreatment): TreatmentRunState {
+  if (!pipelineMatchesTreatment(pipelineId, treatment)) return { state: 'none' };
+  const pack = /^pack:(.+)$/i.exec(pipelineId);
+  if (pack && MULTI_PACK_TREATMENTS.has(treatment)) return { state: 'part', packId: pack[1] };
+  return { state: 'all' };
+}
+
 /** The pack treatment a source most likely wants, from its id (the picker's default): the pack written for its kind. */
 export function suggestTreatment(inputId: string): PackTreatment | undefined {
   switch (sourceKind({ inputId: typeof inputId === 'string' ? inputId : '' })) {
@@ -479,22 +498,70 @@ export function applyProjection(flows: readonly FlowFigures[], stream: StreamKey
 }
 
 export interface HeadlinePreview {
-  /** annualized run rate today (millicents per year) */
+  /** saved a year today on the preview's basis (millicents per year) */
   beforeM: number;
   /** after the treatment (mid) */
   afterM: number;
   /** after − before */
   deltaM: number;
-  /** false when the headline has no run rate yet (fresh install): show the stream's own per-year figure instead */
+  /** false when there is no basis yet (fresh install): show the stream's own per-year figure instead */
   hasBasis: boolean;
+  /**
+   * What `beforeM` is (founder-build r2 ui-7, IC-2): 'current' — the workspace at today's rates, the strip's own basis,
+   * so the hero, its bar and the strip agree; 'annualized' — the Receipt's run rate, when no flow is priced at current
+   * rates yet.
+   */
+  basis: 'current' | 'annualized';
+  /** The hero bar today on the same basis (a year of would have paid, paid and saved): 'current' only. */
+  bar?: { whpM: number; paidM: number; savedM: number };
 }
 
-/** "Saved by Cribl would read $X annualized, +$Y" — today's annualized run rate plus the stream's delta. */
-export function previewHeadline(headline: Pick<Headline, 'annualizedM'> | null | undefined, estimate: Estimate): HeadlinePreview | null {
+/** The workspace at today's rates, a year of it (founder-build r2 ui-7): Σ flows' per-day figures × 365. */
+export interface CurrentRateBasis {
+  whpPerYearM: number;
+  paidPerYearM: number;
+  /** Σ of each flow's saving (never below zero, as the Receipt's "A day at current rates" sums it) */
+  savedPerYearM: number;
+}
+
+/**
+ * The What if hero's basis (founder-build r2 ui-7, FINDINGS_EXTRA IC-2): every flow at today's rates (the last hour ×
+ * 24, the strip's and the Receipt's "A day at current rates" basis), a year of it. Undefined when nothing is priced yet.
+ */
+export function currentRateBasis(flows: readonly Pick<FlowFigures, 'whpPerDayM' | 'paidPerDayM' | 'savedPerDayM'>[]): CurrentRateBasis | undefined {
+  let whp = 0;
+  let paid = 0;
+  let saved = 0;
+  for (const f of flows) {
+    if (Number.isFinite(f.whpPerDayM) && f.whpPerDayM > 0) whp += Math.round(f.whpPerDayM);
+    if (Number.isFinite(f.paidPerDayM) && f.paidPerDayM > 0) paid += Math.round(f.paidPerDayM);
+    if (Number.isFinite(f.savedPerDayM) && f.savedPerDayM > 0) saved += Math.round(f.savedPerDayM);
+  }
+  return whp > 0 ? { whpPerYearM: perYear(whp), paidPerYearM: perYear(paid), savedPerYearM: perYear(saved) } : undefined;
+}
+
+/**
+ * "Saved by Cribl would read $X a year at current rates, +$Y" — the workspace at today's rates plus the stream's delta,
+ * the strip's own basis (founder-build r2 ui-7, IC-2: the trailing run rate is diluted for a stream younger than its
+ * window, so adding a current-rate delta to it read 74 % beside a strip that said 50 % → 60 %). Without a current basis
+ * (nothing priced at current rates), today's annualized run rate plus the delta, as before.
+ */
+export function previewHeadline(headline: Pick<Headline, 'annualizedM'> | null | undefined, estimate: Estimate, current?: CurrentRateBasis): HeadlinePreview | null {
   if (!estimate.ok) return null;
-  const before = headline && Number.isFinite(headline.annualizedM) ? Math.round(headline.annualizedM) : 0;
   const delta = estimate.mid.deltaSavedPerYearM;
-  return { beforeM: before, afterM: before + delta, deltaM: delta, hasBasis: before > 0 };
+  if (current && current.whpPerYearM > 0) {
+    const before = Math.round(current.savedPerYearM);
+    return {
+      beforeM: before,
+      afterM: before + delta,
+      deltaM: delta,
+      hasBasis: true,
+      basis: 'current',
+      bar: { whpM: Math.round(current.whpPerYearM), paidM: Math.round(current.paidPerYearM), savedM: before },
+    };
+  }
+  const before = headline && Number.isFinite(headline.annualizedM) ? Math.round(headline.annualizedM) : 0;
+  return { beforeM: before, afterM: before + delta, deltaM: delta, hasBasis: before > 0, basis: 'annualized' };
 }
 
 // ─── Projected vs actual (after "Apply for real") ────────────────────────────
@@ -625,6 +692,48 @@ export function unclaimedSavings(
   }
   out.sort((a, b) => b.deltaPerYearM - a.deltaPerYearM || (a.streamKey < b.streamKey ? -1 : a.streamKey > b.streamKey ? 1 : 0));
   return out.slice(0, Math.max(0, opts.limit ?? 5));
+}
+
+/**
+ * Why "Biggest unclaimed savings" is empty (founder-build r1 ui-4, FOUNDER_PLAN row 2, HUNGER #5), so the page never
+ * claims "every stream here already runs the pack written for it" on a workspace no pack fits:
+ *   noneFit    no stream here is one the packs are written for (Windows event logs, Palo Alto firewall syslog, VPC Flow
+ *              Logs): the clean-install Datagen → DevNull workspace, and most real estates;
+ *   noBasis    a stream a pack fits does not run it, and nothing here can estimate it (no similar stream runs the pack,
+ *              and the pack publishes no range);
+ *   savesMore  the streams a pack fits and that don't run it already save at least what the pack would;
+ *   none       every stream a pack fits runs it (the Palo Alto Networks pack attached alone counts as running).
+ * Undefined when unclaimedSavings has a line. Same candidates and bases as unclaimedSavings.
+ */
+export type UnclaimedEmptyReason = 'noneFit' | 'noBasis' | 'savesMore' | 'none';
+
+export function unclaimedEmptyReason(
+  streams: readonly FlowFigures[],
+  snapshot: Pick<Snapshot, 'flows'>,
+  opts: { groupId?: string } = {},
+): UnclaimedEmptyReason | undefined {
+  if (unclaimedSavings(streams, snapshot, { ...opts, limit: 1 }).length > 0) return undefined;
+  let fitting = 0;
+  let noBasis = 0;
+  let savesMore = 0;
+  const seen = new Set<StreamKey>();
+  for (const flow of streams) {
+    const key = streamKeyOf(flow);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (sourceKind(flow) === 'other') continue;
+    fitting++;
+    const treatment = nextTreatment(flow);
+    if (!treatment) continue;
+    const similar = findSimilarStream(snapshot, treatment, { excludeStreamKey: key, ...(opts.groupId !== undefined ? { groupId: opts.groupId } : { groupId: flow.groupId }) });
+    const estimate = estimateTreatment({ flow, treatment, ...(similar ? { measuredSimilar: { ratio: similar.ratio, fromObject: similar.fromObject } } : {}) });
+    if (!estimate.ok) noBasis++;
+    else savesMore++;
+  }
+  if (fitting === 0) return 'noneFit';
+  if (noBasis > 0) return 'noBasis';
+  if (savesMore > 0) return 'savesMore';
+  return 'none';
 }
 
 /** How many distinct streams in `groupId` run the treatment's pipeline today (the tile's "runs on N streams here"). */

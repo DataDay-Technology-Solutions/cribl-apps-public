@@ -148,12 +148,29 @@ describe('parseRouteFilter', () => {
 describe('internal detection and output resolution', () => {
   it('flags internal inputs and outputs', () => {
     for (const t of INTERNAL_TYPES) expect(isInternalInput({ id: 'x', type: t })).toBe(true);
-    expect(isInternalInput({ id: 'x', type: 'datagen' })).toBe(true);
+    // C3 option A (founder-build r1, FINDINGS_R1 B2 #40): a Datagen Source is data the member chose to route and
+    // price, tagged or not; only Cribl's own system inputs (INTERNAL_TYPES) are plumbing.
+    expect(isInternalInput({ id: 'x', type: 'datagen' })).toBe(false);
+    expect(isInternalInput({ id: 'in_datagen_test', type: 'datagen', description: 'CLEAN_INSTALL_TEST 0.3' })).toBe(false);
     expect(isInternalInput({ id: 'mrd_x', type: 'datagen' })).toBe(false);
     expect(isInternalInput({ id: 'x', type: 'datagen', description: `a ${TAG}` })).toBe(false);
     expect(isInternalInput({ id: 'x', type: 'syslog' })).toBe(false);
     expect(isInternalOutput({ type: 'cribl_metrics' })).toBe(true);
     expect(isInternalOutput({ type: 'devnull' })).toBe(false);
+  });
+  it('follows an Output Router whose rules all lead to one destination; a splitting router is the end (core-12, M12)', () => {
+    const g = group();
+    g.outputs = [
+      ...(g.outputs ?? []),
+      { id: 'one_way', type: 'router', rules: [{ output: 'mrd_siem_prod', filter: 'true', final: true }, { output: 'mrd_siem_prod', filter: "x==1" }] },
+      { id: 'split', type: 'router', rules: [{ output: 'mrd_siem_prod' }, { output: 'mrd_archive_s3' }] },
+      { id: 'mostly', type: 'router', rules: [{ output: 'mrd_siem_prod' }, { output: 'mrd_archive_s3', disabled: true }] },
+      { id: 'to_default', type: 'router', rules: [{ output: 'default' }] },
+    ];
+    expect(resolveRouteOutput({ output: 'one_way', pipeline: 'x' }, g)).toBe('mrd_siem_prod');
+    expect(resolveRouteOutput({ output: 'split', pipeline: 'x' }, g)).toBe('split');
+    expect(resolveRouteOutput({ output: 'mostly', pipeline: 'x' }, g)).toBe('mrd_siem_prod');
+    expect(resolveRouteOutput({ output: 'to_default', pipeline: 'x' }, g)).toBe('devnull');
   });
   it('resolves route → pipeline → default output, following defaultId', () => {
     const g = group();
@@ -182,9 +199,41 @@ describe('buildFlows', () => {
       'default|-|r_weird|routes_to_analytics|mrd_analytics#route-only',
       'default|mrd_k8s_prod|default|main|devnull#route',
       'default|in_syslog|default|main|devnull#route',
+      'default|datagen_sample|default|main|devnull#route', // an untagged Datagen is metered (C3 option A)
       'default|qc_input|-|passthru|mrd_archive_s3#proportional',
       'default|qc_input|-|-|devnull#proportional',
     ]);
+  });
+  it('meters an untagged Datagen → Drop → priced DevNull as one flow; Cribl system inputs stay excluded (C3 option A, B2 #40)', () => {
+    // CLEAN_INSTALL_TEST 0.3 / DDT2's recipe: a plain Datagen, a route to a Drop pipeline, DevNull. No demo tag.
+    const g: GroupInventory = {
+      inputs: [
+        { id: 'in_datagen_test', type: 'datagen', description: 'syslog sample, 100 EPS' },
+        { id: 'CriblMetrics', type: 'criblmetrics' },
+        { id: 'CriblLogs', type: 'cribl' },
+        ...INTERNAL_TYPES.map((t, i) => ({ id: `sys_${i}`, type: t })),
+      ],
+      outputs: [
+        { id: 'devnull', type: 'devnull' },
+        { id: 'default', type: 'default', defaultId: 'devnull' },
+      ],
+      pipelines: [
+        { id: 'drop_half', functions: [{ id: 'drop', filter: 'Math.random() < 0.5' }] },
+        { id: 'main', functions: [] },
+      ],
+      routes: [
+        { id: 'r_dg', filter: "__inputId=='datagen:in_datagen_test'", pipeline: 'drop_half', output: 'devnull', final: true },
+        { id: 'default', filter: 'true', pipeline: 'main', output: 'default', final: true },
+      ],
+    };
+    const keys = buildFlows(inventory(g), settings).map((f) => f.key);
+    expect(keys).toEqual(['default|in_datagen_test|r_dg|drop_half|devnull']);
+    // The tagged control is unchanged: one flow.
+    const tagged: GroupInventory = { ...g, inputs: [{ id: 'in_datagen_test', type: 'datagen', description: `test ${TAG}` }, ...g.inputs.slice(1)] };
+    expect(buildFlows(inventory(tagged), settings).map((f) => f.key)).toEqual(['default|in_datagen_test|r_dg|drop_half|devnull']);
+    // includeInternal still brings the system inputs in, on the catch-all.
+    const all = buildFlows(inventory(g), { includeInternal: true, excludedObjectKeys: [] }).map((f) => f.key);
+    expect(all).toContain('default|CriblMetrics|default|main|devnull');
   });
   it('includes internal objects when asked', () => {
     const keys = buildFlows(inventory(), { includeInternal: true, excludedObjectKeys: [] }).map((f) => f.key);
@@ -205,8 +254,8 @@ describe('buildFlows', () => {
     const all = buildFlows(inventory(), settings).length;
     const ex = (k: string) => buildFlows(inventory(), { includeInternal: false, excludedObjectKeys: [k] }).length;
     expect(ex('in:default:mrd_payments_api')).toBe(all - 2);
-    expect(ex('route:default:default')).toBe(all - 2);
-    expect(ex('pipe:default:main')).toBe(all - 3);
+    expect(ex('route:default:default')).toBe(all - 3);
+    expect(ex('pipe:default:main')).toBe(all - 4);
     expect(ex('out:default:mrd_siem_prod')).toBe(all - 4);
   });
   it('handles empty and missing inventories', () => {

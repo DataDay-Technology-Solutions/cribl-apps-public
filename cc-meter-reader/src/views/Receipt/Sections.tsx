@@ -359,7 +359,11 @@ export function WeekCard({ data, tz, labels, onVisible }: { data: WeekCardData; 
             {lines.length > 0 ? (
               <ReceiptList lines={lines} ariaLabel={t('receiptView.week.linesLabel')} />
             ) : data.savedM === 0 ? (
-              <p className="mr-type-caption">{t('receiptView.week.empty')}</p>
+              // r2 ui-13 (IC-7): minutes metered with nothing flowing is "no traffic", never "nothing metered" beside a
+              // hero that counts the minutes metered; traffic that saved nothing says that.
+              <p className="mr-type-caption" data-testid="week-empty">
+                {t(data.whpM !== undefined && data.whpM > 0 ? 'receiptView.week.emptySaved' : 'receiptView.week.empty')}
+              </p>
             ) : null}
           </div>
         )}
