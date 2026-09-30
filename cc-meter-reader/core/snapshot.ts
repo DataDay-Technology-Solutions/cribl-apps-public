@@ -456,8 +456,9 @@ export function buildSnapshot(parts: SnapshotParts): Snapshot {
  * Founder-build r3 core-5 (FINDINGS_R3 #3): how many of the minutes metered on `pricedSinceMs`'s local day came before it
  * (none carried priced traffic) — counted, never inferred from the wall clock. The sweep that finds pricedSince metered
  * every minute from it to its window end (the first priced minute is always in its own range: a first run's rows reach
- * back to collecting since, and a later sweep finds it at or after the previous window end), so the day's metered
- * minutes less those this sweep metered from pricedSince on are the ones before it. A pricedSince carried unchanged
+ * back to collecting since, and a later sweep finds it at or after the previous window end, or on the minute before it
+ * that the same sweep rewrote — 1.1.5, A2), so the day's metered minutes less those this sweep metered from
+ * pricedSince on are the ones before it. A pricedSince carried unchanged
  * carries its count; one carried from a snapshot without a count, or across a zone change, has none (the basis falls
  * back to r2's arithmetic).
  */
@@ -476,25 +477,32 @@ function emptyMinutesBeforePriced(parts: SnapshotParts, pricedSinceMs: number, t
 
 /**
  * Founder-build r1 core-6 (#42): the minute priced traffic began (no minute before it carried any), carried from
- * snapshot to snapshot. A previous snapshot that kept one: it stands once the workspace has had traffic; while it had
- * none yet, the first minute with would-have-paid in this sweep's rows, else this window's end. A previous snapshot
- * from before core-6: collecting since (the old basis, unchanged). No previous snapshot (a first run): the first minute
- * with would-have-paid in the rows, when those rows reach back to collecting since; otherwise (the tour, whose rows are
- * its last hour) undefined — the old basis.
+ * snapshot to snapshot. Priced traffic is money either way: would-have-paid, or paid alone (1.1.5, HARDENING_1.1.4 A1:
+ * a destination whose counterfactual is Nowhere never carries would-have-paid, so its pricedSince fell to the window's
+ * end on every sweep and its annualized paid was the day's spend over one minute). A previous snapshot that kept one:
+ * it stands once the workspace has had traffic; while it had none yet, the first priced minute in this sweep's rows at
+ * or after collecting since, else this window's end. At or after collecting since, not only at or after the kept
+ * minute (1.1.5, A2): the sweep that first finds a flow built after Start the meter also rewrites the minute before its
+ * window, which falls before the kept minute, and rejecting it kept that minute's savings in the rate but its minute out
+ * of the basis (up to 3× the true rate). A previous snapshot from before core-6: collecting since (the old basis,
+ * unchanged). No previous snapshot (a first run): the first priced minute in the rows, when those rows reach back to
+ * collecting since; otherwise (the tour, whose rows are its last hour) undefined — the old basis.
  */
 function pricedSince(parts: SnapshotParts, rows: Record<FlowKey, MinuteRow[]>): number | undefined {
   const firstTraffic = (fromMs: number): number | undefined => {
     let first = Number.POSITIVE_INFINITY;
-    for (const list of Object.values(rows)) for (const r of list) if (r.whpM > 0) first = Math.min(first, fromIso(r.t));
+    for (const list of Object.values(rows)) for (const r of list) if (r.whpM > 0 || r.paidM > 0) first = Math.min(first, fromIso(r.t));
     return Number.isFinite(first) && first >= fromMs ? first : undefined;
   };
   const prev = parts.previous;
   if (prev) {
     if (!prev.pricedSince) return undefined; // a snapshot from before core-6: the basis stays collecting since
     const kept = fromIso(prev.pricedSince);
-    const hadTraffic = (prev.headline?.whp30dM ?? 0) > 0 || (prev.headline?.whpMtdM ?? 0) > 0;
+    const h = prev.headline;
+    const hadTraffic = (h?.whp30dM ?? 0) > 0 || (h?.whpMtdM ?? 0) > 0 || (h?.paid30dM ?? 0) > 0 || (h?.paidMtdM ?? 0) > 0;
     if (hadTraffic) return kept;
-    return firstTraffic(kept) ?? parts.windowEndMs;
+    const from = Number.isFinite(parts.collectingSinceMs) ? Math.min(kept, parts.collectingSinceMs) : kept;
+    return firstTraffic(from) ?? parts.windowEndMs;
   }
   // A first run: the rows it held must reach back to where collecting began (the tour's last hour does not).
   if (parts.rowsFromMs === undefined || !Number.isFinite(parts.collectingSinceMs) || !(parts.rowsFromMs <= parts.collectingSinceMs)) return undefined;
