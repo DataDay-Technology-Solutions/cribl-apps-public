@@ -1,0 +1,18 @@
+# Codex CLI project config. Codex loads it only after you trust this repo
+# (it asks on the first `codex` run here). Your personal defaults, including
+# model and login, stay in ~/.codex/config.toml.
+
+# Same posture as Claude Code's default: edit freely inside the repo, ask
+# before anything that leaves it.
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+# Codex concatenates every AGENTS.md from the repo root down to the working
+# directory. cc-meter-reader/AGENTS.md alone is ~23 KB, so raise the 32 KiB
+# default so nothing is cut off.
+project_doc_max_bytes = 65536
+
+[sandbox_workspace_write]
+# No network from the sandbox by default; Codex asks when a command needs it
+# (npm ci, git fetch). Matches how the Claude Code sessions here work.
+network_access = false

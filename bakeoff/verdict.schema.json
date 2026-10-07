@@ -1,0 +1,29 @@
+{
+  "title": "BakeoffVerdict",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["A", "B", "winner", "rationale"],
+  "properties": {
+    "A": { "$ref": "#/$defs/entry" },
+    "B": { "$ref": "#/$defs/entry" },
+    "winner": { "type": "string", "enum": ["A", "B", "tie"] },
+    "rationale": { "type": "string", "description": "Two to four sentences on why the winner won." }
+  },
+  "$defs": {
+    "score": { "type": "integer", "minimum": 0, "maximum": 10 },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["correctness", "spec_fit", "repo_rules", "code_quality", "tests", "scope", "notes"],
+      "properties": {
+        "correctness": { "$ref": "#/$defs/score" },
+        "spec_fit": { "$ref": "#/$defs/score" },
+        "repo_rules": { "$ref": "#/$defs/score" },
+        "code_quality": { "$ref": "#/$defs/score" },
+        "tests": { "$ref": "#/$defs/score" },
+        "scope": { "$ref": "#/$defs/score" },
+        "notes": { "type": "string", "description": "A reason for every score below 10, citing path:line." }
+      }
+    }
+  }
+}
