@@ -63,7 +63,7 @@ tests/report/screens/
 
 logs/
 
-# Video production workspace (large renders); the finished cuts are filed in ~/Documents/Media
+# Video production workspace (large renders); the finished cuts are filed outside the repository
 video/production/node_modules/
 video/production/output/
 video/production/frames/
@@ -74,7 +74,7 @@ video/production/**/*.m4a
 tests/report/audit/
 # the critique-fixes review's probes and captures (they quote the build org and local paths), like the audit's
 tests/report/review-critique/
-# finished cuts live in ~/Documents/Media/Meter Reader/; publish-public.sh copies the final one at release
+# finished cuts live outside the repository; publish-public.sh copies the final one at release
 video/*.mp4
 # video v2 build inputs (clean exports + builds of the app for capture)
 video/production/v2/app-dist/

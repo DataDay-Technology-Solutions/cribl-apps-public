@@ -1,6 +1,6 @@
 # Runbook — build, test, package, deploy, run
 
-Everything needed to go from a clean checkout to Meter Reader installed in a Cribl.Cloud workspace, the optional runner, and the demo rig. For how the pieces fit, see [`ARCHITECTURE.md`](ARCHITECTURE.md); for alert delivery through Cribl, [`NOTIFICATIONS.md`](NOTIFICATIONS.md); for why each choice was made, [`../DECISIONS.md`](../DECISIONS.md).
+Everything needed to go from a clean checkout to Meter Reader installed in a Cribl.Cloud workspace, the optional runner, and the demo rig. For how the pieces fit, see [`ARCHITECTURE.md`](ARCHITECTURE.md); for alert delivery through Cribl, [`NOTIFICATIONS.md`](NOTIFICATIONS.md).
 
 ## 1. Prerequisites
 

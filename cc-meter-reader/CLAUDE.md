@@ -6,15 +6,14 @@ Meter Reader is a Cribl App (App Platform, Cribl.Cloud) that prices every data f
 
 1. **`AGENTS.md`**: the scaffold's platform guide. It outranks every other document here.
 2. **`STATE.md`** (private restart file, not in this repository): the restart file: what is done, in progress and next, measured numbers, the resume command.
-3. **`DECISIONS.md`**: every decision with its evidence (D1 onward). The ones that shape everything: D11/D12b (the open tab is the primary runtime), D23 (no `proxies.yml` in the release; it installs on every plan), D24 (the runner, a third runtime), D27–D30 (alert delivery through Cribl), D20 (reconciled attribution), D13 (KV chunking), D17 (the binding platform recommendations).
-4. **`SPIKE.md`**: the three gating measurements (metrics query, KV value cap, backend compute).
-5. **`docs/PLATFORM_NOTES.md`**: the engineering reference; its section 9 (N1–N26) is binding. **`docs/NOTIFICATIONS.md`**: every request and response behind the bell, notification targets and the Search relay.
-6. **`docs/DESIGN_BRIEF.md`**: the binding visual spec for every screen; `docs/platform/capra.md` lists the real Capra exports.
-7. **`docs/ARCHITECTURE.md`** and **`docs/RUNBOOK.md`**: how the pieces fit, and how to build, test, package, deploy and run the runner.
-8. **`docs/LIVE_VALIDATION.md`**: every live install and break → alert → restore run. `docs/review/`: the wave review reports (adversarial findings, beauty scores, builder reports).
-9. Depth when needed: `docs/platform/*.md` (metrics, version, KV and backend, config APIs, preview API, Capra, guidance, Insights and Apps docs) and `docs/RIG.md` (the live demo rig).
+3. **`SPIKE.md`**: the three gating measurements (metrics query, KV value cap, backend compute).
+4. **`docs/PLATFORM_NOTES.md`**: the engineering reference; its section 9 (N1–N26) is binding. **`docs/NOTIFICATIONS.md`**: every request and response behind the bell, notification targets and the Search relay.
+5. **`docs/DESIGN_BRIEF.md`**: the binding visual spec for every screen; `docs/platform/capra.md` lists the real Capra exports.
+6. **`docs/ARCHITECTURE.md`** and **`docs/RUNBOOK.md`**: how the pieces fit, and how to build, test, package, deploy and run the runner.
+7. **`docs/LIVE_VALIDATION.md`**: every live install and break → alert → restore run. `docs/review/`: the wave review reports (adversarial findings, beauty scores, builder reports).
+8. Depth when needed: `docs/platform/*.md` (metrics, version, KV and backend, config APIs, preview API, Capra, guidance, Insights and Apps docs) and `docs/RIG.md` (the live demo rig).
 
-The planning PRD and SPEC are kept outside the repository. Where anything disagrees with `AGENTS.md`, `DECISIONS.md` or measured facts, those win.
+The planning PRD and SPEC are kept outside the repository. Where anything disagrees with `AGENTS.md` or measured facts, those win.
 
 ## Index
 
