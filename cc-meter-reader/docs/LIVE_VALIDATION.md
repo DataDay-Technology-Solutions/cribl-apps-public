@@ -23,7 +23,7 @@ Every entry is a real run against the live demo rig (≈450 GB/day of synthetic 
 
 ## Break the trim → alert → restore (Tier 0 payoff)
 
-Rows are numbered 1–9 in the order they ran; every time is UTC on 2026-09-26. **Logged as** is the label each run was first recorded under: each session numbered its own runs, so those labels skip 3, 5 and 6, and `DECISIONS.md` and older notes cite them ("run 10" is row 9). No row has been removed: this file's git history shows rows only added, or completed in place when a run finished. Every row is one break → alert → restore cycle, and every one was caught, named its commit and closed itself.
+Rows are numbered 1–9 in the order they ran; every time is UTC on 2026-09-26. **Logged as** is the label each run was first recorded under: each session numbered its own runs, so those labels skip 3, 5 and 6, and older notes cite them ("run 10" is row 9). No row has been removed: this file's git history shows rows only added, or completed in place when a run finished. Every row is one break → alert → restore cycle, and every one was caught, named its commit and closed itself.
 
 | # | Logged as | Break (deploy returned) | Incident opened | Caught in | Before → after | $/day · $/year | Commit named | Webhook | Restore deployed | Closed itself |
 |---|---|---|---|---|---|---|---|---|---|---|

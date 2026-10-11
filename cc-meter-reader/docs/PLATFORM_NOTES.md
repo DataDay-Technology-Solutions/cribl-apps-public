@@ -2,7 +2,7 @@
 
 Consolidates `docs/platform/*.md` (metrics, version, kv-backend, config-apis, capra, guidance, insights-and-apps-docs), re-checked on 2026-09-26 against the code they cite, this project's `openapi.json` (Cribl `4.20.1-590ec085`), `node_modules/@cribl/apps@1.1.0`, `DECISIONS.md` and `SPIKE.md`. For depth, follow the pointer at the end of each section.
 
-**Precedence:** `AGENTS.md` → measured facts on this org (`SPIKE.md`, `DECISIONS.md`) → this project's `openapi.json` → shipped reference apps → docs.cribl.io → SPEC v1.2 → PRD v4.16. The measured facts sit above the docs because they are this org. For example, the KV store answers 413 above ~100 KB even though the Builder Guide says values can be "multi-megabyte".
+**Precedence:** `AGENTS.md` → measured facts on this org (`SPIKE.md`) → this project's `openapi.json` → shipped reference apps → docs.cribl.io → SPEC v1.2 → PRD v4.16. The measured facts sit above the docs because they are this org. For example, the KV store answers 413 above ~100 KB even though the Builder Guide says values can be "multi-megabyte".
 
 **Citation roots**
 - `repo/path:line`: a reference clone under `scratchpad/ref/`.
@@ -546,7 +546,7 @@ Each item gives the question, then how to test it, then what it gates. "Read-onl
 
 ## 9. CONFLICTS with PRD / SPEC assumptions, with recommended decisions
 
-### 9.1 Already decided (recorded in `DECISIONS.md`; listed so no agent re-litigates them)
+### 9.1 Already decided (listed so no agent re-litigates them)
 | # | PRD / SPEC says | Platform says | Decision |
 |---|---|---|---|
 | C1 | Backend `timeout` 300, "up to 900 s" (SPEC:71,84; PRD:36,207) | `@cribl/apps` schema `maximum: 120` (`node_modules/@cribl/apps/lib/build/backendManifestSchema.js:58-63`); `AGENTS.md:264` | **D3:** ≤ 120 s (backend variant only) |
